@@ -220,7 +220,7 @@ export const Settings: React.FC = () => {
     try {
       const res = await whatsappService.sendTestMessage(
         target,
-        'Olá! Teste de envio direto pela WhatsApp Cloud API oficial da Meta configurado com sucesso no Agente Financeiro Eleva!',
+        'Olá! Teste de envio direto pela WhatsApp Cloud API oficial da Meta configurado com sucesso no Eleva App - Seu Agente Financeiro!',
       )
       if (res.success) {
         toast({
@@ -433,8 +433,8 @@ export const Settings: React.FC = () => {
                 Canal Oficial WhatsApp Business (Meta Cloud API)
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                Integração da conta de WhatsApp Business do dono com o Agente Financeiro de
-                Caixinhas
+                Integração da conta de WhatsApp Business do dono com o Eleva App - Seu Agente
+                Financeiro
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -1011,8 +1011,8 @@ export const Settings: React.FC = () => {
             </DialogTitle>
             <DialogDescription>
               Testa a ponte ponta a ponta: o webhook recebe o texto, identifica se o número é
-              cadastrado ou visitante, aciona o Agente Financeiro com as ferramentas de caixinhas e
-              gera a resposta.
+              cadastrado ou visitante, aciona o Eleva App com as ferramentas de caixinhas e gera a
+              resposta.
             </DialogDescription>
           </DialogHeader>
 
@@ -1053,9 +1053,7 @@ export const Settings: React.FC = () => {
             {testResult && (
               <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-800">
-                    Resposta do Agente Financeiro:
-                  </span>
+                  <span className="font-semibold text-slate-800">Resposta do Eleva App:</span>
                   <div className="flex items-center gap-1.5">
                     <Badge
                       variant="outline"

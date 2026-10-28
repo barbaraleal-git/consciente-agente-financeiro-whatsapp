@@ -47,7 +47,10 @@ export const ForgotPassword: React.FC = () => {
             <Bot className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Recuperar Senha</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-indigo-300 font-medium mt-1">
+            Eleva App - Seu Agente Financeiro
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">
             Enviaremos as instruções de redefinição para sua caixa de entrada
           </p>
         </div>
@@ -61,7 +64,7 @@ export const ForgotPassword: React.FC = () => {
               <h2 className="text-lg font-semibold text-white">Email enviado!</h2>
               <p className="text-sm text-slate-300">
                 Se o email <strong>{email}</strong> estiver cadastrado, você receberá um link seguro
-                para redefinir sua senha em instantes.
+                do <strong>Eleva App</strong> para redefinir sua senha em instantes.
               </p>
               <Button asChild className="w-full bg-indigo-600 hover:bg-indigo-500 text-white mt-4">
                 <Link to="/login">Voltar ao Login</Link>
@@ -74,7 +77,7 @@ export const ForgotPassword: React.FC = () => {
                   Esqueci minha senha
                 </CardTitle>
                 <CardDescription className="text-slate-400">
-                  Informe o email associado à sua conta do Agente Financeiro
+                  Informe o email associado à sua conta do Eleva App
                 </CardDescription>
               </CardHeader>
 

@@ -243,8 +243,9 @@ export const Onboarding: React.FC = () => {
     try {
       await completeOnboarding()
       toast({
-        title: 'Caixinhas configuradas!',
-        description: 'Tudo pronto. O Agente Financeiro está pronto para te ajudar!',
+        title: 'Configuração concluída!',
+        description:
+          'Tudo pronto. O Eleva App está pronto para te ajudar como seu agente financeiro!',
       })
       navigate('/')
     } catch (err) {

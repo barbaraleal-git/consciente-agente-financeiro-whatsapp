@@ -62,11 +62,13 @@ export const Layout: React.FC = () => {
           <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30 shrink-0">
             <Wallet className="w-5 h-5" />
           </div>
-          <div>
-            <h1 className="font-bold text-base text-white tracking-tight leading-tight">
-              Agente Financeiro
+          <div className="min-w-0">
+            <h1 className="font-bold text-base text-white tracking-tight leading-tight truncate">
+              Eleva App
             </h1>
-            <p className="text-[11px] text-slate-400 font-medium">Controle via WhatsApp</p>
+            <p className="text-[11px] text-indigo-300 font-medium truncate">
+              Seu Agente Financeiro
+            </p>
           </div>
         </div>
 
@@ -135,9 +137,14 @@ export const Layout: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white md:hidden shadow-sm">
               <Wallet className="w-4 h-4" />
             </div>
-            <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
-              {pageTitle}
-            </h2>
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 leading-tight">
+                {pageTitle}
+              </h2>
+              <p className="text-[11px] text-slate-400 font-medium md:hidden">
+                Eleva App - Seu Agente Financeiro
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">

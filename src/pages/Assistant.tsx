@@ -49,7 +49,7 @@ export const Assistant: React.FC = () => {
       id: 'welcome',
       role: 'assistant',
       content:
-        'Olá! Eu sou seu **Agente Financeiro**. Estou integrado à sua conta e posso analisar seus gastos, sugerir cortes, verificar os tetos das suas caixinhas e te ajudar no controle diário de custos. Como posso te auxiliar hoje?',
+        'Olá! Eu sou o **Eleva App - Seu Agente Financeiro**. Estou integrado à sua conta e posso analisar seus gastos, sugerir cortes, verificar os tetos das suas caixinhas e te ajudar no controle diário de custos. Como posso te auxiliar hoje?',
       created: new Date().toISOString(),
     },
   ])
@@ -236,14 +236,12 @@ export const Assistant: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm text-slate-900">Agente Financeiro</h3>
+                <h3 className="font-bold text-sm text-slate-900">Eleva App</h3>
                 <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
                   Online (Reasoning)
                 </Badge>
               </div>
-              <p className="text-xs text-slate-500">
-                Respostas com acesso direto às suas transações e caixinhas
-              </p>
+              <p className="text-xs text-slate-500">Seu Agente Financeiro em tempo real</p>{' '}
             </div>
           </div>
 

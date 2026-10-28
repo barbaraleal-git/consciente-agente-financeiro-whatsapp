@@ -69,10 +69,13 @@ export const Register: React.FC = () => {
             <Bot className="w-8 h-8" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Criar Conta no Agente
+            Criar Conta no Eleva App
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Controle de custos diários direto pelo WhatsApp e Web
+          <p className="text-sm text-indigo-300 font-medium mt-1">
+            Eleva App - Seu Agente Financeiro
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Controle de custos diários e caixinhas direto pelo WhatsApp e Web
           </p>
         </div>
 
@@ -84,8 +87,8 @@ export const Register: React.FC = () => {
               </div>
               <h2 className="text-lg font-semibold text-white">Conta criada com sucesso!</h2>
               <p className="text-sm text-slate-300">
-                Enviamos um link de verificação para o email <strong>{email}</strong>. Você já pode
-                fazer login na plataforma.
+                Enviamos um link de confirmação do <strong>Eleva App</strong> para o email{' '}
+                <strong>{email}</strong>. Você já pode fazer login na plataforma.
               </p>
               <Button
                 onClick={() => navigate('/login')}

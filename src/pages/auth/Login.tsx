@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Bot, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
 
 export const Login: React.FC = () => {
-  const { login } = useAuth()
+  const { login, isAuthenticated, user, logout } = useAuth()
   const navigate = useNavigate()
 
   const [email, setEmail] = useState('')
@@ -30,6 +30,18 @@ export const Login: React.FC = () => {
 
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const isPassValid = password.length >= 8
+
+  // Se o usuário já está autenticado neste navegador, permite continuar ou sair
+  const handleContinueAsActiveUser = () => {
+    navigate('/')
+  }
+
+  const handleSwitchAccount = () => {
+    logout()
+    setEmail('')
+    setPassword('')
+    setError(null)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,15 +73,51 @@ export const Login: React.FC = () => {
             <Bot className="w-8 h-8" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
-            Agente Financeiro
+            Eleva App
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
               WhatsApp AI
             </span>
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Controle inteligente de custos e finanças em tempo real
+          <p className="text-sm text-indigo-300 font-medium mt-1">
+            Eleva App - Seu Agente Financeiro
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Controle inteligente de custos e caixinhas em tempo real
           </p>
         </div>
+
+        {isAuthenticated && user && (
+          <div className="mb-4 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/50 backdrop-blur-md text-slate-200">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-slate-400">Sessão já conectada neste navegador:</p>
+                <p className="text-sm font-semibold text-white truncate">
+                  {user.name || user.email}
+                </p>
+                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSwitchAccount}
+                  className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs h-8"
+                >
+                  Sair / Trocar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleContinueAsActiveUser}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-8"
+                >
+                  Continuar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <Card className="border-slate-800 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-md">
           <CardHeader className="space-y-1 pb-4">
@@ -90,14 +138,16 @@ export const Login: React.FC = () => {
               </Alert>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-xs text-slate-300">
                   Email
                 </Label>
                 <Input
                   id="email"
+                  name="email"
                   type="email"
+                  autoComplete="off"
                   placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -126,7 +176,9 @@ export const Login: React.FC = () => {
                 </div>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
+                  autoComplete="new-password"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

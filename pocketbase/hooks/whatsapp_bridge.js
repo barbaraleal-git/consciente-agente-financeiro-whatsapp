@@ -236,8 +236,84 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 })
 
 // ----------------------------------------------------
-// 3. Rota de Simulação / Teste do WhatsApp
-// Permite testar o fluxo completo ponta a ponta
+// 3. Rota de Envio de Mensagem de Teste / Processamento
+// Envia mensagem via WhatsApp usando o canal oficial do backend
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/send-test',
+  (e) => {
+    try {
+      const normalizeDigits = function (raw) {
+        if (!raw) return ''
+        let digits = String(raw).replace(/\D/g, '')
+        if (digits.length === 10 || digits.length === 11) {
+          digits = '55' + digits
+        }
+        return digits
+      }
+
+      const body = e.requestInfo().body || {}
+      const targetPhone = normalizeDigits(body.to_number || '5511976729458')
+      const text =
+        body.text ||
+        'Olá Bárbara! Seu Agente Financeiro WhatsApp está conectado e ativo. Canal oficial configurado com sucesso para o acompanhamento das suas caixinhas!'
+
+      let activePhoneId = '1314873981716321'
+      try {
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+        if (wsList.length > 0 && wsList[0].getString('phone_number_id')) {
+          activePhoneId = wsList[0].getString('phone_number_id')
+        }
+      } catch (_) {}
+
+      if (typeof $connectors === 'undefined' || typeof $connectors.executeAsOwner !== 'function') {
+        console.log('[whatsapp_bridge] Connector executeAsOwner indisponível no backend')
+        return e.json(503, {
+          success: false,
+          error: 'Conector WhatsApp não habilitado no Skip Cloud',
+        })
+      }
+
+      console.log(
+        '[whatsapp_bridge] Disparando teste para:',
+        targetPhone,
+        'phone_number_id:',
+        activePhoneId,
+      )
+      const res = $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
+        to_number: targetPhone,
+        phone_number_id: activePhoneId,
+        text: text,
+      })
+
+      if (!res.successful) {
+        console.log('[whatsapp_bridge] Falha no WHATSAPP_SEND_MESSAGE:', res.error)
+        return e.json(400, {
+          success: false,
+          error: res.error || 'Falha ao enviar mensagem',
+        })
+      }
+
+      console.log('[whatsapp_bridge] Mensagem de teste enviada com sucesso!')
+      return e.json(200, {
+        success: true,
+        data: res.data,
+      })
+    } catch (err) {
+      console.log('[whatsapp_bridge] Exceção em send-test:', err)
+      return e.json(500, {
+        success: false,
+        error: String(err),
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 4. Rota de Processamento de Mensagem de Teste (Interação com Agente)
+// Permite testar o fluxo completo do agente com envio real pelo conector
 // ----------------------------------------------------
 routerAdd(
   'POST',

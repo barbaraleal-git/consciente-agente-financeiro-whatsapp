@@ -311,7 +311,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             const existingConvId = contact.getString('conversation_id') || null
             let promptForAgent = textContent
             if (!isRegistered) {
-              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Agente Financeiro do WhatsApp, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar na plataforma para conectar as caixinhas e transações à conta dele]: ${textContent}`
+              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Agente Financeiro do WhatsApp, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${textContent}`
             }
 
             let agentReply = ''
@@ -329,7 +329,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               console.log('[whatsapp_bridge] Falha ao executar agente:', aErr)
               if (!isRegistered) {
                 agentReply =
-                  'Olá! Eu sou seu Agente Financeiro no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Acesse nosso portal para criar sua conta, definir suas caixinhas e controlar seus custos diários em tempo real!'
+                  'Olá! Eu sou seu Agente Financeiro no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
               } else {
                 agentReply =
                   'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira. Por favor, tente novamente em alguns instantes!'
@@ -745,7 +745,7 @@ routerAdd(
 
       let promptForAgent = message
       if (!isRegistered) {
-        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Agente Financeiro do WhatsApp, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar na plataforma para conectar as caixinhas e transações à conta dele]: ${message}`
+        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Agente Financeiro do WhatsApp, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${message}`
       }
 
       let agentReply = ''
@@ -763,7 +763,7 @@ routerAdd(
         console.log('[whatsapp_bridge] Falha ao executar agente no simulate:', aErr)
         if (!isRegistered) {
           agentReply =
-            'Olá! Eu sou seu Agente Financeiro no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Acesse nosso portal para criar sua conta, definir suas caixinhas e controlar seus custos diários em tempo real!'
+            'Olá! Eu sou seu Agente Financeiro no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
         } else {
           agentReply =
             'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira. Por favor, tente novamente em alguns instantes!'

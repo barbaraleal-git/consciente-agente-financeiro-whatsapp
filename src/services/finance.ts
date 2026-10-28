@@ -57,6 +57,48 @@ export interface WhatsAppStatus extends RecordModel {
   phone_number?: string
 }
 
+export interface WhatsAppLiveStatus {
+  owner_connected: boolean
+  owner_phone: string | null
+  available_numbers: Array<{
+    id?: string
+    display_phone_number?: string
+    phone_number?: string
+    verified_name?: string
+    quality_rating?: string
+  }>
+  user_phone: string | null
+  user_connected: boolean
+  error?: string | null
+  webhook_url?: string
+}
+
+export interface WhatsAppContact {
+  id: string
+  phone_number: string
+  name: string
+  user_id?: string
+  user_name?: string
+  is_registered: boolean
+  conversation_id?: string
+  messages_count: number
+  last_message_at?: string
+  created: string
+}
+
+export interface WhatsAppSimulationResult {
+  success: boolean
+  simulation: boolean
+  phone: string
+  user_id: string
+  user_name: string
+  is_registered: boolean
+  conversation_id: string
+  reply: string
+  connector_sent: boolean
+  connector_error: string | null
+}
+
 // ----------------- Categories Service -----------------
 export const categoriesService = {
   async list(filter = ''): Promise<Category[]> {
@@ -265,5 +307,54 @@ export const whatsappService = {
       connected,
       phone_number: phoneNumber,
     })
+  },
+
+  async getLiveStatus(): Promise<WhatsAppLiveStatus> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/status`, {
+      headers: {
+        Authorization: pb.authStore.token,
+      },
+    })
+    if (!res.ok) {
+      throw new Error('Falha ao obter status do WhatsApp')
+    }
+    return res.json()
+  },
+
+  async listContacts(): Promise<WhatsAppContact[]> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/contacts`, {
+      headers: {
+        Authorization: pb.authStore.token,
+      },
+    })
+    if (!res.ok) {
+      throw new Error('Falha ao obter contatos do WhatsApp')
+    }
+    const data = await res.json()
+    return data.contacts || []
+  },
+
+  async simulateMessage(
+    phoneNumber: string,
+    message: string,
+    senderName?: string,
+  ): Promise<WhatsAppSimulationResult> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/simulate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: pb.authStore.token,
+      },
+      body: JSON.stringify({
+        phone_number: phoneNumber,
+        message,
+        sender_name: senderName,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao simular mensagem de WhatsApp')
+    }
+    return res.json()
   },
 }

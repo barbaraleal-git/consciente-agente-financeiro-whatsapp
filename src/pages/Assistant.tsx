@@ -8,7 +8,12 @@ import {
   type DisplayMessage,
   type AgentMessage,
 } from '@/lib/skipAi'
-import { importJobsService, type ImportJob } from '@/services/finance'
+import {
+  importJobsService,
+  whatsappService,
+  type ImportJob,
+  type WhatsAppLiveStatus,
+} from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,12 +28,10 @@ import {
   Loader2,
   UploadCloud,
   FileText,
-  CheckCircle2,
-  AlertCircle,
   Sparkles,
   RefreshCw,
   ExternalLink,
-  MessageSquare,
+  Smartphone,
 } from 'lucide-react'
 
 const SUGGESTIONS = [
@@ -56,6 +59,9 @@ export const Assistant: React.FC = () => {
   const [streamingContent, setStreamingContent] = useState('')
   const [currentCitations, setCurrentCitations] = useState<AgentCitation[]>([])
 
+  // WhatsApp Status
+  const [waLive, setWaLive] = useState<WhatsAppLiveStatus | null>(null)
+
   // File Upload State (.txt WhatsApp export)
   const [importJobs, setImportJobs] = useState<ImportJob[]>([])
   const [uploading, setUploading] = useState(false)
@@ -82,6 +88,10 @@ export const Assistant: React.FC = () => {
 
   useEffect(() => {
     loadImportJobs()
+    whatsappService
+      .getLiveStatus()
+      .then(setWaLive)
+      .catch(() => null)
   }, [])
 
   // Realtime updates for import jobs
@@ -380,8 +390,58 @@ export const Assistant: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Column: WhatsApp History Import (.txt) & Instructions */}
+      {/* Right Column: WhatsApp Real Channel & History Import */}
       <div className="space-y-6">
+        {/* Real WhatsApp Status Card */}
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-emerald-600" />
+              Canal WhatsApp Real
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Número oficial pelo qual o agente atende você e seus clientes
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-900">
+                  {waLive?.owner_phone || waLive?.user_phone || '+55 (11) 98765-4321'}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {waLive?.owner_connected
+                    ? 'Conectado via WhatsApp Cloud API'
+                    : 'Aguardando autorização de conector do dono'}
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={`text-[10px] ${
+                  waLive?.owner_connected
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}
+              >
+                {waLive?.owner_connected ? 'Ativo' : 'Configurado'}
+              </Badge>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Mensagens como <em>"Almoço 35 reais"</em> ou{' '}
+              <em>"Quanto sobrou na caixinha de lazer?"</em> enviadas nesse WhatsApp são
+              categorizadas instantaneamente.
+            </p>
+
+            <Link
+              to="/settings"
+              className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium pt-1"
+            >
+              Gerenciar conexão em Configurações <ExternalLink className="w-3 h-3" />
+            </Link>
+          </CardContent>
+        </Card>
+
         {/* Upload WhatsApp History Box */}
         <Card className="border-slate-200">
           <CardHeader className="pb-3">

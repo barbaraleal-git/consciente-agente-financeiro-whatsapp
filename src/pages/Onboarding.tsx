@@ -15,25 +15,22 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import {
-  Utensils,
-  Car,
-  Home,
-  HeartPulse,
-  Gamepad,
-  Book,
-  ShoppingBag,
-  Film,
   Sparkles,
   ArrowRight,
   ArrowLeft,
   Check,
-  CheckCircle2,
   PiggyBank,
   Bot,
-  HelpCircle,
   Loader2,
-  ChevronRight,
+  Plus,
+  Trash2,
 } from 'lucide-react'
+import {
+  CAIXINHA_ICONS,
+  CAIXINHA_COLORS,
+  renderCaixinhaIcon,
+  getCaixinhaIconComponent,
+} from '@/lib/caixinhaIcons'
 
 // Suggested default amounts in cents (examples based on practical monthly expenses)
 const DEFAULT_AMOUNT_SUGGESTIONS: Record<string, string> = {
@@ -45,29 +42,6 @@ const DEFAULT_AMOUNT_SUGGESTIONS: Record<string, string> = {
   Educação: '350,00',
   Compras: '350,00',
   Assinaturas: '120,00',
-}
-
-const getCategoryIcon = (iconName: string) => {
-  switch (iconName) {
-    case 'utensils':
-      return Utensils
-    case 'car':
-      return Car
-    case 'home':
-      return Home
-    case 'heart-pulse':
-      return HeartPulse
-    case 'gamepad':
-      return Gamepad
-    case 'book':
-      return Book
-    case 'shopping-bag':
-      return ShoppingBag
-    case 'film':
-      return Film
-    default:
-      return PiggyBank
-  }
 }
 
 export const Onboarding: React.FC = () => {
@@ -89,6 +63,14 @@ export const Onboarding: React.FC = () => {
 
   // Step 2: Amounts per category ID (string formatted as masked currency)
   const [amounts, setAmounts] = useState<Record<string, string>>({})
+
+  // Custom Caixinha Creator state (inline in onboarding)
+  const [isCreatingCustom, setIsCreatingCustom] = useState(false)
+  const [customName, setCustomName] = useState('')
+  const [customIcon, setCustomIcon] = useState('plane')
+  const [customColor, setCustomColor] = useState('#ec4899')
+  const [customInitialCap, setCustomInitialCap] = useState('1.500,00')
+  const [creatingLoading, setCreatingLoading] = useState(false)
 
   useEffect(() => {
     const initCategories = async () => {
@@ -135,6 +117,58 @@ export const Onboarding: React.FC = () => {
 
   const handleApplySuggestion = (catId: string, suggested: string) => {
     setAmounts((prev) => ({ ...prev, [catId]: suggested }))
+  }
+
+  // Create a brand new custom Caixinha right inside onboarding
+  const handleCreateCustomCaixinha = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = customName.trim()
+    if (!trimmed) {
+      toast({
+        title: 'Nome obrigatório',
+        description: 'Dê um nome para a sua nova caixinha (ex: Viagem a Paris).',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setCreatingLoading(true)
+    try {
+      const created = await categoriesService.create({
+        name: trimmed,
+        type: 'despesa',
+        icon: customIcon,
+        color: customColor,
+      })
+
+      // Add to available categories and auto-select
+      setAvailableCategories((prev) => [...prev, created])
+      setSelectedCatIds((prev) => [...prev, created.id])
+
+      // Initialize default budget suggestion
+      const cleanCap = customInitialCap.trim() ? customInitialCap : '1.000,00'
+      setAmounts((prev) => ({ ...prev, [created.id]: cleanCap }))
+
+      // Reset form
+      setCustomName('')
+      setCustomIcon('plane')
+      setCustomColor('#ec4899')
+      setIsCreatingCustom(false)
+
+      toast({
+        title: `Caixinha "${trimmed}" criada!`,
+        description: 'Adicionamos aos seus planos para este mês. 🎯',
+      })
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao criar caixinha',
+        description: 'Não foi possível cadastrar a caixinha personalizada.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCreatingLoading(false)
+    }
   }
 
   // Next from Step 1 to Step 2
@@ -301,9 +335,9 @@ export const Onboarding: React.FC = () => {
                     </div>
 
                     {/* Category Selection Grid */}
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                        <span>Selecione as caixinhas que fazem sentido para você:</span>
+                        <span>Escolha ou crie suas caixinhas para este mês:</span>
                         <span className="text-indigo-400 font-medium">
                           {selectedCatIds.length} selecionada(s)
                         </span>
@@ -311,7 +345,7 @@ export const Onboarding: React.FC = () => {
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                         {availableCategories.map((cat) => {
-                          const IconComp = getCategoryIcon(cat.icon)
+                          const IconComp = getCaixinhaIconComponent(cat.icon)
                           const isSelected = selectedCatIds.includes(cat.id)
 
                           return (
@@ -342,13 +376,159 @@ export const Onboarding: React.FC = () => {
                                   <Check className="w-3 h-3 stroke-[3]" />
                                 </div>
                               </div>
-                              <span className="text-xs font-semibold leading-tight">
+                              <span className="text-xs font-semibold leading-tight truncate">
                                 {cat.name}
                               </span>
                             </button>
                           )
                         })}
+
+                        {/* Button to toggle inline creation card */}
+                        {!isCreatingCustom && (
+                          <button
+                            type="button"
+                            onClick={() => setIsCreatingCustom(true)}
+                            className="p-3 rounded-xl border border-dashed border-indigo-400/40 hover:border-indigo-400 hover:bg-indigo-950/30 text-indigo-300 hover:text-white transition-all flex flex-col justify-between items-start gap-2 text-left group"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 flex items-center justify-center group-hover:scale-105 transition-transform">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-semibold block leading-tight text-white">
+                                + Criar Caixinha
+                              </span>
+                              <span className="text-[10px] text-indigo-300/70 block mt-0.5">
+                                Ex: Viagem a Paris
+                              </span>
+                            </div>
+                          </button>
+                        )}
                       </div>
+
+                      {/* Inline Custom Caixinha Creator Card */}
+                      {isCreatingCustom && (
+                        <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 text-slate-200 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-pink-400" />
+                              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                                Nova Caixinha Personalizada
+                              </h4>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsCreatingCustom(false)}
+                              className="text-xs text-slate-400 hover:text-white"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium text-slate-300">
+                                Nome da caixinha *
+                              </label>
+                              <Input
+                                placeholder="Ex: Viagem a Paris, Casamento, Reforma..."
+                                value={customName}
+                                onChange={(e) => setCustomName(e.target.value)}
+                                className="h-9 bg-slate-900 border-slate-700 text-white text-xs placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                                autoFocus
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium text-slate-300">
+                                Sugestão de teto mensal (R$)
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-2 text-[11px] font-semibold text-slate-400">
+                                  R$
+                                </span>
+                                <Input
+                                  value={customInitialCap}
+                                  onChange={(e) =>
+                                    setCustomInitialCap(maskCurrencyInput(e.target.value))
+                                  }
+                                  placeholder="1.500,00"
+                                  className="h-9 pl-8 bg-slate-900 border-slate-700 text-white text-xs font-semibold tabular-nums focus-visible:ring-indigo-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Icon selection row */}
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-slate-300">
+                              Escolha o ícone
+                            </label>
+                            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-900/60 rounded-xl border border-slate-800">
+                              {CAIXINHA_ICONS.slice(0, 14).map((iconOpt) => {
+                                const Icon = iconOpt.icon
+                                const isSelected = customIcon === iconOpt.id
+                                return (
+                                  <button
+                                    key={iconOpt.id}
+                                    type="button"
+                                    onClick={() => setCustomIcon(iconOpt.id)}
+                                    title={iconOpt.label}
+                                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                                      isSelected
+                                        ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                    }`}
+                                  >
+                                    <Icon className="w-3.5 h-3.5" />
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Color selection row */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] text-slate-400">Cor:</span>
+                              <div className="flex gap-1.5">
+                                {CAIXINHA_COLORS.slice(0, 8).map((hex) => (
+                                  <button
+                                    key={hex}
+                                    type="button"
+                                    onClick={() => setCustomColor(hex)}
+                                    style={{ backgroundColor: hex }}
+                                    className={`w-5 h-5 rounded-full transition-transform ${
+                                      customColor === hex
+                                        ? 'ring-2 ring-white scale-110'
+                                        : 'opacity-80 hover:opacity-100 hover:scale-105'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <Button
+                              type="button"
+                              onClick={handleCreateCustomCaixinha}
+                              disabled={creatingLoading || !customName.trim()}
+                              size="sm"
+                              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-8 px-4 shadow"
+                            >
+                              {creatingLoading ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                  Criando...
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5 mr-1.5" />
+                                  Adicionar Caixinha
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Step 1 Actions */}
@@ -397,7 +577,7 @@ export const Onboarding: React.FC = () => {
                     {/* Amounts Input List */}
                     <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                       {selectedCategoriesList.map((cat) => {
-                        const IconComp = getCategoryIcon(cat.icon)
+                        const IconComp = getCaixinhaIconComponent(cat.icon)
                         const currentVal = amounts[cat.id] || ''
                         const suggestion = DEFAULT_AMOUNT_SUGGESTIONS[cat.name]
 
@@ -414,11 +594,18 @@ export const Onboarding: React.FC = () => {
                                 <IconComp className="w-4 h-4" />
                               </div>
                               <div>
-                                <h4 className="text-xs font-semibold text-white">{cat.name}</h4>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-xs font-semibold text-white">{cat.name}</h4>
+                                  {!DEFAULT_AMOUNT_SUGGESTIONS[cat.name] && (
+                                    <span className="text-[10px] bg-pink-500/20 text-pink-300 px-1.5 py-0.2 rounded border border-pink-500/30 font-medium">
+                                      Personalizada
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-[11px] text-slate-400">
                                   {suggestion
                                     ? `Exemplo comum: R$ ${suggestion}/mês`
-                                    : 'Teto mensal'}
+                                    : 'Teto mensal definido por você'}
                                 </span>
                               </div>
                             </div>

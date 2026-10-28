@@ -29,52 +29,19 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+import { Plus, Edit2, Trash2 } from 'lucide-react'
 import {
-  Plus,
-  Edit2,
-  Trash2,
-  Utensils,
-  Car,
-  Home,
-  HeartPulse,
-  Gamepad2,
-  BookOpen,
-  Banknote,
-  TrendingUp,
-  MoreHorizontal,
-  Tags,
-} from 'lucide-react'
+  CAIXINHA_ICONS,
+  CAIXINHA_COLORS,
+  renderCaixinhaIcon,
+  getCaixinhaIconComponent,
+} from '@/lib/caixinhaIcons'
 
-// Available icon options with Lucide icons map
-const ICON_OPTIONS = [
-  { id: 'utensils', label: 'Alimentação', icon: Utensils },
-  { id: 'car', label: 'Transporte', icon: Car },
-  { id: 'home', label: 'Moradia', icon: Home },
-  { id: 'heart-pulse', label: 'Saúde', icon: HeartPulse },
-  { id: 'gamepad', label: 'Lazer', icon: Gamepad2 },
-  { id: 'book', label: 'Educação', icon: BookOpen },
-  { id: 'banknote', label: 'Salário/Receita', icon: Banknote },
-  { id: 'trending-up', label: 'Investimentos', icon: TrendingUp },
-  { id: 'ellipsis', label: 'Outros', icon: MoreHorizontal },
-]
-
-const COLOR_OPTIONS = [
-  '#f59e0b', // Amber
-  '#3b82f6', // Blue
-  '#8b5cf6', // Purple
-  '#ef4444', // Red
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#10b981', // Emerald
-  '#6366f1', // Indigo
-  '#64748b', // Slate
-  '#f97316', // Orange
-]
+const ICON_OPTIONS = CAIXINHA_ICONS
+const COLOR_OPTIONS = CAIXINHA_COLORS
 
 function renderCategoryIcon(iconKey: string, className = 'w-5 h-5') {
-  const item = ICON_OPTIONS.find((i) => i.id === iconKey)
-  const IconComponent = item ? item.icon : Tags
-  return <IconComponent className={className} />
+  return renderCaixinhaIcon(iconKey, className)
 }
 
 export const Categories: React.FC = () => {
@@ -336,7 +303,7 @@ export const Categories: React.FC = () => {
             {/* Icon Picker */}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-700">Ícone Representativo</Label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-6 sm:grid-cols-7 gap-2 max-h-36 overflow-y-auto p-1.5 border border-slate-200 rounded-xl bg-slate-50/50">
                 {ICON_OPTIONS.map((opt) => {
                   const Icon = opt.icon
                   const isSelected = icon === opt.id
@@ -345,13 +312,14 @@ export const Categories: React.FC = () => {
                       key={opt.id}
                       type="button"
                       onClick={() => setIcon(opt.id)}
-                      className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
+                      title={opt.label}
+                      className={`p-2 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${
                         isSelected
                           ? 'border-indigo-600 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-600/20'
-                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                       }`}
                     >
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-4 h-4" />
                     </button>
                   )
                 })}

@@ -55,7 +55,15 @@ import {
   CheckCircle2,
   Calendar,
   BarChart2,
+  Sparkles,
+  Layers,
 } from 'lucide-react'
+import {
+  CAIXINHA_ICONS,
+  CAIXINHA_COLORS,
+  renderCaixinhaIcon,
+  getCaixinhaIconComponent,
+} from '@/lib/caixinhaIcons'
 
 export const Budgets: React.FC = () => {
   const { toast } = useToast()
@@ -73,7 +81,11 @@ export const Budgets: React.FC = () => {
   const [deleteBudget, setDeleteBudget] = useState<Budget | null>(null)
 
   // Form Fields
+  const [creationMode, setCreationMode] = useState<'existing' | 'custom'>('custom')
   const [catId, setCatId] = useState('')
+  const [customName, setCustomName] = useState('')
+  const [customIcon, setCustomIcon] = useState('plane')
+  const [customColor, setCustomColor] = useState('#ec4899')
   const [amountStr, setAmountStr] = useState('')
   const [monthInput, setMonthInput] = useState(currentMonth)
   const [saving, setSaving] = useState(false)
@@ -133,6 +145,10 @@ export const Budgets: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingBudget(null)
     const expenseCats = categories.filter((c) => c.type === 'despesa')
+    setCreationMode('custom')
+    setCustomName('')
+    setCustomIcon('plane')
+    setCustomColor('#ec4899')
     setCatId(expenseCats[0]?.id || '')
     setAmountStr('')
     setMonthInput(selectedMonth)
@@ -141,6 +157,7 @@ export const Budgets: React.FC = () => {
 
   const handleOpenEdit = (b: Budget) => {
     setEditingBudget(b)
+    setCreationMode('existing')
     setCatId(b.category)
     setAmountStr(
       (b.amount / 100).toLocaleString('pt-BR', {
@@ -163,20 +180,46 @@ export const Budgets: React.FC = () => {
       })
       return
     }
-    if (!catId) {
-      toast({
-        title: 'Categoria obrigatória',
-        description: 'Selecione uma categoria.',
-        variant: 'destructive',
-      })
-      return
-    }
-
     setSaving(true)
     try {
+      let finalCategoryId = catId
+
+      // If creating a brand new custom caixinha with own name & icon
+      if (!editingBudget && creationMode === 'custom') {
+        const trimmedName = customName.trim()
+        if (!trimmedName) {
+          toast({
+            title: 'Nome obrigatório',
+            description: 'Informe o nome da sua caixinha (ex: Viagem a Paris).',
+            variant: 'destructive',
+          })
+          setSaving(false)
+          return
+        }
+
+        // Create new category in PocketBase
+        const createdCat = await categoriesService.create({
+          name: trimmedName,
+          type: 'despesa',
+          icon: customIcon,
+          color: customColor,
+        })
+        finalCategoryId = createdCat.id
+      } else {
+        if (!finalCategoryId) {
+          toast({
+            title: 'Categoria obrigatória',
+            description: 'Selecione uma categoria.',
+            variant: 'destructive',
+          })
+          setSaving(false)
+          return
+        }
+      }
+
       if (editingBudget) {
         await budgetsService.update(editingBudget.id, {
-          category: catId,
+          category: finalCategoryId,
           amount: cents,
           month: monthInput,
         })
@@ -186,21 +229,22 @@ export const Budgets: React.FC = () => {
         })
       } else {
         await budgetsService.create({
-          category: catId,
+          category: finalCategoryId,
           amount: cents,
           month: monthInput,
         })
         toast({
-          title: 'Caixinha criada',
-          description: 'Teto da caixinha definido com sucesso.',
+          title: 'Caixinha criada com sucesso! 🎯',
+          description: 'Seu teto de gastos foi configurado.',
         })
       }
       setModalOpen(false)
-      loadData()
-    } catch {
+      await loadData()
+    } catch (err) {
+      console.error(err)
       toast({
         title: 'Erro ao salvar',
-        description: 'Não foi possível salvar a caixinha.',
+        description: 'Não foi possível salvar a caixinha. Verifique os dados.',
         variant: 'destructive',
       })
     } finally {
@@ -322,78 +366,88 @@ export const Budgets: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-5">
-              {budgetStats.map((item) => (
-                <div key={item.budget.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: item.category?.color || '#64748b' }}
-                      />
-                      <span className="font-semibold text-slate-900">
-                        {item.category?.name || 'Categoria'}
-                      </span>
+              {budgetStats.map((item) => {
+                const IconComp = getCaixinhaIconComponent(item.category?.icon)
+                return (
+                  <div
+                    key={item.budget.id}
+                    className="space-y-1.5 p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs"
+                          style={{ backgroundColor: item.category?.color || '#64748b' }}
+                        >
+                          <IconComp className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="font-semibold text-slate-900">
+                            {item.category?.name || 'Categoria'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-right">
+                        <span className="text-slate-500">
+                          Gasto:{' '}
+                          <strong className="text-slate-900 tabular-nums">
+                            {formatCurrency(item.spentAmount)}
+                          </strong>{' '}
+                          de {formatCurrency(item.budgetAmount)}
+                        </span>
+                        <span
+                          className={`font-bold tabular-nums text-xs px-2 py-0.5 rounded-full ${
+                            item.percentage >= 90
+                              ? 'bg-red-100 text-red-700'
+                              : item.percentage >= 70
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-emerald-100 text-emerald-700'
+                          }`}
+                        >
+                          {item.percentage}%
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 text-right">
-                      <span className="text-slate-500">
-                        Gasto:{' '}
-                        <strong className="text-slate-900 tabular-nums">
-                          {formatCurrency(item.spentAmount)}
-                        </strong>{' '}
-                        de {formatCurrency(item.budgetAmount)}
+                    {/* Progress bar with dynamic color */}
+                    <Progress
+                      value={Math.min(item.percentage, 100)}
+                      className={`h-2.5 ${
+                        item.percentage >= 90
+                          ? '[&>div]:bg-red-500'
+                          : item.percentage >= 70
+                            ? '[&>div]:bg-amber-500'
+                            : '[&>div]:bg-emerald-500'
+                      }`}
+                    />
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                      <span>
+                        Restam:{' '}
+                        <strong className="text-slate-600">
+                          {formatCurrency(item.remainingAmount)}
+                        </strong>
                       </span>
-                      <span
-                        className={`font-bold tabular-nums text-xs px-2 py-0.5 rounded-full ${
-                          item.percentage >= 90
-                            ? 'bg-red-100 text-red-700'
-                            : item.percentage >= 70
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-emerald-100 text-emerald-700'
-                        }`}
-                      >
-                        {item.percentage}%
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenEdit(item.budget)}
+                          className="text-indigo-600 hover:underline"
+                        >
+                          Editar
+                        </button>
+                        <span>•</span>
+                        <button
+                          onClick={() => setDeleteBudget(item.budget)}
+                          className="text-red-500 hover:underline"
+                        >
+                          Excluir
+                        </button>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Progress bar with dynamic color */}
-                  <Progress
-                    value={Math.min(item.percentage, 100)}
-                    className={`h-2.5 ${
-                      item.percentage >= 90
-                        ? '[&>div]:bg-red-500'
-                        : item.percentage >= 70
-                          ? '[&>div]:bg-amber-500'
-                          : '[&>div]:bg-emerald-500'
-                    }`}
-                  />
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
-                    <span>
-                      Restam:{' '}
-                      <strong className="text-slate-600">
-                        {formatCurrency(item.remainingAmount)}
-                      </strong>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenEdit(item.budget)}
-                        className="text-indigo-600 hover:underline"
-                      >
-                        Editar
-                      </button>
-                      <span>•</span>
-                      <button
-                        onClick={() => setDeleteBudget(item.budget)}
-                        className="text-red-500 hover:underline"
-                      >
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -410,29 +464,133 @@ export const Budgets: React.FC = () => {
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
-                Categoria da Caixinha *
-              </Label>
-              <Select value={catId} onValueChange={setCatId}>
-                <SelectTrigger id="bCat">
-                  <SelectValue placeholder="Selecione a categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: c.color }}
-                        />
-                        <span>{c.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Toggle Mode: Create brand new custom caixinha vs use existing category */}
+            {!editingBudget && (
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setCreationMode('custom')}
+                  className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                    creationMode === 'custom'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+                  Nome Personalizado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationMode('existing')}
+                  className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                    creationMode === 'existing'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  Categoria Existente
+                </button>
+              </div>
+            )}
+
+            {/* If creating custom: name, icon, color */}
+            {!editingBudget && creationMode === 'custom' ? (
+              <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                <div className="space-y-1.5">
+                  <Label htmlFor="customCatName" className="text-xs font-medium text-slate-700">
+                    Nome da Caixinha *
+                  </Label>
+                  <Input
+                    id="customCatName"
+                    placeholder="Ex: Viagem a Paris, Casamento, Reforma..."
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    className="bg-white"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Dê um nome livre para sua meta de gastos ou viagem.
+                  </p>
+                </div>
+
+                {/* Icon picker */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-700">Ícone</Label>
+                  <div className="grid grid-cols-7 gap-1.5 p-1.5 bg-white rounded-lg border border-slate-200 max-h-28 overflow-y-auto">
+                    {CAIXINHA_ICONS.map((opt) => {
+                      const Icon = opt.icon
+                      const isSelected = customIcon === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setCustomIcon(opt.id)}
+                          title={opt.label}
+                          className={`p-1.5 rounded-md flex items-center justify-center transition-all ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30'
+                              : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Color picker */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-700">Cor</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {CAIXINHA_COLORS.map((hex) => (
+                      <button
+                        key={hex}
+                        type="button"
+                        onClick={() => setCustomColor(hex)}
+                        style={{ backgroundColor: hex }}
+                        className={`w-6 h-6 rounded-full transition-transform ${
+                          customColor === hex
+                            ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
+                            : 'hover:scale-105'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Existing category selection */
+              <div className="space-y-1.5">
+                <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
+                  Categoria da Caixinha *
+                </Label>
+                <Select value={catId} onValueChange={setCatId}>
+                  <SelectTrigger id="bCat">
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => {
+                      const Icon = getCaixinhaIconComponent(c.icon)
+                      return (
+                        <SelectItem key={c.id} value={c.id}>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-4 h-4 rounded-md flex items-center justify-center text-white"
+                              style={{ backgroundColor: c.color }}
+                            >
+                              <Icon className="w-2.5 h-2.5" />
+                            </span>
+                            <span>{c.name}</span>
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

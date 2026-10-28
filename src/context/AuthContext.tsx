@@ -1,0 +1,113 @@
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import pb from '@/lib/pocketbase/client'
+import type { RecordModel } from 'pocketbase'
+
+interface AuthUser extends RecordModel {
+  email: string
+  name?: string
+  avatar?: string
+}
+
+interface AuthContextType {
+  user: AuthUser | null
+  token: string | null
+  isLoading: boolean
+  isAuthenticated: boolean
+  login: (email: string, pass: string) => Promise<void>
+  register: (name: string, email: string, pass: string) => Promise<void>
+  logout: () => void
+  refreshUser: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<AuthUser | null>(
+    (pb.authStore.record as unknown as AuthUser) || null,
+  )
+  const [token, setToken] = useState<string | null>(pb.authStore.token || null)
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+
+  useEffect(() => {
+    // Initial sync
+    if (pb.authStore.isValid && pb.authStore.record) {
+      setUser(pb.authStore.record as unknown as AuthUser)
+      setToken(pb.authStore.token)
+    } else {
+      setUser(null)
+      setToken(null)
+    }
+    setIsLoading(false)
+
+    // Listen to store updates
+    const unsubscribe = pb.authStore.onChange((token, model) => {
+      setToken(token)
+      setUser(model as unknown as AuthUser)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  const login = async (email: string, pass: string) => {
+    const authData = await pb.collection('users').authWithPassword<AuthUser>(email, pass)
+    setUser(authData.record)
+    setToken(authData.token)
+  }
+
+  const register = async (name: string, email: string, pass: string) => {
+    await pb.collection('users').create({
+      email,
+      name,
+      password: pass,
+      passwordConfirm: pass,
+    })
+    // Request verification email
+    try {
+      await pb.collection('users').requestVerification(email)
+    } catch (e) {
+      console.warn('Email verification request error:', e)
+    }
+  }
+
+  const logout = () => {
+    pb.authStore.clear()
+    setUser(null)
+    setToken(null)
+  }
+
+  const refreshUser = async () => {
+    if (pb.authStore.isValid) {
+      try {
+        const updated = await pb.collection('users').authRefresh<AuthUser>()
+        setUser(updated.record)
+      } catch {
+        logout()
+      }
+    }
+  }
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isLoading,
+        isAuthenticated: !!user && pb.authStore.isValid,
+        login,
+        register,
+        logout,
+        refreshUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider')
+  return ctx
+}

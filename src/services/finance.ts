@@ -1,0 +1,228 @@
+import pb from '@/lib/pocketbase/client'
+import type { RecordModel } from 'pocketbase'
+
+export interface Category extends RecordModel {
+  owner: string
+  name: string
+  type: 'despesa' | 'receita' | 'investimento'
+  icon: string
+  color: string
+}
+
+export interface Transaction extends RecordModel {
+  owner: string
+  description: string
+  amount: number // in cents
+  date: string
+  category: string
+  expand?: {
+    category?: Category
+  }
+  type: 'despesa' | 'receita' | 'investimento'
+  source: 'manual' | 'whatsapp' | 'import' | 'agent'
+  note?: string
+}
+
+export interface Budget extends RecordModel {
+  owner: string
+  category: string
+  expand?: {
+    category?: Category
+  }
+  month: string // YYYY-MM
+  amount: number // in cents
+}
+
+export interface Alert extends RecordModel {
+  owner: string
+  title: string
+  message: string
+  type: 'budget' | 'info' | 'warning'
+  read: boolean
+}
+
+export interface ImportJob extends RecordModel {
+  owner: string
+  filename?: string
+  status: 'pending' | 'processing' | 'done' | 'failed'
+  total_lines: number
+  imported_count: number
+  raw_content?: string
+  error?: string
+}
+
+export interface WhatsAppStatus extends RecordModel {
+  owner: string
+  connected: boolean
+  phone_number?: string
+}
+
+// ----------------- Categories Service -----------------
+export const categoriesService = {
+  async list(filter = ''): Promise<Category[]> {
+    return pb.collection('categories').getFullList<Category>({
+      filter,
+      sort: 'name',
+    })
+  },
+
+  async create(data: Partial<Category>): Promise<Category> {
+    const owner = pb.authStore.record?.id
+    return pb.collection('categories').create<Category>({
+      ...data,
+      owner,
+    })
+  },
+
+  async update(id: string, data: Partial<Category>): Promise<Category> {
+    return pb.collection('categories').update<Category>(id, data)
+  },
+
+  async delete(id: string): Promise<boolean> {
+    return pb.collection('categories').delete(id)
+  },
+}
+
+// ----------------- Transactions Service -----------------
+export const transactionsService = {
+  async list(options?: { page?: number; perPage?: number; filter?: string; sort?: string }) {
+    const page = options?.page || 1
+    const perPage = options?.perPage || 15
+    const filter = options?.filter || ''
+    const sort = options?.sort || '-date,-created'
+
+    return pb.collection('transactions').getList<Transaction>(page, perPage, {
+      filter,
+      sort,
+      expand: 'category',
+    })
+  },
+
+  async getFullList(filter = '', sort = '-date'): Promise<Transaction[]> {
+    return pb.collection('transactions').getFullList<Transaction>({
+      filter,
+      sort,
+      expand: 'category',
+    })
+  },
+
+  async create(data: Partial<Transaction>): Promise<Transaction> {
+    const owner = pb.authStore.record?.id
+    return pb.collection('transactions').create<Transaction>({
+      ...data,
+      owner,
+    })
+  },
+
+  async update(id: string, data: Partial<Transaction>): Promise<Transaction> {
+    return pb.collection('transactions').update<Transaction>(id, data)
+  },
+
+  async delete(id: string): Promise<boolean> {
+    return pb.collection('transactions').delete(id)
+  },
+}
+
+// ----------------- Budgets Service -----------------
+export const budgetsService = {
+  async list(month?: string): Promise<Budget[]> {
+    const filter = month ? `month = '${month}'` : ''
+    return pb.collection('budgets').getFullList<Budget>({
+      filter,
+      sort: 'category',
+      expand: 'category',
+    })
+  },
+
+  async create(data: Partial<Budget>): Promise<Budget> {
+    const owner = pb.authStore.record?.id
+    return pb.collection('budgets').create<Budget>({
+      ...data,
+      owner,
+    })
+  },
+
+  async update(id: string, data: Partial<Budget>): Promise<Budget> {
+    return pb.collection('budgets').update<Budget>(id, data)
+  },
+
+  async delete(id: string): Promise<boolean> {
+    return pb.collection('budgets').delete(id)
+  },
+}
+
+// ----------------- Alerts Service -----------------
+export const alertsService = {
+  async list(): Promise<Alert[]> {
+    return pb.collection('alerts').getFullList<Alert>({
+      sort: '-created',
+    })
+  },
+
+  async markAsRead(id: string): Promise<Alert> {
+    return pb.collection('alerts').update<Alert>(id, { read: true })
+  },
+
+  async markAllAsRead(): Promise<void> {
+    const alerts = await pb.collection('alerts').getFullList<Alert>({
+      filter: 'read = false',
+    })
+    for (const a of alerts) {
+      await pb.collection('alerts').update(a.id, { read: true })
+    }
+  },
+}
+
+// ----------------- Import Jobs Service -----------------
+export const importJobsService = {
+  async list(): Promise<ImportJob[]> {
+    return pb.collection('import_jobs').getFullList<ImportJob>({
+      sort: '-created',
+    })
+  },
+
+  async create(filename: string, rawContent: string): Promise<ImportJob> {
+    const owner = pb.authStore.record?.id
+    return pb.collection('import_jobs').create<ImportJob>({
+      owner,
+      filename,
+      raw_content: rawContent,
+      status: 'pending',
+      total_lines: 0,
+      imported_count: 0,
+    })
+  },
+}
+
+// ----------------- WhatsApp Status Service -----------------
+export const whatsappService = {
+  async getStatus(): Promise<WhatsAppStatus | null> {
+    const owner = pb.authStore.record?.id
+    if (!owner) return null
+    try {
+      const records = await pb.collection('whatsapp_status').getFullList<WhatsAppStatus>({
+        filter: `owner = '${owner}'`,
+      })
+      if (records.length > 0) return records[0]
+      return null
+    } catch {
+      return null
+    }
+  },
+
+  async updateStatus(connected: boolean, phoneNumber?: string): Promise<WhatsAppStatus> {
+    const owner = pb.authStore.record?.id
+    const existing = await this.getStatus()
+    if (existing) {
+      return pb.collection('whatsapp_status').update<WhatsAppStatus>(existing.id, {
+        connected,
+        phone_number: phoneNumber,
+      })
+    }
+    return pb.collection('whatsapp_status').create<WhatsAppStatus>({
+      owner,
+      connected,
+      phone_number: phoneNumber,
+    })
+  },
+}

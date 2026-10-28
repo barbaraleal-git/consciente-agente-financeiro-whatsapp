@@ -26,7 +26,7 @@ import {
   Receipt,
   ArrowRight,
   Sparkles,
-  Target,
+  PiggyBank,
 } from 'lucide-react'
 
 export const Dashboard: React.FC = () => {
@@ -304,14 +304,14 @@ export const Dashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Orçamento Restante */}
+        {/* Restante nas Caixinhas */}
         <Card className="border-slate-200 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Limite Restante
+              Restante nas Caixinhas
             </CardTitle>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Target className="w-4 h-4" />
+              <PiggyBank className="w-4 h-4" />
             </div>
           </CardHeader>
           <CardContent>
@@ -323,7 +323,7 @@ export const Dashboard: React.FC = () => {
             <p className="text-xs text-slate-500 mt-1">
               {monthlyMetrics.totalBudget > 0
                 ? `De ${formatCurrency(monthlyMetrics.totalBudget)} estipulado`
-                : 'Defina orçamentos para acompanhar'}
+                : 'Defina caixinhas para acompanhar'}
             </p>
           </CardContent>
         </Card>
@@ -541,13 +541,12 @@ export const Dashboard: React.FC = () => {
             )}
           </CardContent>
         </Card>
-
-        {/* Budget Status & Alerts */}
+        {/* Status das Caixinhas */}
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
-              Alertas de Orçamento
+              Alertas das Caixinhas
             </CardTitle>
             <CardDescription className="text-xs text-slate-500">
               Acompanhamento de metas deste mês
@@ -557,9 +556,9 @@ export const Dashboard: React.FC = () => {
           <CardContent className="space-y-4">
             {budgets.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">
-                Nenhum orçamento configurado.{' '}
+                Nenhuma caixinha configurada.{' '}
                 <Link to="/budgets" className="text-indigo-600 hover:underline">
-                  Criar orçamento
+                  Criar caixinha
                 </Link>
               </div>
             ) : (
@@ -610,12 +609,12 @@ export const Dashboard: React.FC = () => {
                   size="sm"
                   className="w-full text-xs mt-2 border-slate-200"
                 >
-                  <Link to="/budgets">Gerenciar todos os orçamentos</Link>
+                  <Link to="/budgets">Gerenciar todas as caixinhas</Link>
                 </Button>
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>{' '}
       </div>
     </div>
   )

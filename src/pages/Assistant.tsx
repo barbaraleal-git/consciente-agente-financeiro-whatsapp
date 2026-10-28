@@ -34,7 +34,7 @@ import {
 const SUGGESTIONS = [
   'Resumo dos meus gastos deste mês',
   'Onde posso economizar e cortar custos?',
-  'Como está a situação do meu orçamento?',
+  'Como está a situação das minhas caixinhas?',
   'Quais categorias consumiram mais dinheiro?',
 ]
 
@@ -46,7 +46,7 @@ export const Assistant: React.FC = () => {
       id: 'welcome',
       role: 'assistant',
       content:
-        'Olá! Eu sou seu **Agente Financeiro**. Estou integrado à sua conta e posso analisar seus gastos, sugerir cortes, verificar limites de orçamentos e te ajudar no controle diário de custos. Como posso te auxiliar hoje?',
+        'Olá! Eu sou seu **Agente Financeiro**. Estou integrado à sua conta e posso analisar seus gastos, sugerir cortes, verificar os tetos das suas caixinhas e te ajudar no controle diário de custos. Como posso te auxiliar hoje?',
       created: new Date().toISOString(),
     },
   ])
@@ -232,7 +232,7 @@ export const Assistant: React.FC = () => {
                 </Badge>
               </div>
               <p className="text-xs text-slate-500">
-                Respostas com acesso direto às suas transações e orçamentos
+                Respostas com acesso direto às suas transações e caixinhas
               </p>
             </div>
           </div>

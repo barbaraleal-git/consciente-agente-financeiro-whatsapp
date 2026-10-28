@@ -62,7 +62,7 @@ export const NotificationsPopover: React.FC = () => {
       <PopoverContent className="w-80 sm:w-96 p-0 bg-white border-slate-200 shadow-xl" align="end">
         <div className="flex items-center justify-between border-b border-slate-100 p-3">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-slate-900">Alertas de Orçamento</h4>
+            <h4 className="text-sm font-semibold text-slate-900">Alertas das Caixinhas</h4>
             {unreadCount > 0 && (
               <Badge variant="secondary" className="bg-red-50 text-red-600 text-[11px]">
                 {unreadCount} novos

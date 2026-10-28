@@ -50,7 +50,7 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Target,
+  PiggyBank,
   AlertTriangle,
   CheckCircle2,
   Calendar,
@@ -180,7 +180,10 @@ export const Budgets: React.FC = () => {
           amount: cents,
           month: monthInput,
         })
-        toast({ title: 'Orçamento atualizado', description: 'Meta atualizada com sucesso.' })
+        toast({
+          title: 'Caixinha atualizada',
+          description: 'Teto da caixinha atualizado com sucesso.',
+        })
       } else {
         await budgetsService.create({
           category: catId,
@@ -188,8 +191,8 @@ export const Budgets: React.FC = () => {
           month: monthInput,
         })
         toast({
-          title: 'Orçamento definido',
-          description: 'Meta de controle cadastrada com sucesso.',
+          title: 'Caixinha criada',
+          description: 'Teto da caixinha definido com sucesso.',
         })
       }
       setModalOpen(false)
@@ -197,7 +200,7 @@ export const Budgets: React.FC = () => {
     } catch {
       toast({
         title: 'Erro ao salvar',
-        description: 'Não foi possível salvar o orçamento.',
+        description: 'Não foi possível salvar a caixinha.',
         variant: 'destructive',
       })
     } finally {
@@ -209,13 +212,13 @@ export const Budgets: React.FC = () => {
     if (!deleteBudget) return
     try {
       await budgetsService.delete(deleteBudget.id)
-      toast({ title: 'Orçamento excluído', description: 'Meta removida com sucesso.' })
+      toast({ title: 'Caixinha excluída', description: 'Teto removido com sucesso.' })
       setDeleteBudget(null)
       loadData()
     } catch {
       toast({
         title: 'Erro ao excluir',
-        description: 'Falha ao remover o orçamento.',
+        description: 'Falha ao remover a caixinha.',
         variant: 'destructive',
       })
     }
@@ -225,9 +228,12 @@ export const Budgets: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Orçamentos & Metas</h1>
+          <div className="flex items-center gap-2">
+            <PiggyBank className="w-6 h-6 text-indigo-600" />
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Caixinhas & Metas</h1>
+          </div>
           <p className="text-sm text-slate-500">
-            Acompanhe o consumo dos seus limites de despesas por categoria
+            Acompanhe o consumo e os tetos de cada caixinha de despesas
           </p>
         </div>
 
@@ -243,7 +249,7 @@ export const Budgets: React.FC = () => {
             className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             <Plus className="w-4 h-4 mr-1.5" />
-            Novo Orçamento
+            Nova Caixinha
           </Button>
         </div>
       </div>
@@ -253,12 +259,12 @@ export const Budgets: React.FC = () => {
         <Card className="border-slate-200">
           <CardContent className="p-5">
             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Orçamento Total ({formatMonthName(selectedMonth)})
+              Total nas Caixinhas ({formatMonthName(selectedMonth)})
             </div>
             <div className="text-2xl font-bold text-slate-900 mt-2 tabular-nums">
               {formatCurrency(totalDefined)}
             </div>
-            <p className="text-xs text-slate-400 mt-1">Limite mensal estipulado</p>
+            <p className="text-xs text-slate-400 mt-1">Soma de todos os limites mensais</p>
           </CardContent>
         </Card>
 
@@ -281,7 +287,7 @@ export const Budgets: React.FC = () => {
         <Card className="border-slate-200">
           <CardContent className="p-5">
             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Saldo Restante
+              Restante nas Caixinhas
             </div>
             <div className="text-2xl font-bold text-emerald-600 mt-2 tabular-nums">
               {formatCurrency(totalRemaining)}
@@ -296,17 +302,17 @@ export const Budgets: React.FC = () => {
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-indigo-600" />
-            Comparativo Orçado vs. Realizado ({formatMonthName(selectedMonth)})
+            Comparativo Teto vs. Realizado ({formatMonthName(selectedMonth)})
           </CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Comparação lado a lado do limite definido e o gasto real
+            Comparação de cada caixinha entre o teto planejado e o gasto real
           </CardDescription>
         </CardHeader>
 
         <CardContent className="pt-4">
           {budgetStats.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-400">
-              Nenhum orçamento cadastrado para este mês.{' '}
+              Nenhuma caixinha cadastrada para este mês.{' '}
               <button
                 onClick={handleOpenCreate}
                 className="text-indigo-600 hover:underline font-medium"
@@ -397,16 +403,16 @@ export const Budgets: React.FC = () => {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md bg-white border-slate-200">
           <DialogHeader>
-            <DialogTitle>{editingBudget ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
+            <DialogTitle>{editingBudget ? 'Editar Caixinha' : 'Nova Caixinha'}</DialogTitle>
             <DialogDescription>
-              Defina o valor mensal máximo para controlar seus custos por categoria.
+              Defina o teto mensal para organizar seus custos nesta caixinha.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
-                Categoria de Despesa *
+                Categoria da Caixinha *
               </Label>
               <Select value={catId} onValueChange={setCatId}>
                 <SelectTrigger id="bCat">
@@ -431,7 +437,7 @@ export const Budgets: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="bVal" className="text-xs font-medium text-slate-700">
-                  Valor Limite (R$) *
+                  Teto da Caixinha (R$) *
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">
@@ -476,7 +482,7 @@ export const Budgets: React.FC = () => {
                 disabled={saving}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                {saving ? 'Salvando...' : 'Salvar Orçamento'}
+                {saving ? 'Salvando...' : 'Salvar Caixinha'}
               </Button>
             </DialogFooter>
           </form>
@@ -487,10 +493,9 @@ export const Budgets: React.FC = () => {
       <AlertDialog open={!!deleteBudget} onOpenChange={(o) => !o && setDeleteBudget(null)}>
         <AlertDialogContent className="bg-white border-slate-200">
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir Orçamento</AlertDialogTitle>
+            <AlertDialogTitle>Excluir Caixinha</AlertDialogTitle>
             <AlertDialogDescription>
-              Deseja remover este teto orçamentário? As transações já registradas não serão
-              afetadas.
+              Deseja remover o teto desta caixinha? As transações já registradas não serão afetadas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

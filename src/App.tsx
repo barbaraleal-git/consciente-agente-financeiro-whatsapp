@@ -23,6 +23,7 @@ import Budgets from '@/pages/Budgets'
 import Reports from '@/pages/Reports'
 import Assistant from '@/pages/Assistant'
 import Settings from '@/pages/Settings'
+import Onboarding from '@/pages/Onboarding'
 import NotFound from '@/pages/NotFound'
 
 const App: React.FC = () => (
@@ -42,6 +43,9 @@ const App: React.FC = () => (
 
           {/* Protected Routes inside Global Layout */}
           <Route element={<ProtectedRoute />}>
+            {/* Standalone full-screen onboarding */}
+            <Route path="/onboarding" element={<Onboarding />} />
+
             <Route element={<Layout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/transactions" element={<Transactions />} />

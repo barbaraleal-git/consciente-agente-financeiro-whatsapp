@@ -27,11 +27,15 @@ import {
   CheckCircle2,
   QrCode,
   Smartphone,
+  Sparkles,
+  PiggyBank,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 export const Settings: React.FC = () => {
   const { user, refreshUser } = useAuth()
   const { toast } = useToast()
+  const navigate = useNavigate()
 
   // Profile Form
   const [name, setName] = useState(user?.name || '')
@@ -346,7 +350,7 @@ export const Settings: React.FC = () => {
             Notificações & Preferências
           </CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Avisos de estouro de orçamento e padrões de exibição
+            Avisos de estouro das caixinhas e padrões de exibição
           </CardDescription>
         </CardHeader>
 
@@ -374,10 +378,10 @@ export const Settings: React.FC = () => {
             <div className="py-3 flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-slate-800">
-                  Alertas de Orçamento por WhatsApp
+                  Alertas das Caixinhas por WhatsApp
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  Aviso automático ao atingir 80% e 90% do limite estipulado
+                  Aviso automático ao atingir 80% e 90% do teto da caixinha
                 </p>
               </div>
               <Switch checked={waNotifications} onCheckedChange={setWaNotifications} />
@@ -393,6 +397,34 @@ export const Settings: React.FC = () => {
               <Switch checked={emailNotifications} onCheckedChange={setEmailNotifications} />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Onboarding das Caixinhas */}
+      <Card className="border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <PiggyBank className="w-4 h-4 text-indigo-600" />
+            Configuração Guiada das Caixinhas
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500">
+            Deseja reorganizar suas categorias e tetos mensais com auxílio guiado?
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <p className="text-xs text-slate-600 max-w-md">
+            Você pode refazer a montagem guiada das suas caixinhas a qualquer momento, escolhendo
+            quais categorias controlar e ajustando seus valores mensais.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate('/onboarding')}
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 text-xs sm:text-sm shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+            Refazer onboarding das caixinhas
+          </Button>
         </CardContent>
       </Card>
 

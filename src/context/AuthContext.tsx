@@ -2,10 +2,11 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import pb from '@/lib/pocketbase/client'
 import type { RecordModel } from 'pocketbase'
 
-interface AuthUser extends RecordModel {
+export interface AuthUser extends RecordModel {
   email: string
   name?: string
   avatar?: string
+  onboarding_completed?: boolean
 }
 
 interface AuthContextType {
@@ -17,6 +18,7 @@ interface AuthContextType {
   register: (name: string, email: string, pass: string) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
+  completeOnboarding: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -88,6 +90,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  const completeOnboarding = async () => {
+    if (user?.id) {
+      const updated = await pb.collection('users').update<AuthUser>(user.id, {
+        onboarding_completed: true,
+      })
+      setUser(updated)
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -99,6 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         refreshUser,
+        completeOnboarding,
       }}
     >
       {children}

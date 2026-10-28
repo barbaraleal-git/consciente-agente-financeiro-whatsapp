@@ -74,6 +74,47 @@ export const categoriesService = {
     })
   },
 
+  async ensureDefaultCategories(): Promise<Category[]> {
+    const existing = await this.list()
+    if (existing.length > 0) return existing
+
+    const owner = pb.authStore.record?.id
+    if (!owner) return []
+
+    const defaults = [
+      { name: 'Alimentação', type: 'despesa' as const, icon: 'utensils', color: '#f59e0b' },
+      { name: 'Transporte', type: 'despesa' as const, icon: 'car', color: '#3b82f6' },
+      { name: 'Moradia', type: 'despesa' as const, icon: 'home', color: '#8b5cf6' },
+      { name: 'Saúde', type: 'despesa' as const, icon: 'heart-pulse', color: '#ef4444' },
+      { name: 'Lazer', type: 'despesa' as const, icon: 'gamepad', color: '#ec4899' },
+      { name: 'Educação', type: 'despesa' as const, icon: 'book', color: '#06b6d4' },
+      { name: 'Compras', type: 'despesa' as const, icon: 'shopping-bag', color: '#ec4899' },
+      { name: 'Assinaturas', type: 'despesa' as const, icon: 'film', color: '#8b5cf6' },
+      { name: 'Salário', type: 'receita' as const, icon: 'banknote', color: '#10b981' },
+      {
+        name: 'Investimentos',
+        type: 'investimento' as const,
+        icon: 'trending-up',
+        color: '#6366f1',
+      },
+      { name: 'Outros', type: 'despesa' as const, icon: 'ellipsis', color: '#64748b' },
+    ]
+
+    const created: Category[] = []
+    for (const d of defaults) {
+      try {
+        const cat = await pb.collection('categories').create<Category>({
+          ...d,
+          owner,
+        })
+        created.push(cat)
+      } catch (e) {
+        console.warn('Erro ao criar categoria padrão:', e)
+      }
+    }
+    return created
+  },
+
   async update(id: string, data: Partial<Category>): Promise<Category> {
     return pb.collection('categories').update<Category>(id, data)
   },

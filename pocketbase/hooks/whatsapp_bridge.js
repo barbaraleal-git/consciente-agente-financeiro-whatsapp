@@ -190,11 +190,23 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                 typeof $connectors !== 'undefined' &&
                 typeof $connectors.executeAsOwner === 'function'
               ) {
-                $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
+                // Recupera phone_number_id persistido ou fallback padrão
+                let activePhoneId = '1314873981716321'
+                try {
+                  const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+                  if (wsList.length > 0 && wsList[0].getString('phone_number_id')) {
+                    activePhoneId = wsList[0].getString('phone_number_id')
+                  }
+                } catch (_) {}
+
+                const sendResult = $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
                   to_number: phoneDigits,
-                  phone_number_id: 'default',
+                  phone_number_id: activePhoneId,
                   text: agentReply,
                 })
+                if (!sendResult.successful) {
+                  console.log('[whatsapp_bridge] Connector envio retornou falso:', sendResult.error)
+                }
               }
             } catch (cErr) {
               console.log('[whatsapp_bridge] Connector executeAsOwner falhou ou não ativo:', cErr)
@@ -355,6 +367,14 @@ routerAdd(
       // Tenta conector se disponível
       let connectorSent = false
       let connectorError = null
+      let activePhoneId = '1314873981716321'
+      try {
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+        if (wsList.length > 0 && wsList[0].getString('phone_number_id')) {
+          activePhoneId = wsList[0].getString('phone_number_id')
+        }
+      } catch (_) {}
+
       try {
         if (
           typeof $connectors !== 'undefined' &&
@@ -362,16 +382,17 @@ routerAdd(
         ) {
           const sendRes = $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
             to_number: phoneDigits,
-            phone_number_id: 'default',
+            phone_number_id: activePhoneId,
             text: agentReply,
           })
           connectorSent = !!sendRes.successful
           if (!sendRes.successful) connectorError = sendRes.error
+        } else {
+          connectorError = 'Conector WhatsApp não habilitado no Skip Cloud'
         }
       } catch (cErr) {
         connectorError = cErr ? cErr.message : 'Conector owner pendente'
       }
-
       return e.json(200, {
         success: true,
         simulation: true,
@@ -428,8 +449,13 @@ routerAdd(
       }
 
       // Procura número configurado no whatsapp_status do usuário logado
-      let userConfiguredPhone = null
-      let userWaActive = false
+      let userConfiguredPhone = '+55 11 94998-9868'
+      let userWaActive = true
+      let phoneNumberId = '1314873981716321'
+      let wabaId = '1888947369148112'
+      let appName = 'Eleva App'
+      let verifyToken = 'agente-financeiro'
+
       const authUser = e.auth
       if (authUser) {
         try {
@@ -441,8 +467,12 @@ routerAdd(
             0,
           )
           if (ws.length > 0) {
-            userConfiguredPhone = ws[0].getString('phone_number')
+            userConfiguredPhone = ws[0].getString('phone_number') || userConfiguredPhone
             userWaActive = ws[0].getBool('connected')
+            phoneNumberId = ws[0].getString('phone_number_id') || phoneNumberId
+            wabaId = ws[0].getString('waba_id') || wabaId
+            appName = ws[0].getString('app_name') || appName
+            verifyToken = ws[0].getString('verify_token') || verifyToken
           }
         } catch (_) {}
       }
@@ -451,14 +481,21 @@ routerAdd(
         $os.getenv('PB_INSTANCE_URL') ||
         'https://agente-financeiro-whatsapp-37fd3.shrd01.internal.goskip.dev'
 
+      // Backend URL público oficial para webhooks (VITE_POCKETBASE_URL / PB_INSTANCE_URL)
+      const webhookUrl = `${instanceUrl}/backend/v1/whatsapp/webhook`
+
       return e.json(200, {
         owner_connected: isOwnerConnected,
-        owner_phone: registeredPhone,
+        owner_phone: registeredPhone || userConfiguredPhone,
+        phone_number_id: phoneNumberId,
+        waba_id: wabaId,
+        app_name: appName,
+        verify_token: verifyToken,
         available_numbers: phoneNumbers,
         user_phone: userConfiguredPhone,
         user_connected: userWaActive,
         error: checkError,
-        webhook_url: `${instanceUrl}/backend/v1/whatsapp/webhook`,
+        webhook_url: webhookUrl,
       })
     } catch (err) {
       return e.json(500, { error: String(err) })

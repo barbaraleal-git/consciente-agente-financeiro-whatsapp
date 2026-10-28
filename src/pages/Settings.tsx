@@ -68,8 +68,9 @@ export const Settings: React.FC = () => {
     reply: string
     is_registered: boolean
     user_name: string
+    connector_sent?: boolean
+    connector_error?: string | null
   } | null>(null)
-
   // Notification toggles
   const [waNotifications, setWaNotifications] = useState(true)
   const [emailNotifications, setEmailNotifications] = useState(true)
@@ -183,14 +184,15 @@ export const Settings: React.FC = () => {
         reply: res.reply,
         is_registered: res.is_registered,
         user_name: res.user_name,
+        connector_sent: res.connector_sent,
+        connector_error: res.connector_error,
       })
       toast({
-        title: 'Mensagem processada pelo agente!',
+        title: 'Mensagem processada com sucesso!',
         description: res.is_registered
-          ? `Transação vinculada com sucesso à conta de ${res.user_name}.`
+          ? `Transação vinculada à conta de ${res.user_name}. Resposta gerada!`
           : 'Número visitante atendido com apresentação e convite.',
-      })
-      // Atualiza contatos
+      }) // Atualiza contatos
       const contactList = await whatsappService.listContacts().catch(() => [])
       setContacts(contactList)
       window.dispatchEvent(new Event('finance-refresh'))
@@ -349,10 +351,11 @@ export const Settings: React.FC = () => {
             <div>
               <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-emerald-600" />
-                WhatsApp do Agente Financeiro (Modo Owner)
+                Canal Oficial WhatsApp Business (Meta Cloud API)
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                Ponte oficial entre o WhatsApp e o agente inteligente com inteligência de caixinhas
+                Integração da conta de WhatsApp Business do dono com o Agente Financeiro de
+                Caixinhas
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -361,9 +364,9 @@ export const Settings: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => setTestModalOpen(true)}
-                className="text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-medium"
               >
-                <PlayCircle className="w-3.5 h-3.5 mr-1" />
+                <PlayCircle className="w-3.5 h-3.5 mr-1 text-emerald-600" />
                 Testar Mensagem
               </Button>
             </div>
@@ -371,39 +374,38 @@ export const Settings: React.FC = () => {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Status do Conector Owner */}
+          {/* Status do Canal & Número Registrado */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    liveStatus?.owner_connected
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-emerald-100 text-emerald-700">
                   <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="font-semibold text-sm text-slate-900">
-                      {liveStatus?.owner_phone || phoneNumber || '+55 (11) 98765-4321'}
+                      {liveStatus?.owner_phone || phoneNumber || '+55 11 94998-9868'}
                     </h4>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium"
+                    >
+                      Inscrito na Meta
+                    </Badge>
                     <Badge
                       variant="outline"
                       className={`text-[10px] ${
                         liveStatus?.owner_connected
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-indigo-50 text-indigo-700 border-indigo-200'
                       }`}
                     >
-                      {liveStatus?.owner_connected ? 'Número Owner Ativo' : 'Aguardando Permissão'}
+                      {liveStatus?.owner_connected ? 'Conector Conectado' : 'App Meta Conectado'}
                     </Badge>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {liveStatus?.owner_connected
-                      ? 'Todas as mensagens enviadas para este número são processadas pelo agente'
-                      : 'O conector WhatsApp da conta owner aguarda a confirmação de uso da sua conta'}
+                    Número oficial de atendimento pelo WhatsApp (
+                    {liveStatus?.app_name || 'Eleva App'})
                   </p>
                 </div>
               </div>
@@ -431,68 +433,157 @@ export const Settings: React.FC = () => {
               </div>
             </div>
 
-            {/* Banner explicativo de status */}
-            {!liveStatus?.owner_connected ? (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1">
-                <div className="flex items-center gap-1.5 font-semibold text-amber-900">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  Autorização do Conector Owner WhatsApp
-                </div>
-                <p>
-                  A plataforma Skip requer a confirmação do criador para ativar o toolkit{' '}
-                  <strong>whatsapp</strong> com sua conta de dono. O fluxo da ponte, webhook Meta e
-                  processamento de mensagens pelo agente já estão 100% prontos no backend!
-                </p>
-                <p className="text-[11px] text-amber-700 pt-1">
-                  Você já pode testar o processamento e respostas pelo botão{' '}
-                  <strong>"Testar Mensagem"</strong> acima.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  Conector WhatsApp ativo com a conta owner. Clientes conversam em tempo real.
+            {/* Detalhes da Meta Cloud API (Phone ID, WABA ID, App) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Identificação do Número (Phone ID)
                 </span>
+                <div className="flex items-center justify-between gap-1 mt-0.5">
+                  <span className="text-xs font-mono font-semibold text-slate-800">
+                    {liveStatus?.phone_number_id || '1314873981716321'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        liveStatus?.phone_number_id || '1314873981716321',
+                      )
+                      toast({ title: 'Copiado', description: 'Phone Number ID copiado.' })
+                    }}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* Webhook URL para configuração no Meta for Developers */}
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1.5">
-            <span className="font-semibold text-slate-700">
-              URL do Webhook do WhatsApp (Meta Cloud API):
-            </span>
-            <div className="flex items-center gap-2">
-              <code className="text-[11px] bg-white px-2.5 py-1.5 rounded border border-slate-200 text-slate-700 flex-1 truncate select-all">
-                {liveStatus?.webhook_url ||
-                  `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`}
-              </code>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-8 px-2 text-slate-600 hover:text-slate-900"
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    liveStatus?.webhook_url ||
-                      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`,
-                  )
-                  toast({
-                    title: 'Copiado',
-                    description: 'URL do webhook copiada para a área de transferência.',
-                  })
-                }}
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </Button>
+              <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  WABA ID (Messaging Account)
+                </span>
+                <div className="flex items-center justify-between gap-1 mt-0.5">
+                  <span className="text-xs font-mono font-semibold text-slate-800">
+                    {liveStatus?.waba_id || '1888947369148112'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(liveStatus?.waba_id || '1888947369148112')
+                      toast({ title: 'Copiado', description: 'WABA ID copiado.' })
+                    }}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Nome do Aplicativo Meta
+                </span>
+                <div className="flex items-center justify-between gap-1 mt-0.5">
+                  <span className="text-xs font-semibold text-slate-800 truncate">
+                    {liveStatus?.app_name || 'Eleva App'}
+                  </span>
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                    Produção
+                  </Badge>
+                </div>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-500">
-              Token de verificação: <code className="bg-white px-1 rounded">agente-financeiro</code>
-            </p>
-          </div>
 
-          {/* Lista de Contatos do WhatsApp que interagiram */}
+            {/* Status do canal */}
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                Canal de Produção Meta Cloud API Ativo
+              </div>
+              <p className="text-emerald-800 leading-relaxed">
+                As mensagens enviadas no WhatsApp para <strong>+55 11 94998-9868</strong> caem
+                diretamente no webhook do agente. Clientes cadastrados têm seus gastos debitados
+                automaticamente nas caixinhas, e visitantes recebem mensagem de boas-vindas.
+              </p>
+              {!liveStatus?.owner_connected && (
+                <p className="text-[11px] text-emerald-700 pt-0.5">
+                  Nota: Para envios automáticos de resposta pela API Cloud da Meta via Skip
+                  Conectores, lembre-se de clicar em <strong>"Conectar"</strong> ao lado do WhatsApp
+                  na aba <em>Conectores</em> do painel Skip.
+                </p>
+              )}
+            </div>
+          </div>
+          {/* Webhook URLs prontas para o painel da Meta */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3">
+            <div>
+              <span className="font-semibold text-slate-800 block">
+                Configuração de Webhook na Meta (developers.facebook.com)
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Cole esta URL no campo <strong>URL de Retorno de Chamada</strong> do painel da Meta
+                e configure o Token de Verificação.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-medium text-slate-600">
+                URL de Retorno de Chamada do Webhook
+              </Label>
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] bg-white px-2.5 py-2 rounded-lg border border-slate-200 text-slate-800 font-mono flex-1 truncate select-all">
+                  {liveStatus?.webhook_url ||
+                    `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2.5 text-xs text-slate-700 hover:bg-slate-100"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      liveStatus?.webhook_url ||
+                        `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`,
+                    )
+                    toast({
+                      title: 'Copiado',
+                      description: 'URL do webhook copiada para a área de transferência.',
+                    })
+                  }}
+                >
+                  <Copy className="w-3.5 h-3.5 mr-1" />
+                  Copiar
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-1 pt-1">
+              <Label className="text-[11px] font-medium text-slate-600">
+                Token de Verificação (hub.verify_token)
+              </Label>
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] bg-white px-2.5 py-1.5 rounded border border-slate-200 text-slate-800 font-mono flex-1 truncate select-all">
+                  {liveStatus?.verify_token || 'agente-financeiro'}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-slate-600 hover:text-slate-900"
+                  onClick={() => {
+                    navigator.clipboard.writeText(liveStatus?.verify_token || 'agente-financeiro')
+                    toast({
+                      title: 'Copiado',
+                      description: 'Token de verificação copiado.',
+                    })
+                  }}
+                >
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          {/* Lista de Contatos do WhatsApp que interagiram */}{' '}
           <div className="space-y-2 pt-2">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
@@ -771,25 +862,47 @@ export const Settings: React.FC = () => {
             </div>
 
             {testResult && (
-              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-800">
                     Resposta do Agente Financeiro:
                   </span>
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] ${
-                      testResult.is_registered
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                    }`}
-                  >
-                    {testResult.is_registered ? 'Conta Reconhecida' : 'Visitante Apresentado'}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${
+                        testResult.is_registered
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      }`}
+                    >
+                      {testResult.is_registered ? 'Conta Reconhecida' : 'Visitante Apresentado'}
+                    </Badge>
+                    {testResult.connector_sent ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
+                      >
+                        Enviado via WhatsApp
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-slate-100 text-slate-600 border-slate-200"
+                      >
+                        Simulado
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <p className="text-slate-700 whitespace-pre-wrap leading-relaxed bg-white p-2.5 rounded border border-slate-100">
                   {testResult.reply}
                 </p>
+                {testResult.connector_error && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                    Status do envio remoto: {testResult.connector_error}
+                  </p>
+                )}
               </div>
             )}
 

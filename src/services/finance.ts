@@ -60,6 +60,10 @@ export interface WhatsAppStatus extends RecordModel {
 export interface WhatsAppLiveStatus {
   owner_connected: boolean
   owner_phone: string | null
+  phone_number_id?: string
+  waba_id?: string
+  app_name?: string
+  verify_token?: string
   available_numbers: Array<{
     id?: string
     display_phone_number?: string
@@ -71,6 +75,7 @@ export interface WhatsAppLiveStatus {
   user_connected: boolean
   error?: string | null
   webhook_url?: string
+  backend_webhook_url?: string
 }
 
 export interface WhatsAppContact {

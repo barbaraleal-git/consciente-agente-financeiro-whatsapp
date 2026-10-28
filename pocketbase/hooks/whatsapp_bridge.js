@@ -72,6 +72,16 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             // 1. Localiza usuário vinculado
             let matchedUser = null
             try {
+              // Compara os últimos 8 ou 9 dígitos para tolerar com/sem DDD ou nono dígito (ex: 55119... vs 119...)
+              const suffixMatch = function (p1, p2) {
+                if (!p1 || !p2) return false
+                if (p1 === p2) return true
+                if (p1.endsWith(p2) || p2.endsWith(p1)) return true
+                const s1 = p1.slice(-8)
+                const s2 = p2.slice(-8)
+                return s1.length >= 8 && s1 === s2
+              }
+
               const statusRecords = $app.findRecordsByFilter(
                 'whatsapp_status',
                 '',
@@ -82,12 +92,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               for (let s = 0; s < statusRecords.length; s++) {
                 const rec = statusRecords[s]
                 const recPhone = normalizeDigits(rec.getString('phone_number'))
-                if (
-                  recPhone &&
-                  (recPhone === phoneDigits ||
-                    recPhone.endsWith(phoneDigits) ||
-                    phoneDigits.endsWith(recPhone))
-                ) {
+                if (recPhone && suffixMatch(recPhone, phoneDigits)) {
                   const ownerId = rec.getString('owner')
                   if (ownerId) {
                     matchedUser = $app.findRecordById('_pb_users_auth_', ownerId)
@@ -206,6 +211,11 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                 })
                 if (!sendResult.successful) {
                   console.log('[whatsapp_bridge] Connector envio retornou falso:', sendResult.error)
+                } else {
+                  console.log(
+                    '[whatsapp_bridge] Mensagem enviada com sucesso via WhatsApp para:',
+                    phoneDigits,
+                  )
                 }
               }
             } catch (cErr) {
@@ -257,16 +267,20 @@ routerAdd(
       // 1. Localiza usuário vinculado
       let matchedUser = null
       try {
+        const suffixMatch = function (p1, p2) {
+          if (!p1 || !p2) return false
+          if (p1 === p2) return true
+          if (p1.endsWith(p2) || p2.endsWith(p1)) return true
+          const s1 = p1.slice(-8)
+          const s2 = p2.slice(-8)
+          return s1.length >= 8 && s1 === s2
+        }
+
         const statusRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 200, 0)
         for (let s = 0; s < statusRecords.length; s++) {
           const rec = statusRecords[s]
           const recPhone = normalizeDigits(rec.getString('phone_number'))
-          if (
-            recPhone &&
-            (recPhone === phoneDigits ||
-              recPhone.endsWith(phoneDigits) ||
-              phoneDigits.endsWith(recPhone))
-          ) {
+          if (recPhone && suffixMatch(recPhone, phoneDigits)) {
             const ownerId = rec.getString('owner')
             if (ownerId) {
               matchedUser = $app.findRecordById('_pb_users_auth_', ownerId)

@@ -13,14 +13,14 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Bot, Loader2, Sparkles, AlertCircle, ArrowRight } from 'lucide-react'
+import { Bot, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
 
 export const Login: React.FC = () => {
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState('barbara.ferreira.leal@gmail.com')
-  const [password, setPassword] = useState('Skip@Pass')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -159,13 +159,6 @@ export const Login: React.FC = () => {
                 )}
               </Button>
             </form>
-
-            <div className="mt-4 p-3 rounded-lg bg-indigo-950/40 border border-indigo-900/50 text-xs text-indigo-300 flex items-start gap-2">
-              <Sparkles className="h-4 w-4 shrink-0 text-indigo-400 mt-0.5" />
-              <span>
-                <strong>Conta de teste:</strong> barbara.ferreira.leal@gmail.com / Skip@Pass
-              </span>
-            </div>
           </CardContent>
 
           <CardFooter className="pt-0 flex justify-center border-t border-slate-800/80 py-4">

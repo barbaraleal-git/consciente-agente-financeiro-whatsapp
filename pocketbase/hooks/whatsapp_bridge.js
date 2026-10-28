@@ -1,7 +1,7 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // ----------------------------------------------------
-// 1. Webhook do WhatsApp (Meta Cloud API / Composio)
+// 1. Webhook do WhatsApp (Meta Cloud API)
 // GET para verificação de webhook (Meta hub challenge)
 // ----------------------------------------------------
 routerAdd('GET', '/backend/v1/whatsapp/webhook', (e) => {
@@ -21,7 +21,7 @@ routerAdd('GET', '/backend/v1/whatsapp/webhook', (e) => {
 })
 
 // ----------------------------------------------------
-// 2. Webhook POST - Recebe mensagens reais do WhatsApp
+// 2. Webhook POST - Recebe mensagens reais do WhatsApp da Meta
 // ----------------------------------------------------
 routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
   try {
@@ -32,6 +32,163 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         digits = '55' + digits
       }
       return digits
+    }
+
+    const sendMetaMessage = function (toNumber, textBody) {
+      const cleanTo = normalizeDigits(toNumber)
+      if (!cleanTo) return { success: false, error: 'Número inválido' }
+
+      let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+      let statusRecord = null
+
+      try {
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+        for (let idx = 0; idx < wsList.length; idx++) {
+          const rec = wsList[idx]
+          if (rec.getString('phone_number_id')) {
+            activePhoneId = rec.getString('phone_number_id')
+          }
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+          }
+          if (!statusRecord) statusRecord = rec
+          if (recToken) {
+            statusRecord = rec
+            break
+          }
+        }
+      } catch (_) {}
+
+      if (!token) {
+        const errMsg = 'Token da Meta ausente em Configurações'
+        console.log('[whatsapp_bridge] Falha no envio: Token de acesso ausente')
+        if (statusRecord) {
+          try {
+            statusRecord.set('last_send_status', 'failed_missing_token')
+            statusRecord.set('last_send_error', errMsg)
+            statusRecord.set('last_send_at', new Date().toISOString())
+            $app.save(statusRecord)
+          } catch (_) {}
+        }
+        return { success: false, error: errMsg, missing_token: true }
+      }
+
+      const endpoint = 'https://graph.facebook.com/v21.0/' + activePhoneId + '/messages'
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanTo,
+        type: 'text',
+        text: {
+          preview_url: false,
+          body: String(textBody || '').trim(),
+        },
+      }
+
+      console.log('[whatsapp_bridge] POST ' + endpoint + ' para to=' + cleanTo)
+
+      let res = null
+      try {
+        res = $http.send({
+          url: endpoint,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          timeout: 30,
+        })
+      } catch (httpErr) {
+        const netErr =
+          'Erro de conexão com Meta Graph API: ' +
+          (httpErr ? httpErr.message || String(httpErr) : '')
+        console.log('[whatsapp_bridge] Exceção $http.send:', netErr)
+        if (statusRecord) {
+          try {
+            statusRecord.set('last_send_status', 'network_error')
+            statusRecord.set('last_send_error', netErr)
+            statusRecord.set('last_send_at', new Date().toISOString())
+            $app.save(statusRecord)
+          } catch (_) {}
+        }
+        return { success: false, error: netErr }
+      }
+
+      const statusCode = res.statusCode
+      const rawBody = res.rawText || ''
+      let responseJson = {}
+      try {
+        responseJson = JSON.parse(rawBody)
+      } catch (_) {
+        responseJson = { raw: rawBody }
+      }
+
+      console.log(
+        '[whatsapp_bridge] Meta Graph API statusCode=' +
+          statusCode +
+          ' body=' +
+          rawBody.slice(0, 300),
+      )
+
+      if (statusCode >= 200 && statusCode < 300) {
+        const msgId =
+          responseJson.messages && responseJson.messages[0] ? responseJson.messages[0].id : null
+        console.log('[whatsapp_bridge] Sucesso no envio Meta Cloud API. ID:', msgId)
+        if (statusRecord) {
+          try {
+            statusRecord.set('last_send_status', 'success')
+            statusRecord.set('last_send_error', '')
+            statusRecord.set('last_send_at', new Date().toISOString())
+            $app.save(statusRecord)
+          } catch (_) {}
+        }
+        return { success: true, status: statusCode, message_id: msgId, data: responseJson }
+      }
+
+      const metaErr = responseJson.error || {}
+      const metaCode = metaErr.code
+      const metaSubcode = metaErr.error_subcode
+      const metaMsg = metaErr.message || rawBody || 'Erro HTTP ' + statusCode
+
+      let friendly = metaMsg
+      if (statusCode === 401 || metaCode === 190) {
+        friendly =
+          'Token da Meta expirado ou inválido (code ' +
+          metaCode +
+          '). Atualize o token em Configurações.'
+      } else if (
+        metaCode === 131047 ||
+        metaSubcode === 2494010 ||
+        /template/i.test(metaMsg) ||
+        /24\s*hour/i.test(metaMsg)
+      ) {
+        friendly =
+          'Janela de 24h fechada. Cliente precisa enviar mensagem primeiro ou usar template aprovado pela Meta.'
+        console.log('[whatsapp_bridge] [JANELA 24H FECHADA] Meta requer template de mensagem.')
+      } else if (metaCode === 131030 || metaCode === 131026) {
+        friendly = 'Número não cadastrado na lista de teste da Meta (code ' + metaCode + ').'
+      }
+
+      if (statusRecord) {
+        try {
+          statusRecord.set('last_send_status', 'failed_' + statusCode)
+          statusRecord.set('last_send_error', friendly.slice(0, 500))
+          statusRecord.set('last_send_at', new Date().toISOString())
+          $app.save(statusRecord)
+        } catch (_) {}
+      }
+
+      return {
+        success: false,
+        status: statusCode,
+        code: metaCode,
+        subcode: metaSubcode,
+        error: friendly,
+        meta_raw: metaErr,
+      }
     }
 
     const body = e.requestInfo().body || {}
@@ -72,7 +229,6 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             // 1. Localiza usuário vinculado
             let matchedUser = null
             try {
-              // Compara os últimos 8 ou 9 dígitos para tolerar com/sem DDD ou nono dígito (ex: 55119... vs 119...)
               const suffixMatch = function (p1, p2) {
                 if (!p1 || !p2) return false
                 if (p1 === p2) return true
@@ -189,37 +345,24 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               $app.save(contact)
             } catch (_) {}
 
-            // Envia resposta no WhatsApp se connector owner estiver ativo
-            try {
-              if (
-                typeof $connectors !== 'undefined' &&
-                typeof $connectors.executeAsOwner === 'function'
-              ) {
-                // Recupera phone_number_id persistido ou fallback padrão
-                let activePhoneId = '1314873981716321'
-                try {
-                  const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
-                  if (wsList.length > 0 && wsList[0].getString('phone_number_id')) {
-                    activePhoneId = wsList[0].getString('phone_number_id')
-                  }
-                } catch (_) {}
-
-                const sendResult = $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
-                  to_number: phoneDigits,
-                  phone_number_id: activePhoneId,
-                  text: agentReply,
-                })
-                if (!sendResult.successful) {
-                  console.log('[whatsapp_bridge] Connector envio retornou falso:', sendResult.error)
+            // Envia resposta no WhatsApp pela WhatsApp Cloud API da Meta oficial
+            if (agentReply) {
+              try {
+                const sendResult = sendMetaMessage(phoneDigits, agentReply)
+                if (!sendResult.success) {
+                  console.log('[whatsapp_bridge] Envio Meta Cloud API falhou:', sendResult.error)
                 } else {
                   console.log(
-                    '[whatsapp_bridge] Mensagem enviada com sucesso via WhatsApp para:',
+                    '[whatsapp_bridge] Resposta entregue com sucesso via WhatsApp Meta Cloud API para:',
                     phoneDigits,
                   )
                 }
+              } catch (metaErr) {
+                console.log(
+                  '[whatsapp_bridge] Exceção inesperada no envio Meta Cloud API:',
+                  metaErr,
+                )
               }
-            } catch (cErr) {
-              console.log('[whatsapp_bridge] Connector executeAsOwner falhou ou não ativo:', cErr)
             }
 
             processedCount++
@@ -236,8 +379,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 })
 
 // ----------------------------------------------------
-// 3. Rota de Envio de Mensagem de Teste / Processamento
-// Envia mensagem via WhatsApp usando o canal oficial do backend
+// 3. Rota de Envio de Mensagem de Teste Direto (Meta Cloud API)
 // ----------------------------------------------------
 routerAdd(
   'POST',
@@ -254,51 +396,165 @@ routerAdd(
       }
 
       const body = e.requestInfo().body || {}
-      const targetPhone = normalizeDigits(body.to_number || '5511976729458')
+      const targetPhone = normalizeDigits(body.to_number || '5511949989868')
       const text =
         body.text ||
-        'Olá Bárbara! Seu Agente Financeiro WhatsApp está conectado e ativo. Canal oficial configurado com sucesso para o acompanhamento das suas caixinhas!'
+        'Olá! Seu Agente Financeiro WhatsApp está conectado e ativo via Meta Cloud API oficial. Canal configurado com sucesso para suas caixinhas!'
 
       let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+      let statusRecord = null
+
       try {
-        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
-        if (wsList.length > 0 && wsList[0].getString('phone_number_id')) {
-          activePhoneId = wsList[0].getString('phone_number_id')
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+        for (let idx = 0; idx < wsList.length; idx++) {
+          const rec = wsList[idx]
+          if (rec.getString('phone_number_id')) {
+            activePhoneId = rec.getString('phone_number_id')
+          }
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+          }
+          if (!statusRecord) statusRecord = rec
+          if (recToken) {
+            statusRecord = rec
+            break
+          }
         }
       } catch (_) {}
 
-      if (typeof $connectors === 'undefined' || typeof $connectors.executeAsOwner !== 'function') {
-        console.log('[whatsapp_bridge] Connector executeAsOwner indisponível no backend')
-        return e.json(503, {
+      if (!token) {
+        const msg =
+          'Token de Acesso da Meta não configurado. Por favor, cole seu Token Permanente em Configurações > Canal Oficial WhatsApp Business.'
+        if (statusRecord) {
+          try {
+            statusRecord.set('last_send_status', 'failed_missing_token')
+            statusRecord.set('last_send_error', msg)
+            statusRecord.set('last_send_at', new Date().toISOString())
+            $app.save(statusRecord)
+          } catch (_) {}
+        }
+        return e.json(400, {
           success: false,
-          error: 'Conector WhatsApp não habilitado no Skip Cloud',
+          missing_token: true,
+          error: msg,
         })
+      }
+
+      const endpoint = 'https://graph.facebook.com/v21.0/' + activePhoneId + '/messages'
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: targetPhone,
+        type: 'text',
+        text: {
+          preview_url: false,
+          body: String(text).trim(),
+        },
+      }
+
+      console.log('[whatsapp_bridge] send-test disparado para: ' + targetPhone)
+
+      let res = null
+      try {
+        res = $http.send({
+          url: endpoint,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          timeout: 30,
+        })
+      } catch (httpErr) {
+        const netErr =
+          'Erro de conexão com Meta Graph API: ' +
+          (httpErr ? httpErr.message || String(httpErr) : '')
+        if (statusRecord) {
+          try {
+            statusRecord.set('last_send_status', 'network_error')
+            statusRecord.set('last_send_error', netErr)
+            statusRecord.set('last_send_at', new Date().toISOString())
+            $app.save(statusRecord)
+          } catch (_) {}
+        }
+        return e.json(500, { success: false, error: netErr })
+      }
+
+      const statusCode = res.statusCode
+      const rawBody = res.rawText || ''
+      let responseJson = {}
+      try {
+        responseJson = JSON.parse(rawBody)
+      } catch (_) {
+        responseJson = { raw: rawBody }
       }
 
       console.log(
-        '[whatsapp_bridge] Disparando teste para:',
-        targetPhone,
-        'phone_number_id:',
-        activePhoneId,
+        '[whatsapp_bridge] send-test retorno statusCode=' +
+          statusCode +
+          ' body=' +
+          rawBody.slice(0, 300),
       )
-      const res = $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
-        to_number: targetPhone,
-        phone_number_id: activePhoneId,
-        text: text,
-      })
 
-      if (!res.successful) {
-        console.log('[whatsapp_bridge] Falha no WHATSAPP_SEND_MESSAGE:', res.error)
-        return e.json(400, {
-          success: false,
-          error: res.error || 'Falha ao enviar mensagem',
+      if (statusCode >= 200 && statusCode < 300) {
+        const msgId =
+          responseJson.messages && responseJson.messages[0] ? responseJson.messages[0].id : null
+        if (statusRecord) {
+          try {
+            statusRecord.set('last_send_status', 'success')
+            statusRecord.set('last_send_error', '')
+            statusRecord.set('last_send_at', new Date().toISOString())
+            $app.save(statusRecord)
+          } catch (_) {}
+        }
+        return e.json(200, {
+          success: true,
+          message_id: msgId,
+          data: responseJson,
         })
       }
 
-      console.log('[whatsapp_bridge] Mensagem de teste enviada com sucesso!')
-      return e.json(200, {
-        success: true,
-        data: res.data,
+      const metaErr = responseJson.error || {}
+      const metaCode = metaErr.code
+      const metaSubcode = metaErr.error_subcode
+      const metaMsg = metaErr.message || rawBody || 'Erro HTTP ' + statusCode
+
+      let friendly = metaMsg
+      if (statusCode === 401 || metaCode === 190) {
+        friendly =
+          'Token da Meta expirado ou inválido (code ' +
+          metaCode +
+          '). Atualize o token em Configurações.'
+      } else if (
+        metaCode === 131047 ||
+        metaSubcode === 2494010 ||
+        /template/i.test(metaMsg) ||
+        /24\s*hour/i.test(metaMsg)
+      ) {
+        friendly =
+          'Janela de 24h fechada. Cliente precisa enviar mensagem primeiro ou usar template aprovado pela Meta.'
+      } else if (metaCode === 131030 || metaCode === 131026) {
+        friendly = 'Número não cadastrado na lista de teste da Meta (code ' + metaCode + ').'
+      }
+
+      if (statusRecord) {
+        try {
+          statusRecord.set('last_send_status', 'failed_' + statusCode)
+          statusRecord.set('last_send_error', friendly.slice(0, 500))
+          statusRecord.set('last_send_at', new Date().toISOString())
+          $app.save(statusRecord)
+        } catch (_) {}
+      }
+
+      return e.json(statusCode || 400, {
+        success: false,
+        error: friendly,
+        code: metaCode,
+        subcode: metaSubcode,
+        meta_raw: metaErr,
       })
     } catch (err) {
       console.log('[whatsapp_bridge] Exceção em send-test:', err)
@@ -312,8 +568,76 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 4. Rota de Processamento de Mensagem de Teste (Interação com Agente)
-// Permite testar o fluxo completo do agente com envio real pelo conector
+// 4. Rota para Salvar Token de Acesso da Meta com Segurança
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/token',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const token = String(body.access_token || '').trim()
+
+      if (!token) {
+        return e.json(400, { error: 'O token de acesso não pode ser vazio' })
+      }
+
+      const wsCol = $app.findCollectionByNameOrId('whatsapp_status')
+      let record = null
+
+      try {
+        const records = $app.findRecordsByFilter(
+          'whatsapp_status',
+          `owner = '${authUser.id}'`,
+          '',
+          1,
+          0,
+        )
+        if (records.length > 0) {
+          record = records[0]
+        }
+      } catch (_) {}
+
+      if (!record) {
+        record = new Record(wsCol)
+        record.set('owner', authUser.id)
+        record.set('phone_number', '+55 11 94998-9868')
+        record.set('phone_number_id', '1314873981716321')
+        record.set('waba_id', '1888947369148112')
+        record.set('app_name', 'Eleva App')
+        record.set('verify_token', 'agente-financeiro')
+        record.set('connected', true)
+      }
+
+      record.set('access_token', token)
+      record.set('last_send_error', '')
+      $app.save(record)
+
+      console.log(
+        '[whatsapp_bridge] Token permanente da Meta atualizado para o usuário:',
+        authUser.id,
+      )
+
+      return e.json(200, {
+        success: true,
+        token_configurado: true,
+        message: 'Token de Acesso da Meta salvo com sucesso!',
+      })
+    } catch (err) {
+      console.log('[whatsapp_bridge] Erro ao salvar token da Meta:', err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 5. Rota de Simulação com Agente
 // ----------------------------------------------------
 routerAdd(
   'POST',
@@ -333,6 +657,7 @@ routerAdd(
       const rawPhone = body.phone_number
       const message = body.message
       const senderName = body.sender_name || 'Usuário Teste'
+      const sendRemote = body.send_remote !== false
 
       if (!rawPhone || !message) {
         return e.json(400, { error: 'phone_number e message são obrigatórios' })
@@ -454,35 +779,69 @@ routerAdd(
         $app.save(contact)
       } catch (_) {}
 
-      // Tenta conector se disponível
-      let connectorSent = false
-      let connectorError = null
-      let activePhoneId = '1314873981716321'
-      try {
-        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
-        if (wsList.length > 0 && wsList[0].getString('phone_number_id')) {
-          activePhoneId = wsList[0].getString('phone_number_id')
-        }
-      } catch (_) {}
+      // Envia via Meta Cloud API se solicitado
+      let remoteSent = false
+      let remoteError = null
 
-      try {
-        if (
-          typeof $connectors !== 'undefined' &&
-          typeof $connectors.executeAsOwner === 'function'
-        ) {
-          const sendRes = $connectors.executeAsOwner('WHATSAPP_SEND_MESSAGE', {
-            to_number: phoneDigits,
-            phone_number_id: activePhoneId,
-            text: agentReply,
-          })
-          connectorSent = !!sendRes.successful
-          if (!sendRes.successful) connectorError = sendRes.error
+      if (sendRemote && agentReply) {
+        let activePhoneId = '1314873981716321'
+        let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+        try {
+          const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+          for (let idx = 0; idx < wsList.length; idx++) {
+            const rec = wsList[idx]
+            if (rec.getString('phone_number_id')) {
+              activePhoneId = rec.getString('phone_number_id')
+            }
+            const recToken = rec.getString('access_token')
+            if (recToken && !token) {
+              token = recToken
+            }
+            if (recToken) break
+          }
+        } catch (_) {}
+
+        if (!token) {
+          remoteError = 'Token de Acesso da Meta não configurado em Configurações'
         } else {
-          connectorError = 'Conector WhatsApp não habilitado no Skip Cloud'
+          try {
+            const endpoint = 'https://graph.facebook.com/v21.0/' + activePhoneId + '/messages'
+            const payload = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: phoneDigits,
+              type: 'text',
+              text: {
+                preview_url: false,
+                body: String(agentReply).trim(),
+              },
+            }
+            const res = $http.send({
+              url: endpoint,
+              method: 'POST',
+              headers: {
+                Authorization: 'Bearer ' + token,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(payload),
+              timeout: 30,
+            })
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              remoteSent = true
+            } else {
+              let parsedErr = {}
+              try {
+                parsedErr = JSON.parse(res.rawText || '{}')
+              } catch (_) {}
+              const mErr = parsedErr.error || {}
+              remoteError = mErr.message || 'Erro HTTP ' + res.statusCode
+            }
+          } catch (rErr) {
+            remoteError = rErr ? rErr.message || String(rErr) : 'Falha no envio'
+          }
         }
-      } catch (cErr) {
-        connectorError = cErr ? cErr.message : 'Conector owner pendente'
       }
+
       return e.json(200, {
         success: true,
         simulation: true,
@@ -492,8 +851,8 @@ routerAdd(
         is_registered: isRegistered,
         conversation_id: newConvId,
         reply: agentReply,
-        connector_sent: connectorSent,
-        connector_error: connectorError,
+        remote_sent: remoteSent,
+        remote_error: remoteError,
       })
     } catch (err) {
       console.log('[whatsapp_bridge] Erro na rota de simulação:', err)
@@ -504,87 +863,82 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 4. Rota para consultar status do conector WhatsApp e número conectado
+// 6. Rota para consultar status do canal WhatsApp oficial
+// O token NUNCA é retornado no JSON — apenas token_configurado: boolean
 // ----------------------------------------------------
 routerAdd(
   'GET',
   '/backend/v1/whatsapp/status',
   (e) => {
     try {
-      let isOwnerConnected = false
-      let registeredPhone = null
-      let phoneNumbers = []
-      let checkError = null
-
-      try {
-        if (
-          typeof $connectors !== 'undefined' &&
-          typeof $connectors.executeAsOwner === 'function'
-        ) {
-          const listRes = $connectors.executeAsOwner('WHATSAPP_GET_PHONE_NUMBERS', {})
-          if (listRes.successful && listRes.data) {
-            isOwnerConnected = true
-            const data = listRes.data
-            phoneNumbers = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : []
-            if (phoneNumbers.length > 0) {
-              registeredPhone =
-                phoneNumbers[0].display_phone_number || phoneNumbers[0].phone_number || null
-            }
-          } else {
-            checkError = listRes.error || 'Não conectado no Composio/Meta'
-          }
-        }
-      } catch (cErr) {
-        checkError = cErr ? cErr.message : 'Conector owner pendente'
-      }
-
-      // Procura número configurado no whatsapp_status do usuário logado
+      let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
       let userConfiguredPhone = '+55 11 94998-9868'
       let userWaActive = true
-      let phoneNumberId = '1314873981716321'
       let wabaId = '1888947369148112'
       let appName = 'Eleva App'
       let verifyToken = 'agente-financeiro'
+      let lastSendStatus = ''
+      let lastSendError = ''
+      let lastSendAt = ''
 
       const authUser = e.auth
-      if (authUser) {
+      try {
+        const filterStr = authUser ? `owner = '${authUser.id}'` : ''
+        const wsList = $app.findRecordsByFilter('whatsapp_status', filterStr, '-created', 1, 0)
+        if (wsList.length > 0) {
+          const rec = wsList[0]
+          userConfiguredPhone = rec.getString('phone_number') || userConfiguredPhone
+          userWaActive = rec.getBool('connected')
+          activePhoneId = rec.getString('phone_number_id') || activePhoneId
+          wabaId = rec.getString('waba_id') || wabaId
+          appName = rec.getString('app_name') || appName
+          verifyToken = rec.getString('verify_token') || verifyToken
+          lastSendStatus = rec.getString('last_send_status')
+          lastSendError = rec.getString('last_send_error')
+          lastSendAt = rec.getString('last_send_at')
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+          }
+        }
+      } catch (_) {}
+
+      // Fallback para encontrar se há qualquer token configurado na coleção
+      if (!token) {
         try {
-          const ws = $app.findRecordsByFilter(
-            'whatsapp_status',
-            `owner = '${authUser.id}'`,
-            '',
-            1,
-            0,
-          )
-          if (ws.length > 0) {
-            userConfiguredPhone = ws[0].getString('phone_number') || userConfiguredPhone
-            userWaActive = ws[0].getBool('connected')
-            phoneNumberId = ws[0].getString('phone_number_id') || phoneNumberId
-            wabaId = ws[0].getString('waba_id') || wabaId
-            appName = ws[0].getString('app_name') || appName
-            verifyToken = ws[0].getString('verify_token') || verifyToken
+          const anyWs = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+          for (let i = 0; i < anyWs.length; i++) {
+            const tk = anyWs[i].getString('access_token')
+            if (tk) {
+              token = tk
+              break
+            }
           }
         } catch (_) {}
       }
+
+      const hasToken = !!token
 
       const instanceUrl =
         $os.getenv('PB_INSTANCE_URL') ||
         'https://agente-financeiro-whatsapp-37fd3.shrd01.internal.goskip.dev'
 
-      // Backend URL público oficial para webhooks (VITE_POCKETBASE_URL / PB_INSTANCE_URL)
       const webhookUrl = `${instanceUrl}/backend/v1/whatsapp/webhook`
 
       return e.json(200, {
-        owner_connected: isOwnerConnected,
-        owner_phone: registeredPhone || userConfiguredPhone,
-        phone_number_id: phoneNumberId,
+        owner_connected: hasToken,
+        token_configurado: hasToken,
+        owner_phone: userConfiguredPhone,
+        phone_number_id: activePhoneId,
         waba_id: wabaId,
         app_name: appName,
         verify_token: verifyToken,
-        available_numbers: phoneNumbers,
         user_phone: userConfiguredPhone,
         user_connected: userWaActive,
-        error: checkError,
+        last_send_status: lastSendStatus,
+        last_send_error: lastSendError,
+        last_send_at: lastSendAt,
         webhook_url: webhookUrl,
       })
     } catch (err) {
@@ -595,7 +949,7 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 5. Rota para listar contatos que interagiram pelo WhatsApp
+// 7. Rota para listar contatos que interagiram pelo WhatsApp
 // ----------------------------------------------------
 routerAdd(
   'GET',

@@ -55,27 +55,29 @@ export interface WhatsAppStatus extends RecordModel {
   owner: string
   connected: boolean
   phone_number?: string
+  phone_number_id?: string
+  waba_id?: string
+  app_name?: string
+  verify_token?: string
+  last_send_status?: string
+  last_send_error?: string
+  last_send_at?: string
 }
 
 export interface WhatsAppLiveStatus {
   owner_connected: boolean
+  token_configurado?: boolean
   owner_phone: string | null
   phone_number_id?: string
   waba_id?: string
   app_name?: string
   verify_token?: string
-  available_numbers: Array<{
-    id?: string
-    display_phone_number?: string
-    phone_number?: string
-    verified_name?: string
-    quality_rating?: string
-  }>
   user_phone: string | null
   user_connected: boolean
-  error?: string | null
+  last_send_status?: string
+  last_send_error?: string
+  last_send_at?: string
   webhook_url?: string
-  backend_webhook_url?: string
 }
 
 export interface WhatsAppContact {
@@ -100,8 +102,16 @@ export interface WhatsAppSimulationResult {
   is_registered: boolean
   conversation_id: string
   reply: string
-  connector_sent: boolean
-  connector_error: string | null
+  remote_sent?: boolean
+  remote_error?: string | null
+}
+
+export interface WhatsAppSendTestResult {
+  success: boolean
+  message_id?: string
+  data?: unknown
+  error?: string
+  missing_token?: boolean
 }
 
 // ----------------- Categories Service -----------------
@@ -343,6 +353,7 @@ export const whatsappService = {
     phoneNumber: string,
     message: string,
     senderName?: string,
+    sendRemote = true,
   ): Promise<WhatsAppSimulationResult> {
     const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/simulate`, {
       method: 'POST',
@@ -354,6 +365,7 @@ export const whatsappService = {
         phone_number: phoneNumber,
         message,
         sender_name: senderName,
+        send_remote: sendRemote,
       }),
     })
     if (!res.ok) {
@@ -361,5 +373,49 @@ export const whatsappService = {
       throw new Error(err.error || 'Falha ao simular mensagem de WhatsApp')
     }
     return res.json()
+  },
+
+  async saveMetaToken(accessToken: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: pb.authStore.token,
+      },
+      body: JSON.stringify({
+        access_token: accessToken,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao salvar o token da Meta')
+    }
+    return res.json()
+  },
+
+  async sendTestMessage(toNumber: string, text?: string): Promise<WhatsAppSendTestResult> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/send-test`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: pb.authStore.token,
+        },
+        body: JSON.stringify({
+          to_number: toNumber,
+          text,
+        }),
+      },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data.error || `Erro HTTP ${res.status}`,
+        missing_token: !!data.missing_token,
+      }
+    }
+    return data
   },
 }

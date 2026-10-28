@@ -36,6 +36,11 @@ import {
   PlayCircle,
   Copy,
   Users,
+  Key,
+  Eye,
+  EyeOff,
+  Send,
+  HelpCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -58,18 +63,24 @@ export const Settings: React.FC = () => {
   const [loadingLiveStatus, setLoadingLiveStatus] = useState(false)
   const [contacts, setContacts] = useState<WhatsAppContact[]>([])
 
-  // Test simulation
+  // Meta Permanent Access Token state
+  const [metaTokenInput, setMetaTokenInput] = useState('')
+  const [showMetaToken, setShowMetaToken] = useState(false)
+  const [savingMetaToken, setSavingMetaToken] = useState(false)
+
+  // Test simulation & Direct message test
   const [testModalOpen, setTestModalOpen] = useState(false)
   const [testPhone, setTestPhone] = useState('')
   const [testMessage, setTestMessage] = useState('Almoço no restaurante 45 reais')
   const [testSenderName, setTestSenderName] = useState('')
   const [testLoading, setTestLoading] = useState(false)
+  const [sendingDirectTest, setSendingDirectTest] = useState(false)
   const [testResult, setTestResult] = useState<{
     reply: string
     is_registered: boolean
     user_name: string
-    connector_sent?: boolean
-    connector_error?: string | null
+    remote_sent?: boolean
+    remote_error?: string | null
   } | null>(null)
   // Notification toggles
   const [waNotifications, setWaNotifications] = useState(true)
@@ -169,6 +180,73 @@ export const Settings: React.FC = () => {
     }
   }
 
+  const handleSaveMetaToken = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleanToken = metaTokenInput.trim()
+    if (!cleanToken) {
+      toast({
+        title: 'Token vazio',
+        description: 'Cole o Token de Acesso da Meta antes de salvar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSavingMetaToken(true)
+    try {
+      const res = await whatsappService.saveMetaToken(cleanToken)
+      toast({
+        title: 'Token Meta Salvo!',
+        description: res.message || 'Token Permanente configurado com sucesso para envios diretos.',
+      })
+      setMetaTokenInput('')
+      setShowMetaToken(false)
+      await loadAllWhatsAppInfo()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao salvar o token da Meta'
+      toast({
+        title: 'Erro ao salvar token',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingMetaToken(false)
+    }
+  }
+
+  const handleSendDirectTest = async () => {
+    const target = testPhone || liveStatus?.owner_phone || '+5511949989868'
+    setSendingDirectTest(true)
+    try {
+      const res = await whatsappService.sendTestMessage(
+        target,
+        'Olá! Teste de envio direto pela WhatsApp Cloud API oficial da Meta configurado com sucesso no Agente Financeiro Eleva!',
+      )
+      if (res.success) {
+        toast({
+          title: 'Mensagem Enviada!',
+          description: `Disparo confirmado pela Meta Cloud API para ${target}. Verifique seu WhatsApp!`,
+        })
+      } else {
+        toast({
+          title: res.missing_token ? 'Token Meta não configurado' : 'Erro no envio pela Meta',
+          description: res.error || 'A Meta rejeitou a mensagem.',
+          variant: 'destructive',
+        })
+      }
+      await loadAllWhatsAppInfo()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha no disparo de teste'
+      toast({
+        title: 'Erro ao testar envio',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSendingDirectTest(false)
+    }
+  }
+
   const handleRunSimulation = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!testPhone || !testMessage) return
@@ -179,13 +257,14 @@ export const Settings: React.FC = () => {
         testPhone,
         testMessage,
         testSenderName || user?.name || 'Cliente',
+        true,
       )
       setTestResult({
         reply: res.reply,
         is_registered: res.is_registered,
         user_name: res.user_name,
-        connector_sent: res.connector_sent,
-        connector_error: res.connector_error,
+        remote_sent: res.remote_sent,
+        remote_error: res.remote_error,
       })
       toast({
         title: 'Mensagem processada com sucesso!',
@@ -382,7 +461,7 @@ export const Settings: React.FC = () => {
                   <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-semibold text-sm text-slate-900">
                       {liveStatus?.owner_phone || phoneNumber || '+55 11 94998-9868'}
                     </h4>
@@ -390,17 +469,19 @@ export const Settings: React.FC = () => {
                       variant="outline"
                       className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium"
                     >
-                      Inscrito na Meta
+                      Número Meta Oficial
                     </Badge>
                     <Badge
                       variant="outline"
-                      className={`text-[10px] ${
-                        liveStatus?.owner_connected
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      className={`text-[10px] font-medium ${
+                        liveStatus?.token_configurado
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-amber-50 text-amber-700 border-amber-300'
                       }`}
                     >
-                      {liveStatus?.owner_connected ? 'Conector Conectado' : 'App Meta Conectado'}
+                      {liveStatus?.token_configurado
+                        ? 'Token Meta Configurado'
+                        : 'Token Meta Pendente'}
                     </Badge>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
@@ -498,20 +579,128 @@ export const Settings: React.FC = () => {
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 space-y-1">
               <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                Canal de Produção Meta Cloud API Ativo
+                Envio e Recebimento via WhatsApp Cloud API Oficial da Meta
               </div>
               <p className="text-emerald-800 leading-relaxed">
-                As mensagens enviadas no WhatsApp para <strong>+55 11 94998-9868</strong> caem
-                diretamente no webhook do agente. Clientes cadastrados têm seus gastos debitados
-                automaticamente nas caixinhas, e visitantes recebem mensagem de boas-vindas.
+                As mensagens enviadas no WhatsApp para <strong>+55 11 94998-9868</strong> chegam
+                diretamente no webhook do agente. As respostas agora são enviadas{' '}
+                <strong>diretamente pela WhatsApp Cloud API oficial da Meta</strong>{' '}
+                (graph.facebook.com), sem depender de conectores externos.
               </p>
-              {!liveStatus?.owner_connected && (
-                <p className="text-[11px] text-emerald-700 pt-0.5">
-                  Nota: Para envios automáticos de resposta pela API Cloud da Meta via Skip
-                  Conectores, lembre-se de clicar em <strong>"Conectar"</strong> ao lado do WhatsApp
-                  na aba <em>Conectores</em> do painel Skip.
-                </p>
+              {liveStatus?.last_send_error && (
+                <div className="p-2 bg-amber-50 border border-amber-200 rounded text-amber-900 text-[11px] mt-1.5">
+                  <strong>Último status de envio:</strong> {liveStatus.last_send_error}
+                </div>
               )}
+            </div>
+
+            {/* Configuração do Token Permanente da Meta */}
+            <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-xs space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-indigo-600" />
+                    Token de Acesso da WhatsApp Cloud API (Meta)
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Cole o Token de Acesso do Usuário do Sistema da Meta (ou token de acesso da
+                    Cloud API) para autorizar o envio direto de mensagens aos clientes.
+                  </p>
+                </div>
+                {liveStatus?.token_configurado ? (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0"
+                  >
+                    <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
+                    Token Ativo
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0"
+                  >
+                    <AlertTriangle className="w-3 h-3 mr-1 text-amber-600" />
+                    Não configurado
+                  </Badge>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveMetaToken} className="space-y-2 pt-1">
+                <Label htmlFor="metaToken" className="text-[11px] font-medium text-slate-600">
+                  {liveStatus?.token_configurado
+                    ? 'Substituir / Atualizar Token da Meta'
+                    : 'Colar Token da Meta'}
+                </Label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="metaToken"
+                      type={showMetaToken ? 'text' : 'password'}
+                      placeholder={
+                        liveStatus?.token_configurado
+                          ? '•••••••••••••••••••••••••••••••••••••••• (Token já salvo com segurança)'
+                          : 'EAAB... (Cole seu token aqui)'
+                      }
+                      value={metaTokenInput}
+                      onChange={(e) => setMetaTokenInput(e.target.value)}
+                      className="pr-9 font-mono text-xs bg-slate-50 border-slate-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowMetaToken(!showMetaToken)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      tabIndex={-1}
+                    >
+                      {showMetaToken ? (
+                        <EyeOff className="w-3.5 h-3.5" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={savingMetaToken || !metaTokenInput.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs shrink-0"
+                  >
+                    {savingMetaToken ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                        Salvando...
+                      </>
+                    ) : (
+                      'Salvar Token'
+                    )}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                  <span className="flex items-center gap-1">
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                    Onde pegar: <strong>developers.facebook.com</strong> → Seu App (
+                    {liveStatus?.app_name || 'Eleva App'}) → WhatsApp → Configuração da API (ou
+                    Configurações do Negócio → Usuários do Sistema).
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSendDirectTest}
+                    disabled={sendingDirectTest || !liveStatus?.token_configurado}
+                    className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-7 text-[11px] font-medium"
+                  >
+                    {sendingDirectTest ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <Send className="w-3 h-3 mr-1" />
+                    )}
+                    Testar Disparo Direto
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
           {/* Webhook URLs prontas para o painel da Meta */}
@@ -878,19 +1067,19 @@ export const Settings: React.FC = () => {
                     >
                       {testResult.is_registered ? 'Conta Reconhecida' : 'Visitante Apresentado'}
                     </Badge>
-                    {testResult.connector_sent ? (
+                    {testResult.remote_sent ? (
                       <Badge
                         variant="outline"
                         className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
                       >
-                        Enviado via WhatsApp
+                        Enviado via Meta Cloud API
                       </Badge>
                     ) : (
                       <Badge
                         variant="outline"
                         className="text-[10px] bg-slate-100 text-slate-600 border-slate-200"
                       >
-                        Simulado
+                        Simulação Interna
                       </Badge>
                     )}
                   </div>
@@ -898,9 +1087,9 @@ export const Settings: React.FC = () => {
                 <p className="text-slate-700 whitespace-pre-wrap leading-relaxed bg-white p-2.5 rounded border border-slate-100">
                   {testResult.reply}
                 </p>
-                {testResult.connector_error && (
+                {testResult.remote_error && (
                   <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
-                    Status do envio remoto: {testResult.connector_error}
+                    Status do envio pela Meta: {testResult.remote_error}
                   </p>
                 )}
               </div>

@@ -296,12 +296,19 @@ export const importJobsService = {
 export const whatsappService = {
   async getStatus(): Promise<WhatsAppStatus | null> {
     const owner = pb.authStore.record?.id
-    if (!owner) return null
     try {
-      const records = await pb.collection('whatsapp_status').getFullList<WhatsAppStatus>({
-        filter: `owner = '${owner}'`,
+      if (owner) {
+        const records = await pb.collection('whatsapp_status').getFullList<WhatsAppStatus>({
+          filter: `owner = '${owner}'`,
+        })
+        if (records.length > 0) return records[0]
+      }
+      // Se não houver registro vinculado ao usuário ou owner for nulo, busca o registro global do canal
+      const globalRecords = await pb.collection('whatsapp_status').getFullList<WhatsAppStatus>({
+        sort: '-created',
+        limit: 1,
       })
-      if (records.length > 0) return records[0]
+      if (globalRecords.length > 0) return globalRecords[0]
       return null
     } catch {
       return null
@@ -313,12 +320,13 @@ export const whatsappService = {
     const existing = await this.getStatus()
     if (existing) {
       return pb.collection('whatsapp_status').update<WhatsAppStatus>(existing.id, {
+        owner: owner || existing.owner,
         connected,
         phone_number: phoneNumber,
       })
     }
     return pb.collection('whatsapp_status').create<WhatsAppStatus>({
-      owner,
+      owner: owner || '',
       connected,
       phone_number: phoneNumber,
     })

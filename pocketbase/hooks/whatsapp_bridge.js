@@ -34,6 +34,86 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       return digits
     }
 
+    const resolveUser = function (phoneDigits, senderName) {
+      if (!phoneDigits) return null
+
+      const suffixMatch = function (p1, p2) {
+        if (!p1 || !p2) return false
+        if (p1 === p2) return true
+        if (p1.endsWith(p2) || p2.endsWith(p1)) return true
+        const s1 = p1.slice(-8)
+        const s2 = p2.slice(-8)
+        return s1.length >= 8 && s1 === s2
+      }
+
+      // 1. Verifica se já existe vínculo explícito em whatsapp_contacts
+      try {
+        const contact = $app.findFirstRecordByData('whatsapp_contacts', 'phone_number', phoneDigits)
+        const contactUserId = contact.getString('user')
+        if (contactUserId) {
+          const u = $app.findRecordById('_pb_users_auth_', contactUserId)
+          if (u) return u
+        }
+      } catch (_) {}
+
+      // 2. Busca na coleção de usuários pelo campo phone (com match por sufixo)
+      try {
+        const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 300, 0)
+        for (let u = 0; u < users.length; u++) {
+          const user = users[u]
+          const userPhone = normalizeDigits(user.getString('phone'))
+          if (userPhone && suffixMatch(userPhone, phoneDigits)) {
+            return user
+          }
+        }
+      } catch (_) {}
+
+      // 3. Busca na coleção whatsapp_status (canal do owner)
+      try {
+        const statusRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 100, 0)
+        for (let s = 0; s < statusRecords.length; s++) {
+          const rec = statusRecords[s]
+          const recPhone = normalizeDigits(rec.getString('phone_number'))
+          if (recPhone && suffixMatch(recPhone, phoneDigits)) {
+            const ownerId = rec.getString('owner')
+            if (ownerId) {
+              const u = $app.findRecordById('_pb_users_auth_', ownerId)
+              if (u) return u
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 4. Heurística por nome de perfil no WhatsApp (ex: "Barbara Leal", "Lygia Leal", "Kelly Lidiane")
+      if (senderName && senderName.length >= 3 && senderName !== 'Contato WhatsApp') {
+        try {
+          const cleanSender = senderName.trim().toLowerCase()
+          const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 200, 0)
+          for (let u = 0; u < users.length; u++) {
+            const user = users[u]
+            const userName = (user.getString('name') || '').trim().toLowerCase()
+            if (userName) {
+              if (
+                userName === cleanSender ||
+                cleanSender.includes(userName) ||
+                userName.includes(cleanSender)
+              ) {
+                try {
+                  if (!user.getString('phone')) {
+                    user.set('phone', phoneDigits)
+                    $app.save(user)
+                  }
+                } catch (_) {}
+                return user
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      return null
+    }
+
     const sendMetaMessage = function (toNumber, textBody) {
       const cleanTo = normalizeDigits(toNumber)
       if (!cleanTo) return { success: false, error: 'Número inválido' }
@@ -227,36 +307,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
 
             // 1. Localiza usuário vinculado
-            let matchedUser = null
-            try {
-              const suffixMatch = function (p1, p2) {
-                if (!p1 || !p2) return false
-                if (p1 === p2) return true
-                if (p1.endsWith(p2) || p2.endsWith(p1)) return true
-                const s1 = p1.slice(-8)
-                const s2 = p2.slice(-8)
-                return s1.length >= 8 && s1 === s2
-              }
-
-              const statusRecords = $app.findRecordsByFilter(
-                'whatsapp_status',
-                '',
-                '-created',
-                200,
-                0,
-              )
-              for (let s = 0; s < statusRecords.length; s++) {
-                const rec = statusRecords[s]
-                const recPhone = normalizeDigits(rec.getString('phone_number'))
-                if (recPhone && suffixMatch(recPhone, phoneDigits)) {
-                  const ownerId = rec.getString('owner')
-                  if (ownerId) {
-                    matchedUser = $app.findRecordById('_pb_users_auth_', ownerId)
-                    break
-                  }
-                }
-              }
-            } catch (_) {}
+            const matchedUser = resolveUser(phoneDigits, senderName)
 
             // 2. Busca ou cria whatsapp_contact
             const contactsCol = $app.findCollectionByNameOrId('whatsapp_contacts')
@@ -275,6 +326,12 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               if (matchedUser.getString('name') && !contact.getString('name')) {
                 contact.set('name', matchedUser.getString('name'))
               }
+              try {
+                if (!matchedUser.getString('phone')) {
+                  matchedUser.set('phone', phoneDigits)
+                  $app.save(matchedUser)
+                }
+              } catch (_) {}
             } else if (!contact.getString('user')) {
               contact.set('user', '')
             }
@@ -311,7 +368,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             const existingConvId = contact.getString('conversation_id') || null
             let promptForAgent = textContent
             if (!isRegistered) {
-              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Eleva App - Seu Agente Financeiro, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${textContent}`
+              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${textContent}`
             }
 
             let agentReply = ''
@@ -329,10 +386,10 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               console.log('[whatsapp_bridge] Falha ao executar agente:', aErr)
               if (!isRegistered) {
                 agentReply =
-                  'Olá! Eu sou o Eleva App - Seu Agente Financeiro no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
               } else {
                 agentReply =
-                  'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira no Eleva App. Por favor, tente novamente em alguns instantes!'
+                  'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira no Consciente. Por favor, tente novamente em alguns instantes!'
               }
             }
 
@@ -399,7 +456,7 @@ routerAdd(
       const targetPhone = normalizeDigits(body.to_number || '5511949989868')
       const text =
         body.text ||
-        'Olá! Seu canal oficial do Eleva App - Seu Agente Financeiro está conectado e ativo via Meta Cloud API. Canal configurado com sucesso para suas caixinhas!'
+        'Olá! Seu canal oficial do Consciente - Seu parceiro nas finanças está conectado e ativo via Meta Cloud API. Canal configurado com sucesso para suas caixinhas!'
 
       let activePhoneId = '1314873981716321'
       let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
@@ -609,7 +666,7 @@ routerAdd(
         record.set('phone_number', '+55 11 94998-9868')
         record.set('phone_number_id', '1314873981716321')
         record.set('waba_id', '1888947369148112')
-        record.set('app_name', 'Eleva App')
+        record.set('app_name', 'Consciente')
         record.set('verify_token', 'agente-financeiro')
         record.set('connected', true)
       }
@@ -653,6 +710,90 @@ routerAdd(
         return digits
       }
 
+      const resolveUser = function (phoneDigits, senderName) {
+        if (!phoneDigits) return null
+
+        const suffixMatch = function (p1, p2) {
+          if (!p1 || !p2) return false
+          if (p1 === p2) return true
+          if (p1.endsWith(p2) || p2.endsWith(p1)) return true
+          const s1 = p1.slice(-8)
+          const s2 = p2.slice(-8)
+          return s1.length >= 8 && s1 === s2
+        }
+
+        // 1. Verifica se já existe vínculo explícito em whatsapp_contacts
+        try {
+          const contact = $app.findFirstRecordByData(
+            'whatsapp_contacts',
+            'phone_number',
+            phoneDigits,
+          )
+          const contactUserId = contact.getString('user')
+          if (contactUserId) {
+            const u = $app.findRecordById('_pb_users_auth_', contactUserId)
+            if (u) return u
+          }
+        } catch (_) {}
+
+        // 2. Busca na coleção de usuários pelo campo phone (com match por sufixo)
+        try {
+          const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 300, 0)
+          for (let u = 0; u < users.length; u++) {
+            const user = users[u]
+            const userPhone = normalizeDigits(user.getString('phone'))
+            if (userPhone && suffixMatch(userPhone, phoneDigits)) {
+              return user
+            }
+          }
+        } catch (_) {}
+
+        // 3. Busca na coleção whatsapp_status (canal do owner)
+        try {
+          const statusRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 100, 0)
+          for (let s = 0; s < statusRecords.length; s++) {
+            const rec = statusRecords[s]
+            const recPhone = normalizeDigits(rec.getString('phone_number'))
+            if (recPhone && suffixMatch(recPhone, phoneDigits)) {
+              const ownerId = rec.getString('owner')
+              if (ownerId) {
+                const u = $app.findRecordById('_pb_users_auth_', ownerId)
+                if (u) return u
+              }
+            }
+          }
+        } catch (_) {}
+
+        // 4. Heurística por nome de perfil no WhatsApp (ex: "Barbara Leal", "Lygia Leal", "Kelly Lidiane")
+        if (senderName && senderName.length >= 3 && senderName !== 'Contato WhatsApp') {
+          try {
+            const cleanSender = senderName.trim().toLowerCase()
+            const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 200, 0)
+            for (let u = 0; u < users.length; u++) {
+              const user = users[u]
+              const userName = (user.getString('name') || '').trim().toLowerCase()
+              if (userName) {
+                if (
+                  userName === cleanSender ||
+                  cleanSender.includes(userName) ||
+                  userName.includes(cleanSender)
+                ) {
+                  try {
+                    if (!user.getString('phone')) {
+                      user.set('phone', phoneDigits)
+                      $app.save(user)
+                    }
+                  } catch (_) {}
+                  return user
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        return null
+      }
+
       const body = e.requestInfo().body || {}
       const rawPhone = body.phone_number
       const message = body.message
@@ -666,30 +807,7 @@ routerAdd(
       const phoneDigits = normalizeDigits(rawPhone)
 
       // 1. Localiza usuário vinculado
-      let matchedUser = null
-      try {
-        const suffixMatch = function (p1, p2) {
-          if (!p1 || !p2) return false
-          if (p1 === p2) return true
-          if (p1.endsWith(p2) || p2.endsWith(p1)) return true
-          const s1 = p1.slice(-8)
-          const s2 = p2.slice(-8)
-          return s1.length >= 8 && s1 === s2
-        }
-
-        const statusRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 200, 0)
-        for (let s = 0; s < statusRecords.length; s++) {
-          const rec = statusRecords[s]
-          const recPhone = normalizeDigits(rec.getString('phone_number'))
-          if (recPhone && suffixMatch(recPhone, phoneDigits)) {
-            const ownerId = rec.getString('owner')
-            if (ownerId) {
-              matchedUser = $app.findRecordById('_pb_users_auth_', ownerId)
-              break
-            }
-          }
-        }
-      } catch (_) {}
+      const matchedUser = resolveUser(phoneDigits, senderName)
 
       // 2. Localiza ou cria registro de contato
       const contactsCol = $app.findCollectionByNameOrId('whatsapp_contacts')
@@ -708,6 +826,12 @@ routerAdd(
         if (matchedUser.getString('name') && !contact.getString('name')) {
           contact.set('name', matchedUser.getString('name'))
         }
+        try {
+          if (!matchedUser.getString('phone')) {
+            matchedUser.set('phone', phoneDigits)
+            $app.save(matchedUser)
+          }
+        } catch (_) {}
       } else if (!contact.getString('user')) {
         contact.set('user', '')
       }
@@ -745,7 +869,7 @@ routerAdd(
 
       let promptForAgent = message
       if (!isRegistered) {
-        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Eleva App - Seu Agente Financeiro, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${message}`
+        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${message}`
       }
 
       let agentReply = ''
@@ -763,10 +887,10 @@ routerAdd(
         console.log('[whatsapp_bridge] Falha ao executar agente no simulate:', aErr)
         if (!isRegistered) {
           agentReply =
-            'Olá! Eu sou o Eleva App - Seu Agente Financeiro no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+            'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
         } else {
           agentReply =
-            'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira no Eleva App. Por favor, tente novamente em alguns instantes!'
+            'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira no Consciente. Por favor, tente novamente em alguns instantes!'
         }
       }
 
@@ -876,7 +1000,7 @@ routerAdd(
       let userConfiguredPhone = '+55 11 94998-9868'
       let userWaActive = true
       let wabaId = '1888947369148112'
-      let appName = 'Eleva App'
+      let appName = 'Consciente'
       let verifyToken = 'agente-financeiro'
       let lastSendStatus = ''
       let lastSendError = ''
@@ -989,6 +1113,69 @@ routerAdd(
         })
       }
       return e.json(200, { contacts: list })
+    } catch (err) {
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 8. Rota para vincular contato a um usuário
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/link-contact',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const contactId = body.contact_id
+      const phone = body.phone_number
+
+      let contact = null
+      if (contactId) {
+        try {
+          contact = $app.findRecordById('whatsapp_contacts', contactId)
+        } catch (_) {}
+      } else if (phone) {
+        const normalizeDigits = function (raw) {
+          if (!raw) return ''
+          let digits = String(raw).replace(/\D/g, '')
+          if (digits.length === 10 || digits.length === 11) {
+            digits = '55' + digits
+          }
+          return digits
+        }
+        const cleanPhone = normalizeDigits(phone)
+        try {
+          contact = $app.findFirstRecordByData('whatsapp_contacts', 'phone_number', cleanPhone)
+        } catch (_) {}
+      }
+
+      if (!contact) {
+        return e.json(404, { error: 'Contato não encontrado' })
+      }
+
+      contact.set('user', authUser.id)
+      if (authUser.getString('name') && !contact.getString('name')) {
+        contact.set('name', authUser.getString('name'))
+      }
+      $app.save(contact)
+
+      // Atualiza também o telefone do usuário se não tiver
+      try {
+        if (!authUser.getString('phone')) {
+          authUser.set('phone', contact.getString('phone_number'))
+          $app.save(authUser)
+        }
+      } catch (_) {}
+
+      return e.json(200, { success: true, contact_id: contact.id, user_id: authUser.id })
     } catch (err) {
       return e.json(500, { error: String(err) })
     }

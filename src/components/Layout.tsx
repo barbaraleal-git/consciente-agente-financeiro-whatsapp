@@ -64,10 +64,10 @@ export const Layout: React.FC = () => {
           </div>
           <div className="min-w-0">
             <h1 className="font-bold text-base text-white tracking-tight leading-tight truncate">
-              Eleva App
+              Consciente
             </h1>
             <p className="text-[11px] text-indigo-300 font-medium truncate">
-              Seu Agente Financeiro
+              Seu parceiro nas finanças
             </p>
           </div>
         </div>
@@ -142,7 +142,7 @@ export const Layout: React.FC = () => {
                 {pageTitle}
               </h2>
               <p className="text-[11px] text-slate-400 font-medium md:hidden">
-                Eleva App - Seu Agente Financeiro
+                Consciente - Seu parceiro nas finanças
               </p>
             </div>
           </div>

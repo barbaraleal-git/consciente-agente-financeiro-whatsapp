@@ -220,7 +220,7 @@ export const Settings: React.FC = () => {
     try {
       const res = await whatsappService.sendTestMessage(
         target,
-        'Olá! Teste de envio direto pela WhatsApp Cloud API oficial da Meta configurado com sucesso no Eleva App - Seu Agente Financeiro!',
+        'Olá! Teste de envio direto pela WhatsApp Cloud API oficial da Meta configurado com sucesso no Consciente - Seu parceiro nas finanças!',
       )
       if (res.success) {
         toast({
@@ -433,8 +433,8 @@ export const Settings: React.FC = () => {
                 Canal Oficial WhatsApp Business (Meta Cloud API)
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                Integração da conta de WhatsApp Business do dono com o Eleva App - Seu Agente
-                Financeiro
+                Integração da conta de WhatsApp Business do dono com o Consciente - Seu parceiro nas
+                finanças
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -486,7 +486,7 @@ export const Settings: React.FC = () => {
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Número oficial de atendimento pelo WhatsApp (
-                    {liveStatus?.app_name || 'Eleva App'})
+                    {liveStatus?.app_name || 'Consciente'})
                   </p>
                 </div>
               </div>
@@ -566,7 +566,7 @@ export const Settings: React.FC = () => {
                 </span>
                 <div className="flex items-center justify-between gap-1 mt-0.5">
                   <span className="text-xs font-semibold text-slate-800 truncate">
-                    {liveStatus?.app_name || 'Eleva App'}
+                    {liveStatus?.app_name || 'Consciente'}
                   </span>
                   <Badge variant="secondary" className="text-[9px] px-1 py-0">
                     Produção
@@ -681,7 +681,7 @@ export const Settings: React.FC = () => {
                   <span className="flex items-center gap-1">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
                     Onde pegar: <strong>developers.facebook.com</strong> → Seu App (
-                    {liveStatus?.app_name || 'Eleva App'}) → WhatsApp → Configuração da API (ou
+                    {liveStatus?.app_name || 'Consciente'}) → WhatsApp → Configuração da API (ou
                     Configurações do Negócio → Usuários do Sistema).
                   </span>
                   <Button
@@ -1011,7 +1011,7 @@ export const Settings: React.FC = () => {
             </DialogTitle>
             <DialogDescription>
               Testa a ponte ponta a ponta: o webhook recebe o texto, identifica se o número é
-              cadastrado ou visitante, aciona o Eleva App com as ferramentas de caixinhas e gera a
+              cadastrado ou visitante, aciona o Consciente com as ferramentas de caixinhas e gera a
               resposta.
             </DialogDescription>
           </DialogHeader>
@@ -1053,7 +1053,7 @@ export const Settings: React.FC = () => {
             {testResult && (
               <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-800">Resposta do Eleva App:</span>
+                  <span className="font-semibold text-slate-800">Resposta do Consciente:</span>
                   <div className="flex items-center gap-1.5">
                     <Badge
                       variant="outline"

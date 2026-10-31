@@ -1,5 +1,5 @@
 // Hook para garantir que todos os emails enviados pelo PocketBase
-// usem a marca "Eleva App" e o remetente oficial, sem nenhuma menção a "Skip".
+// usem a marca "Consciente" e a tagline oficial "Consciente - Seu parceiro nas finanças", sem menção a "Eleva" ou "Skip".
 
 // 1. Hook para email de Verificação de Conta
 onMailerRecordVerificationSend((e) => {
@@ -12,17 +12,17 @@ onMailerRecordVerificationSend((e) => {
 
     if (e.message) {
       if (e.message.from) {
-        e.message.from.name = 'Eleva App - Seu Agente Financeiro'
+        e.message.from.name = 'Consciente - Seu parceiro nas finanças'
       }
 
-      e.message.subject = 'Confirme sua conta no Eleva App'
+      e.message.subject = 'Confirme sua conta no Consciente'
 
       e.message.html = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Confirme sua conta no Eleva App</title>
+  <title>Confirme sua conta no Consciente</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0f172a; padding: 40px 16px;">
@@ -32,23 +32,23 @@ onMailerRecordVerificationSend((e) => {
           <tr>
             <td align="center" style="padding-bottom: 24px;">
               <div style="display: inline-block; background-color: #4f46e5; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 20px; letter-spacing: -0.5px;">
-                Eleva App
+                Consciente
               </div>
               <p style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; font-weight: 500;">
-                Eleva App - Seu Agente Financeiro
+                Consciente - Seu parceiro nas finanças
               </p>
             </td>
           </tr>
           <tr>
             <td style="color: #f1f5f9; font-size: 16px; line-height: 24px;">
               <h2 style="margin: 0 0 16px 0; font-size: 20px; color: #ffffff; font-weight: 600;">
-                Bem-vindo(a) ao Eleva App!
+                Bem-vindo(a) ao Consciente!
               </h2>
               <p style="margin: 0 0 16px 0; color: #cbd5e1;">
                 Olá, <strong>${userName}</strong>!
               </p>
               <p style="margin: 0 0 24px 0; color: #cbd5e1;">
-                Obrigado por criar sua conta no <strong>Eleva App</strong>. Para começar a controlar seus custos e organizar suas caixinhas pelo WhatsApp e Web, confirme seu endereço de email clicando no botão abaixo:
+                Obrigado por criar sua conta no <strong>Consciente</strong>. Para começar a controlar seus custos e organizar suas caixinhas pelo WhatsApp e Web, confirme seu endereço de email clicando no botão abaixo:
               </p>
             </td>
           </tr>
@@ -68,13 +68,13 @@ onMailerRecordVerificationSend((e) => {
                 <a href="${actionUrl}" target="_blank" style="color: #818cf8;">${actionUrl}</a>
               </p>
               <p style="margin: 0; color: #64748b;">
-                Se você não criou uma conta no Eleva App, pode ignorar este email com segurança.
+                Se você não criou uma conta no Consciente, pode ignorar este email com segurança.
               </p>
             </td>
           </tr>
           <tr>
             <td align="center" style="padding-top: 24px; font-size: 12px; color: #64748b;">
-              © Eleva App — Seu Agente Financeiro. Todos os direitos reservados.
+              © Consciente — Seu parceiro nas finanças. Todos os direitos reservados.
             </td>
           </tr>
         </table>
@@ -85,7 +85,7 @@ onMailerRecordVerificationSend((e) => {
 </html>
       `.trim()
 
-      e.message.text = `Olá, ${userName}!\n\nBem-vindo(a) ao Eleva App - Seu Agente Financeiro.\n\nPara confirmar sua conta, acesse o link abaixo:\n${actionUrl}\n\nSe você não criou uma conta, ignore este email.\n\nEquipe Eleva App`
+      e.message.text = `Olá, ${userName}!\n\nBem-vindo(a) ao Consciente - Seu parceiro nas finanças.\n\nPara confirmar sua conta, acesse o link abaixo:\n${actionUrl}\n\nSe você não criou uma conta, ignore este email.\n\nEquipe Consciente`
     }
   } catch (err) {
     console.log('[mail_branding] Erro ao personalizar email de verificação:', err)
@@ -105,17 +105,17 @@ onMailerRecordPasswordResetSend((e) => {
 
     if (e.message) {
       if (e.message.from) {
-        e.message.from.name = 'Eleva App - Seu Agente Financeiro'
+        e.message.from.name = 'Consciente - Seu parceiro nas finanças'
       }
 
-      e.message.subject = 'Redefina sua senha do Eleva App'
+      e.message.subject = 'Redefina sua senha do Consciente'
 
       e.message.html = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Redefina sua senha do Eleva App</title>
+  <title>Redefina sua senha do Consciente</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0f172a; padding: 40px 16px;">
@@ -125,10 +125,10 @@ onMailerRecordPasswordResetSend((e) => {
           <tr>
             <td align="center" style="padding-bottom: 24px;">
               <div style="display: inline-block; background-color: #4f46e5; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 20px; letter-spacing: -0.5px;">
-                Eleva App
+                Consciente
               </div>
               <p style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; font-weight: 500;">
-                Eleva App - Seu Agente Financeiro
+                Consciente - Seu parceiro nas finanças
               </p>
             </td>
           </tr>
@@ -141,7 +141,7 @@ onMailerRecordPasswordResetSend((e) => {
                 Olá, <strong>${userName}</strong>!
               </p>
               <p style="margin: 0 0 24px 0; color: #cbd5e1;">
-                Recebemos uma solicitação para redefinir a senha da sua conta no <strong>Eleva App</strong>. Clique no botão abaixo para cadastrar uma nova senha:
+                Recebemos uma solicitação para redefinir a senha da sua conta no <strong>Consciente</strong>. Clique no botão abaixo para cadastrar uma nova senha:
               </p>
             </td>
           </tr>
@@ -167,7 +167,7 @@ onMailerRecordPasswordResetSend((e) => {
           </tr>
           <tr>
             <td align="center" style="padding-top: 24px; font-size: 12px; color: #64748b;">
-              © Eleva App — Seu Agente Financeiro. Todos os direitos reservados.
+              © Consciente — Seu parceiro nas finanças. Todos os direitos reservados.
             </td>
           </tr>
         </table>
@@ -178,7 +178,7 @@ onMailerRecordPasswordResetSend((e) => {
 </html>
       `.trim()
 
-      e.message.text = `Olá, ${userName}!\n\nRecebemos uma solicitação para redefinir a senha da sua conta no Eleva App - Seu Agente Financeiro.\n\nPara cadastrar uma nova senha, acesse:\n${actionUrl}\n\nSe você não solicitou, ignore este email.\n\nEquipe Eleva App`
+      e.message.text = `Olá, ${userName}!\n\nRecebemos uma solicitação para redefinir a senha da sua conta no Consciente - Seu parceiro nas finanças.\n\nPara cadastrar uma nova senha, acesse:\n${actionUrl}\n\nSe você não solicitou, ignore este email.\n\nEquipe Consciente`
     }
   } catch (err) {
     console.log('[mail_branding] Erro ao personalizar email de redefinição de senha:', err)
@@ -198,17 +198,17 @@ onMailerRecordEmailChangeSend((e) => {
 
     if (e.message) {
       if (e.message.from) {
-        e.message.from.name = 'Eleva App - Seu Agente Financeiro'
+        e.message.from.name = 'Consciente - Seu parceiro nas finanças'
       }
 
-      e.message.subject = 'Confirme seu novo email no Eleva App'
+      e.message.subject = 'Confirme seu novo email no Consciente'
 
       e.message.html = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Confirme seu novo email no Eleva App</title>
+  <title>Confirme seu novo email no Consciente</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0f172a; padding: 40px 16px;">
@@ -218,10 +218,10 @@ onMailerRecordEmailChangeSend((e) => {
           <tr>
             <td align="center" style="padding-bottom: 24px;">
               <div style="display: inline-block; background-color: #4f46e5; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 20px; letter-spacing: -0.5px;">
-                Eleva App
+                Consciente
               </div>
               <p style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; font-weight: 500;">
-                Eleva App - Seu Agente Financeiro
+                Consciente - Seu parceiro nas finanças
               </p>
             </td>
           </tr>
@@ -234,7 +234,7 @@ onMailerRecordEmailChangeSend((e) => {
                 Olá, <strong>${userName}</strong>!
               </p>
               <p style="margin: 0 0 24px 0; color: #cbd5e1;">
-                Você solicitou a alteração do endereço de email da sua conta no <strong>Eleva App</strong>. Clique no botão abaixo para confirmar este novo endereço:
+                Você solicitou a alteração do endereço de email da sua conta no <strong>Consciente</strong>. Clique no botão abaixo para confirmar este novo endereço:
               </p>
             </td>
           </tr>
@@ -260,7 +260,7 @@ onMailerRecordEmailChangeSend((e) => {
           </tr>
           <tr>
             <td align="center" style="padding-top: 24px; font-size: 12px; color: #64748b;">
-              © Eleva App — Seu Agente Financeiro. Todos os direitos reservados.
+              © Consciente — Seu parceiro nas finanças. Todos os direitos reservados.
             </td>
           </tr>
         </table>
@@ -271,7 +271,7 @@ onMailerRecordEmailChangeSend((e) => {
 </html>
       `.trim()
 
-      e.message.text = `Olá, ${userName}!\n\nVocê solicitou a alteração do email da sua conta no Eleva App - Seu Agente Financeiro.\n\nPara confirmar seu novo email, acesse:\n${actionUrl}\n\nSe você não solicitou, ignore este email.\n\nEquipe Eleva App`
+      e.message.text = `Olá, ${userName}!\n\nVocê solicitou a alteração do email da sua conta no Consciente - Seu parceiro nas finanças.\n\nPara confirmar seu novo email, acesse:\n${actionUrl}\n\nSe você não solicitou, ignore este email.\n\nEquipe Consciente`
     }
   } catch (err) {
     console.log('[mail_branding] Erro ao personalizar email de alteração:', err)

@@ -46,7 +46,7 @@ export const VerifyEmail: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Verificação de Email</h1>
           <p className="text-sm text-indigo-300 font-medium mt-1">
-            Eleva App - Seu Agente Financeiro
+            Consciente - Seu parceiro nas finanças
           </p>
         </div>
 
@@ -72,7 +72,7 @@ export const VerifyEmail: React.FC = () => {
                 </div>
                 <h2 className="text-lg font-semibold text-white">Email verificado com sucesso!</h2>
                 <p className="text-sm text-slate-300">
-                  Sua conta no <strong>Eleva App</strong> foi confirmada. Agora você pode acessar o
+                  Sua conta no <strong>Consciente</strong> foi confirmada. Agora você pode acessar o
                   painel financeiro.
                 </p>
                 <Button

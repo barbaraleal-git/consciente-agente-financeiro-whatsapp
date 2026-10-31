@@ -44,7 +44,7 @@ export const ConfirmEmailChange: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Alteração de Email</h1>
           <p className="text-sm text-indigo-300 font-medium mt-1">
-            Eleva App - Seu Agente Financeiro
+            Consciente - Seu parceiro nas finanças
           </p>
         </div>
 
@@ -68,8 +68,8 @@ export const ConfirmEmailChange: React.FC = () => {
                 </div>
                 <h2 className="text-lg font-semibold text-white">Email alterado com sucesso!</h2>
                 <p className="text-sm text-slate-300">
-                  Seu novo endereço foi confirmado no <strong>Eleva App</strong>. Faça login com seu
-                  novo email para acessar sua conta.
+                  Seu novo endereço foi confirmado no <strong>Consciente</strong>. Faça login com
+                  seu novo email para acessar sua conta.
                 </p>
                 <Button
                   asChild

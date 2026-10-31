@@ -366,7 +366,8 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
 
             const existingConvId = contact.getString('conversation_id') || null
-            let promptForAgent = textContent
+            const todayStr = new Date().toISOString().slice(0, 10)
+            let promptForAgent = `[Data atual para registro: ${todayStr}. IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500)]: ${textContent}`
             if (!isRegistered) {
               promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${textContent}`
             }
@@ -910,8 +911,9 @@ routerAdd(
       }
 
       const existingConvId = contact.getString('conversation_id') || null
+      const todayStr = new Date().toISOString().slice(0, 10)
 
-      let promptForAgent = message
+      let promptForAgent = `[Data atual para registro: ${todayStr}. IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500)]: ${message}`
       if (!isRegistered) {
         promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${message}`
       }

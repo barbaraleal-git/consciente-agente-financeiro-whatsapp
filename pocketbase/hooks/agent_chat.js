@@ -19,6 +19,8 @@ routerAdd(
 
       const stream = body.stream === true
       const conversationId = body.conversation_id || null
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const promptWithContext = `[Data atual para registro: ${todayStr}. IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500)]: ${message}`
 
       if (stream) {
         const conv = $ai.agent('financeiro-whatsapp').getOrCreateConversation({
@@ -30,7 +32,7 @@ routerAdd(
         const iter = $ai.agent('financeiro-whatsapp').chat({
           user_id: userId,
           conversation_id: conv.id,
-          message: message,
+          message: promptWithContext,
           stream: true,
         })
 
@@ -46,7 +48,7 @@ routerAdd(
         result = $ai.agent('financeiro-whatsapp').chat({
           user_id: userId,
           conversation_id: conversationId,
-          message: message,
+          message: promptWithContext,
         })
       } catch (chatErr) {
         if (
@@ -56,7 +58,7 @@ routerAdd(
           result = $ai.agent('financeiro-whatsapp').chat({
             user_id: userId,
             conversation_id: null,
-            message: message,
+            message: promptWithContext,
           })
         } else {
           throw chatErr

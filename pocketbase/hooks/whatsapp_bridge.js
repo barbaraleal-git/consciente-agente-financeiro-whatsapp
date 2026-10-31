@@ -374,6 +374,16 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             let agentReply = ''
             let newConvId = existingConvId
 
+            const isConvNotFoundError = function (err) {
+              if (!err) return false
+              const errStr = String(err).toLowerCase()
+              return (
+                errStr.includes('conversation not found') ||
+                errStr.includes('conversation_not_found') ||
+                (err.message && /conversation not found/i.test(err.message))
+              )
+            }
+
             try {
               const agentResult = $ai.agent('financeiro-whatsapp').chat({
                 user_id: activeUserId,
@@ -384,12 +394,46 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               newConvId = agentResult.conversation_id || existingConvId
             } catch (aErr) {
               console.log('[whatsapp_bridge] Falha ao executar agente:', aErr)
-              if (!isRegistered) {
-                agentReply =
-                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
-              } else {
-                agentReply =
-                  'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira no Consciente. Por favor, tente novamente em alguns instantes!'
+
+              // Se a conversa anterior expirou ou não existe mais, limpa e tenta uma nova conversa limpa
+              if (existingConvId && isConvNotFoundError(aErr)) {
+                console.log(
+                  '[whatsapp_bridge] Conversation_id inválido (' +
+                    existingConvId +
+                    '). Tentando novamente com nova conversa limpa...',
+                )
+                try {
+                  const retryResult = $ai.agent('financeiro-whatsapp').chat({
+                    user_id: activeUserId,
+                    conversation_id: null,
+                    message: promptForAgent,
+                  })
+                  agentReply = retryResult.content || ''
+                  newConvId = retryResult.conversation_id || null
+                  console.log(
+                    '[whatsapp_bridge] Recuperação bem-sucedida! Nova conversation_id:',
+                    newConvId,
+                  )
+                } catch (retryErr) {
+                  console.log('[whatsapp_bridge] Falha no retry de nova conversa:', retryErr)
+                  newConvId = null
+                }
+              }
+
+              if (!agentReply) {
+                if (!isRegistered) {
+                  agentReply =
+                    'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+                } else {
+                  const errMsg = String(aErr || '')
+                  if (/network|econnrefused|timeout|timed out/i.test(errMsg)) {
+                    agentReply =
+                      'Tivemos uma pequena oscilação de conexão ao salvar seu lançamento no Consciente. Pode reenviar sua mensagem em instantes?'
+                  } else {
+                    agentReply =
+                      'Não consegui processar seu gasto agora no Consciente. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha.'
+                  }
+                }
               }
             }
 
@@ -398,7 +442,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               const currentCount = contact.getInt('messages_count') || 0
               contact.set('messages_count', currentCount + 1)
               contact.set('last_message_at', new Date().toISOString())
-              if (newConvId) contact.set('conversation_id', newConvId)
+              contact.set('conversation_id', newConvId || '')
               $app.save(contact)
             } catch (_) {}
 
@@ -875,6 +919,16 @@ routerAdd(
       let agentReply = ''
       let newConvId = existingConvId
 
+      const isConvNotFoundError = function (err) {
+        if (!err) return false
+        const errStr = String(err).toLowerCase()
+        return (
+          errStr.includes('conversation not found') ||
+          errStr.includes('conversation_not_found') ||
+          (err.message && /conversation not found/i.test(err.message))
+        )
+      }
+
       try {
         const agentResult = $ai.agent('financeiro-whatsapp').chat({
           user_id: activeUserId,
@@ -885,12 +939,46 @@ routerAdd(
         newConvId = agentResult.conversation_id || existingConvId
       } catch (aErr) {
         console.log('[whatsapp_bridge] Falha ao executar agente no simulate:', aErr)
-        if (!isRegistered) {
-          agentReply =
-            'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
-        } else {
-          agentReply =
-            'Desculpe, tive uma instabilidade momentânea ao processar sua solicitação financeira no Consciente. Por favor, tente novamente em alguns instantes!'
+
+        // Se a conversa anterior expirou ou não existe mais, limpa e tenta uma nova conversa limpa
+        if (existingConvId && isConvNotFoundError(aErr)) {
+          console.log(
+            '[whatsapp_bridge] Conversation_id inválido no simulate (' +
+              existingConvId +
+              '). Tentando novamente com nova conversa limpa...',
+          )
+          try {
+            const retryResult = $ai.agent('financeiro-whatsapp').chat({
+              user_id: activeUserId,
+              conversation_id: null,
+              message: promptForAgent,
+            })
+            agentReply = retryResult.content || ''
+            newConvId = retryResult.conversation_id || null
+            console.log(
+              '[whatsapp_bridge] Recuperação no simulate bem-sucedida! Nova conversation_id:',
+              newConvId,
+            )
+          } catch (retryErr) {
+            console.log('[whatsapp_bridge] Falha no retry de nova conversa no simulate:', retryErr)
+            newConvId = null
+          }
+        }
+
+        if (!agentReply) {
+          if (!isRegistered) {
+            agentReply =
+              'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+          } else {
+            const errMsg = String(aErr || '')
+            if (/network|econnrefused|timeout|timed out/i.test(errMsg)) {
+              agentReply =
+                'Tivemos uma pequena oscilação de conexão ao salvar seu lançamento no Consciente. Pode reenviar sua mensagem em instantes?'
+            } else {
+              agentReply =
+                'Não consegui processar seu gasto agora no Consciente. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha.'
+            }
+          }
         }
       }
 
@@ -899,7 +987,7 @@ routerAdd(
         const currentCount = contact.getInt('messages_count') || 0
         contact.set('messages_count', currentCount + 1)
         contact.set('last_message_at', new Date().toISOString())
-        if (newConvId) contact.set('conversation_id', newConvId)
+        contact.set('conversation_id', newConvId || '')
         $app.save(contact)
       } catch (_) {}
 

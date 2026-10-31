@@ -41,11 +41,27 @@ routerAdd(
         return
       }
 
-      const result = $ai.agent('financeiro-whatsapp').chat({
-        user_id: userId,
-        conversation_id: conversationId,
-        message: message,
-      })
+      let result
+      try {
+        result = $ai.agent('financeiro-whatsapp').chat({
+          user_id: userId,
+          conversation_id: conversationId,
+          message: message,
+        })
+      } catch (chatErr) {
+        if (
+          conversationId &&
+          (chatErr instanceof SkipAiAgentsError || /conversation not found/i.test(String(chatErr)))
+        ) {
+          result = $ai.agent('financeiro-whatsapp').chat({
+            user_id: userId,
+            conversation_id: null,
+            message: message,
+          })
+        } else {
+          throw chatErr
+        }
+      }
 
       return e.json(200, {
         conversation_id: result.conversation_id,

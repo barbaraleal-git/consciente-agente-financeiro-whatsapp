@@ -100,48 +100,12 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         }
       } catch (_) {}
 
-      // 3. Busca na coleção whatsapp_status (canal do owner)
-      try {
-        const statusRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 100, 0)
-        for (let s = 0; s < statusRecords.length; s++) {
-          const rec = statusRecords[s]
-          const recPhone = normalizeDigits(rec.getString('phone_number'))
-          if (recPhone && suffixMatch(recPhone, phoneDigits)) {
-            const ownerId = rec.getString('owner')
-            if (ownerId) {
-              const u = $app.findRecordById('_pb_users_auth_', ownerId)
-              if (u) return u
-            }
-          }
-        }
-      } catch (_) {}
+      // 3. Busca na coleção whatsapp_status (canal do owner) — DESATIVADO
+      // O número do bot/canal da Meta não deve associar visitantes a usuários de forma implícita.
 
-      // 4. Heurística por nome de perfil no WhatsApp (ex: "Barbara Leal", "Lygia Leal", "Kelly Lidiane")
-      if (senderName && senderName.length >= 3 && senderName !== 'Contato WhatsApp') {
-        try {
-          const cleanSender = senderName.trim().toLowerCase()
-          const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 200, 0)
-          for (let u = 0; u < users.length; u++) {
-            const user = users[u]
-            const userName = (user.getString('name') || '').trim().toLowerCase()
-            if (userName) {
-              if (
-                userName === cleanSender ||
-                cleanSender.includes(userName) ||
-                userName.includes(cleanSender)
-              ) {
-                try {
-                  if (!user.getString('phone')) {
-                    user.set('phone', phoneDigits)
-                    $app.save(user)
-                  }
-                } catch (_) {}
-                return user
-              }
-            }
-          }
-        } catch (_) {}
-      }
+      // 4. Heurística por nome de perfil no WhatsApp — DESATIVADA
+      // Não adivinhar nem religar números automaticamente por similaridade de nome de perfil,
+      // permitindo que qualquer contato (inclusive com mesmo nome) teste como novo cliente.
 
       return null
     }
@@ -876,48 +840,11 @@ routerAdd(
           }
         } catch (_) {}
 
-        // 3. Busca na coleção whatsapp_status (canal do owner)
-        try {
-          const statusRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 100, 0)
-          for (let s = 0; s < statusRecords.length; s++) {
-            const rec = statusRecords[s]
-            const recPhone = normalizeDigits(rec.getString('phone_number'))
-            if (recPhone && suffixMatch(recPhone, phoneDigits)) {
-              const ownerId = rec.getString('owner')
-              if (ownerId) {
-                const u = $app.findRecordById('_pb_users_auth_', ownerId)
-                if (u) return u
-              }
-            }
-          }
-        } catch (_) {}
+        // 3. Busca na coleção whatsapp_status (canal do owner) — DESATIVADO
+        // O número do canal não deve associar visitantes a usuários de forma implícita.
 
-        // 4. Heurística por nome de perfil no WhatsApp (ex: "Barbara Leal", "Lygia Leal", "Kelly Lidiane")
-        if (senderName && senderName.length >= 3 && senderName !== 'Contato WhatsApp') {
-          try {
-            const cleanSender = senderName.trim().toLowerCase()
-            const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 200, 0)
-            for (let u = 0; u < users.length; u++) {
-              const user = users[u]
-              const userName = (user.getString('name') || '').trim().toLowerCase()
-              if (userName) {
-                if (
-                  userName === cleanSender ||
-                  cleanSender.includes(userName) ||
-                  userName.includes(cleanSender)
-                ) {
-                  try {
-                    if (!user.getString('phone')) {
-                      user.set('phone', phoneDigits)
-                      $app.save(user)
-                    }
-                  } catch (_) {}
-                  return user
-                }
-              }
-            }
-          } catch (_) {}
-        }
+        // 4. Heurística por nome de perfil no WhatsApp — DESATIVADA
+        // Não religar números automaticamente por similaridade de nome no simulate.
 
         return null
       }

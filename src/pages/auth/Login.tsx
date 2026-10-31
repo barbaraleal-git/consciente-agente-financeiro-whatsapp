@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Bot, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
+import { Bot, Loader2, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 export const Login: React.FC = () => {
   const { login, isAuthenticated, user, logout } = useAuth()
@@ -21,6 +21,7 @@ export const Login: React.FC = () => {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -73,13 +74,13 @@ export const Login: React.FC = () => {
             <Bot className="w-8 h-8" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
-            Eleva App
+            Consciente
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
               WhatsApp AI
             </span>
           </h1>
           <p className="text-sm text-indigo-300 font-medium mt-1">
-            Eleva App - Seu Agente Financeiro
+            Consciente - Seu parceiro nas finanças
           </p>
           <p className="text-xs text-slate-400 mt-0.5">
             Controle inteligente de custos e caixinhas em tempo real
@@ -174,20 +175,35 @@ export const Login: React.FC = () => {
                     Esqueci minha senha
                   </Link>
                 </div>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => setPassTouched(true)}
-                  className={`bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 ${
-                    passTouched && !isPassValid ? 'border-red-500' : ''
-                  }`}
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => setPassTouched(true)}
+                    className={`bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 pr-10 ${
+                      passTouched && !isPassValid ? 'border-red-500' : ''
+                    }`}
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-r-md flex items-center justify-center"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
                 {passTouched && !isPassValid && (
                   <p className="text-xs text-red-400">A senha deve ter no mínimo 8 caracteres</p>
                 )}

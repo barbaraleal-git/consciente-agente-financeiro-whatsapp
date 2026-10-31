@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Bot, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Bot, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react'
 
 export const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams()
@@ -15,6 +15,8 @@ export const ResetPassword: React.FC = () => {
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +62,7 @@ export const ResetPassword: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Redefinir Senha</h1>
           <p className="text-sm text-indigo-300 font-medium mt-1">
-            Eleva App - Seu Agente Financeiro
+            Consciente - Seu parceiro nas finanças
           </p>
         </div>
 
@@ -112,32 +114,66 @@ export const ResetPassword: React.FC = () => {
                     <Label htmlFor="password" className="text-xs text-slate-300">
                       Nova Senha (mín. 8 caracteres)
                     </Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500"
-                      disabled={isLoading}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 pr-10"
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-r-md flex items-center justify-center"
+                        tabIndex={-1}
+                        aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <Label htmlFor="confirmPassword" className="text-xs text-slate-300">
                       Confirmar Nova Senha
                     </Label>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="••••••••"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500"
-                      disabled={isLoading}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 pr-10"
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-r-md flex items-center justify-center"
+                        tabIndex={-1}
+                        aria-label={
+                          showConfirmPassword
+                            ? 'Ocultar confirmação de senha'
+                            : 'Mostrar confirmação de senha'
+                        }
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <Button

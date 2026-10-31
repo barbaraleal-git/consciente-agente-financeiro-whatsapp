@@ -34,6 +34,38 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       return digits
     }
 
+    const getOrCreateGuestUser = function () {
+      try {
+        const guest = $app.findAuthRecordByEmail(
+          '_pb_users_auth_',
+          'whatsapp-visitante@agente.internal',
+        )
+        if (guest && guest.id) return guest
+      } catch (_) {}
+
+      try {
+        const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 1, 0)
+        if (users.length > 0 && users[0].id) return users[0]
+      } catch (_) {}
+
+      try {
+        const usersCol = $app.findCollectionByNameOrId('_pb_users_auth_')
+        const newGuest = new Record(usersCol)
+        newGuest.setEmail('whatsapp-visitante@agente.internal')
+        newGuest.setPassword('Skip@Pass123!')
+        newGuest.setVerified(true)
+        newGuest.set('name', 'Visitante WhatsApp')
+        newGuest.set('onboarding_completed', true)
+        $app.save(newGuest)
+        console.log('[whatsapp_bridge] Usuário visitante criado sob demanda:', newGuest.id)
+        return newGuest
+      } catch (err) {
+        console.log('[whatsapp_bridge] Falha ao criar usuário visitante sob demanda:', err)
+      }
+
+      return null
+    }
+
     const resolveUser = function (phoneDigits, senderName) {
       if (!phoneDigits) return null
 
@@ -299,6 +331,10 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               msg.interactive.button_reply?.title || msg.interactive.list_reply?.title || ''
           }
 
+          console.log(
+            `[whatsapp_bridge] Recebido webhook: from=${fromRaw}, type=${msgType}, text="${textContent.slice(0, 100)}"`,
+          )
+
           if (fromRaw && textContent) {
             const phoneDigits = normalizeDigits(fromRaw)
             let senderName = ''
@@ -308,6 +344,9 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 
             // 1. Localiza usuário vinculado
             const matchedUser = resolveUser(phoneDigits, senderName)
+            console.log(
+              `[whatsapp_bridge] Usuário vinculado para ${phoneDigits}: ${matchedUser ? matchedUser.id + ' (' + matchedUser.getString('email') + ')' : 'NENHUM (não cadastrado)'}`,
+            )
 
             // 2. Busca ou cria whatsapp_contact
             const contactsCol = $app.findCollectionByNameOrId('whatsapp_contacts')
@@ -349,21 +388,15 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               activeUserId = matchedUser.id
               isRegistered = true
             } else {
-              try {
-                const guest = $app.findAuthRecordByEmail(
-                  '_pb_users_auth_',
-                  'whatsapp-visitante@agente.internal',
-                )
+              const guest = getOrCreateGuestUser()
+              if (guest) {
                 activeUserId = guest.id
-              } catch (_) {
-                const anyUsers = $app.findRecordsByFilter('_pb_users_auth_', '', 'created', 1, 0)
-                if (anyUsers.length > 0) activeUserId = anyUsers[0].id
               }
             }
 
-            if (!activeUserId) {
-              continue
-            }
+            console.log(
+              `[whatsapp_bridge] activeUserId para agente: "${activeUserId}", isRegistered=${isRegistered}`,
+            )
 
             const existingConvId = contact.getString('conversation_id') || null
             const todayStr = new Date().toISOString().slice(0, 10)
@@ -385,67 +418,85 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               )
             }
 
-            try {
-              const agentResult = $ai.agent('financeiro-whatsapp').chat({
-                user_id: activeUserId,
-                conversation_id: existingConvId,
-                message: promptForAgent,
-              })
-              agentReply = agentResult.content || ''
-              newConvId = agentResult.conversation_id || existingConvId
-            } catch (aErr) {
-              console.log('[whatsapp_bridge] Falha ao executar agente:', aErr)
-
-              // Se a conversa anterior expirou ou não existe mais, limpa e tenta uma nova conversa limpa
-              if (existingConvId && isConvNotFoundError(aErr)) {
+            // Executa o agente se tivermos activeUserId válido
+            if (activeUserId) {
+              try {
                 console.log(
-                  '[whatsapp_bridge] Conversation_id inválido (' +
-                    existingConvId +
-                    '). Tentando novamente com nova conversa limpa...',
+                  `[whatsapp_bridge] Chamando $ai.agent('financeiro-whatsapp').chat user_id=${activeUserId}, conv_id=${existingConvId}`,
                 )
-                try {
-                  const retryResult = $ai.agent('financeiro-whatsapp').chat({
-                    user_id: activeUserId,
-                    conversation_id: null,
-                    message: promptForAgent,
-                  })
-                  agentReply = retryResult.content || ''
-                  newConvId = retryResult.conversation_id || null
-                  console.log(
-                    '[whatsapp_bridge] Recuperação bem-sucedida! Nova conversation_id:',
-                    newConvId,
-                  )
-                } catch (retryErr) {
-                  console.log('[whatsapp_bridge] Falha no retry de nova conversa:', retryErr)
-                  newConvId = null
-                }
-              }
+                const agentResult = $ai.agent('financeiro-whatsapp').chat({
+                  user_id: activeUserId,
+                  conversation_id: existingConvId,
+                  message: promptForAgent,
+                })
+                agentReply = agentResult.content || ''
+                newConvId = agentResult.conversation_id || existingConvId
+                console.log(
+                  `[whatsapp_bridge] Agente respondeu com sucesso! conv_id=${newConvId}, tamanho=${agentReply.length}`,
+                )
+              } catch (aErr) {
+                console.log('[whatsapp_bridge] Falha ao executar agente:', aErr)
 
-              if (!agentReply) {
-                if (!isRegistered) {
-                  agentReply =
-                    'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
-                } else {
-                  const errMsg = String(aErr || '')
-                  if (/network|econnrefused|timeout|timed out/i.test(errMsg)) {
-                    agentReply =
-                      'Tivemos uma pequena oscilação de conexão ao salvar seu lançamento no Consciente. Pode reenviar sua mensagem em instantes?'
-                  } else {
-                    agentReply =
-                      'Não consegui processar seu gasto agora no Consciente. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha.'
+                // Se a conversa anterior expirou ou não pertence a este usuário, tenta com nova conversa limpa
+                if (existingConvId && isConvNotFoundError(aErr)) {
+                  console.log(
+                    '[whatsapp_bridge] Conversation_id inválido (' +
+                      existingConvId +
+                      '). Tentando novamente com nova conversa limpa...',
+                  )
+                  try {
+                    const retryResult = $ai.agent('financeiro-whatsapp').chat({
+                      user_id: activeUserId,
+                      conversation_id: null,
+                      message: promptForAgent,
+                    })
+                    agentReply = retryResult.content || ''
+                    newConvId = retryResult.conversation_id || null
+                    console.log(
+                      '[whatsapp_bridge] Recuperação bem-sucedida! Nova conversation_id:',
+                      newConvId,
+                    )
+                  } catch (retryErr) {
+                    console.log('[whatsapp_bridge] Falha no retry de nova conversa:', retryErr)
+                    newConvId = null
                   }
                 }
               }
+            } else {
+              console.log(
+                '[whatsapp_bridge] Nenhum activeUserId encontrado. Usando fallback de boas-vindas diretamente.',
+              )
             }
 
-            // Atualiza contato
+            // Fallback garantido: toda mensagem SEMPRE produz uma resposta amigável
+            if (!agentReply) {
+              if (!isRegistered) {
+                agentReply =
+                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+              } else {
+                agentReply =
+                  'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+              }
+              console.log(
+                `[whatsapp_bridge] Mensagem de fallback gerada: "${agentReply.slice(0, 100)}"`,
+              )
+            }
+
+            // Atualiza contato: incrementa contagem e salva data e conversa
             try {
               const currentCount = contact.getInt('messages_count') || 0
               contact.set('messages_count', currentCount + 1)
               contact.set('last_message_at', new Date().toISOString())
-              contact.set('conversation_id', newConvId || '')
+              if (newConvId) {
+                contact.set('conversation_id', newConvId)
+              }
               $app.save(contact)
-            } catch (_) {}
+              console.log(
+                `[whatsapp_bridge] Contato ${phoneDigits} atualizado: count=${currentCount + 1}, conv=${newConvId || 'vazio'}`,
+              )
+            } catch (saveErr) {
+              console.log('[whatsapp_bridge] Erro ao salvar contato:', saveErr)
+            }
 
             // Envia resposta no WhatsApp pela WhatsApp Cloud API da Meta oficial
             if (agentReply) {
@@ -755,6 +806,38 @@ routerAdd(
         return digits
       }
 
+      const getOrCreateGuestUser = function () {
+        try {
+          const guest = $app.findAuthRecordByEmail(
+            '_pb_users_auth_',
+            'whatsapp-visitante@agente.internal',
+          )
+          if (guest && guest.id) return guest
+        } catch (_) {}
+
+        try {
+          const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 1, 0)
+          if (users.length > 0 && users[0].id) return users[0]
+        } catch (_) {}
+
+        try {
+          const usersCol = $app.findCollectionByNameOrId('_pb_users_auth_')
+          const newGuest = new Record(usersCol)
+          newGuest.setEmail('whatsapp-visitante@agente.internal')
+          newGuest.setPassword('Skip@Pass123!')
+          newGuest.setVerified(true)
+          newGuest.set('name', 'Visitante WhatsApp')
+          newGuest.set('onboarding_completed', true)
+          $app.save(newGuest)
+          console.log('[whatsapp_bridge] Usuário visitante criado sob demanda:', newGuest.id)
+          return newGuest
+        } catch (err) {
+          console.log('[whatsapp_bridge] Falha ao criar usuário visitante sob demanda:', err)
+        }
+
+        return null
+      }
+
       const resolveUser = function (phoneDigits, senderName) {
         if (!phoneDigits) return null
 
@@ -839,6 +922,73 @@ routerAdd(
         return null
       }
 
+      const sendMetaMessage = function (toNumber, textBody) {
+        const cleanTo = normalizeDigits(toNumber)
+        if (!cleanTo) return { success: false, error: 'Número inválido' }
+
+        let activePhoneId = '1314873981716321'
+        let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+        let statusRecord = null
+
+        try {
+          const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+          for (let idx = 0; idx < wsList.length; idx++) {
+            const rec = wsList[idx]
+            if (rec.getString('phone_number_id')) {
+              activePhoneId = rec.getString('phone_number_id')
+            }
+            const recToken = rec.getString('access_token')
+            if (recToken && !token) {
+              token = recToken
+            }
+            if (!statusRecord) statusRecord = rec
+            if (recToken) {
+              statusRecord = rec
+              break
+            }
+          }
+        } catch (_) {}
+
+        if (!token) {
+          return { success: false, error: 'Token de acesso da Meta não configurado' }
+        }
+
+        const endpoint = 'https://graph.facebook.com/v21.0/' + activePhoneId + '/messages'
+        const payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanTo,
+          type: 'text',
+          text: {
+            preview_url: false,
+            body: String(textBody || '').trim(),
+          },
+        }
+
+        let res = null
+        try {
+          res = $http.send({
+            url: endpoint,
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer ' + token,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+            timeout: 30,
+          })
+        } catch (httpErr) {
+          return { success: false, error: httpErr ? httpErr.message || String(httpErr) : '' }
+        }
+
+        const statusCode = res.statusCode
+        if (statusCode >= 200 && statusCode < 300) {
+          return { success: true, status: statusCode }
+        }
+
+        return { success: false, status: statusCode, error: 'Erro HTTP ' + statusCode }
+      }
+
       const body = e.requestInfo().body || {}
       const rawPhone = body.phone_number
       const message = body.message
@@ -894,20 +1044,10 @@ routerAdd(
         activeUserId = matchedUser.id
         isRegistered = true
       } else {
-        try {
-          const guest = $app.findAuthRecordByEmail(
-            '_pb_users_auth_',
-            'whatsapp-visitante@agente.internal',
-          )
+        const guest = getOrCreateGuestUser()
+        if (guest) {
           activeUserId = guest.id
-        } catch (_) {
-          const anyUsers = $app.findRecordsByFilter('_pb_users_auth_', '', 'created', 1, 0)
-          if (anyUsers.length > 0) activeUserId = anyUsers[0].id
         }
-      }
-
-      if (!activeUserId) {
-        return e.json(500, { error: 'Nenhum usuário disponível para executar o agente.' })
       }
 
       const existingConvId = contact.getString('conversation_id') || null
@@ -931,56 +1071,54 @@ routerAdd(
         )
       }
 
-      try {
-        const agentResult = $ai.agent('financeiro-whatsapp').chat({
-          user_id: activeUserId,
-          conversation_id: existingConvId,
-          message: promptForAgent,
-        })
-        agentReply = agentResult.content || ''
-        newConvId = agentResult.conversation_id || existingConvId
-      } catch (aErr) {
-        console.log('[whatsapp_bridge] Falha ao executar agente no simulate:', aErr)
+      if (activeUserId) {
+        try {
+          const agentResult = $ai.agent('financeiro-whatsapp').chat({
+            user_id: activeUserId,
+            conversation_id: existingConvId,
+            message: promptForAgent,
+          })
+          agentReply = agentResult.content || ''
+          newConvId = agentResult.conversation_id || existingConvId
+        } catch (aErr) {
+          console.log('[whatsapp_bridge] Falha ao executar agente no simulate:', aErr)
 
-        // Se a conversa anterior expirou ou não existe mais, limpa e tenta uma nova conversa limpa
-        if (existingConvId && isConvNotFoundError(aErr)) {
-          console.log(
-            '[whatsapp_bridge] Conversation_id inválido no simulate (' +
-              existingConvId +
-              '). Tentando novamente com nova conversa limpa...',
-          )
-          try {
-            const retryResult = $ai.agent('financeiro-whatsapp').chat({
-              user_id: activeUserId,
-              conversation_id: null,
-              message: promptForAgent,
-            })
-            agentReply = retryResult.content || ''
-            newConvId = retryResult.conversation_id || null
+          if (existingConvId && isConvNotFoundError(aErr)) {
             console.log(
-              '[whatsapp_bridge] Recuperação no simulate bem-sucedida! Nova conversation_id:',
-              newConvId,
+              '[whatsapp_bridge] Conversation_id inválido no simulate (' +
+                existingConvId +
+                '). Tentando novamente com nova conversa limpa...',
             )
-          } catch (retryErr) {
-            console.log('[whatsapp_bridge] Falha no retry de nova conversa no simulate:', retryErr)
-            newConvId = null
-          }
-        }
-
-        if (!agentReply) {
-          if (!isRegistered) {
-            agentReply =
-              'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. Seu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
-          } else {
-            const errMsg = String(aErr || '')
-            if (/network|econnrefused|timeout|timed out/i.test(errMsg)) {
-              agentReply =
-                'Tivemos uma pequena oscilação de conexão ao salvar seu lançamento no Consciente. Pode reenviar sua mensagem em instantes?'
-            } else {
-              agentReply =
-                'Não consegui processar seu gasto agora no Consciente. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha.'
+            try {
+              const retryResult = $ai.agent('financeiro-whatsapp').chat({
+                user_id: activeUserId,
+                conversation_id: null,
+                message: promptForAgent,
+              })
+              agentReply = retryResult.content || ''
+              newConvId = retryResult.conversation_id || null
+              console.log(
+                '[whatsapp_bridge] Recuperação no simulate bem-sucedida! Nova conversation_id:',
+                newConvId,
+              )
+            } catch (retryErr) {
+              console.log(
+                '[whatsapp_bridge] Falha no retry de nova conversa no simulate:',
+                retryErr,
+              )
+              newConvId = null
             }
           }
+        }
+      }
+
+      if (!agentReply) {
+        if (!isRegistered) {
+          agentReply =
+            'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+        } else {
+          agentReply =
+            'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
         }
       }
 
@@ -989,7 +1127,9 @@ routerAdd(
         const currentCount = contact.getInt('messages_count') || 0
         contact.set('messages_count', currentCount + 1)
         contact.set('last_message_at', new Date().toISOString())
-        contact.set('conversation_id', newConvId || '')
+        if (newConvId) {
+          contact.set('conversation_id', newConvId)
+        }
         $app.save(contact)
       } catch (_) {}
 
@@ -998,62 +1138,9 @@ routerAdd(
       let remoteError = null
 
       if (sendRemote && agentReply) {
-        let activePhoneId = '1314873981716321'
-        let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
-        try {
-          const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
-          for (let idx = 0; idx < wsList.length; idx++) {
-            const rec = wsList[idx]
-            if (rec.getString('phone_number_id')) {
-              activePhoneId = rec.getString('phone_number_id')
-            }
-            const recToken = rec.getString('access_token')
-            if (recToken && !token) {
-              token = recToken
-            }
-            if (recToken) break
-          }
-        } catch (_) {}
-
-        if (!token) {
-          remoteError = 'Token de Acesso da Meta não configurado em Configurações'
-        } else {
-          try {
-            const endpoint = 'https://graph.facebook.com/v21.0/' + activePhoneId + '/messages'
-            const payload = {
-              messaging_product: 'whatsapp',
-              recipient_type: 'individual',
-              to: phoneDigits,
-              type: 'text',
-              text: {
-                preview_url: false,
-                body: String(agentReply).trim(),
-              },
-            }
-            const res = $http.send({
-              url: endpoint,
-              method: 'POST',
-              headers: {
-                Authorization: 'Bearer ' + token,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(payload),
-              timeout: 30,
-            })
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              remoteSent = true
-            } else {
-              let parsedErr = {}
-              try {
-                parsedErr = JSON.parse(res.rawText || '{}')
-              } catch (_) {}
-              const mErr = parsedErr.error || {}
-              remoteError = mErr.message || 'Erro HTTP ' + res.statusCode
-            }
-          } catch (rErr) {
-            remoteError = rErr ? rErr.message || String(rErr) : 'Falha no envio'
-          }
-        }
+        const metaRes = sendMetaMessage(phoneDigits, agentReply)
+        remoteSent = metaRes.success
+        remoteError = metaRes.error || null
       }
 
       return e.json(200, {
@@ -1218,6 +1305,15 @@ routerAdd(
   '/backend/v1/whatsapp/link-contact',
   (e) => {
     try {
+      const normalizeDigits = function (raw) {
+        if (!raw) return ''
+        let digits = String(raw).replace(/\D/g, '')
+        if (digits.length === 10 || digits.length === 11) {
+          digits = '55' + digits
+        }
+        return digits
+      }
+
       const authUser = e.auth
       if (!authUser) {
         return e.json(401, { error: 'Não autenticado' })
@@ -1233,14 +1329,6 @@ routerAdd(
           contact = $app.findRecordById('whatsapp_contacts', contactId)
         } catch (_) {}
       } else if (phone) {
-        const normalizeDigits = function (raw) {
-          if (!raw) return ''
-          let digits = String(raw).replace(/\D/g, '')
-          if (digits.length === 10 || digits.length === 11) {
-            digits = '55' + digits
-          }
-          return digits
-        }
         const cleanPhone = normalizeDigits(phone)
         try {
           contact = $app.findFirstRecordByData('whatsapp_contacts', 'phone_number', cleanPhone)

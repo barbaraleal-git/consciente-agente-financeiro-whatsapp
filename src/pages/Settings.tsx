@@ -50,8 +50,8 @@ export const Settings: React.FC = () => {
   const navigate = useNavigate()
 
   // Profile Form
-  const [name, setName] = useState(user?.name || '')
-  const [email, setEmail] = useState(user?.email || '')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
 
   // WhatsApp connection state
@@ -102,6 +102,9 @@ export const Settings: React.FC = () => {
     if (user) {
       setName(user.name || '')
       setEmail(user.email || '')
+    } else {
+      setName('')
+      setEmail('')
     }
 
     loadAllWhatsAppInfo()
@@ -132,7 +135,7 @@ export const Settings: React.FC = () => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user) return
+    if (!user?.id) return
 
     setSavingProfile(true)
     try {
@@ -384,12 +387,14 @@ export const Settings: React.FC = () => {
                 </Label>
                 <Input
                   id="pName"
+                  name="user_full_name"
+                  autoComplete="off"
+                  placeholder="Seu nome completo"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="bg-slate-50 border-slate-200 text-sm"
                 />
               </div>
-
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="pEmail" className="text-xs font-medium text-slate-700">
@@ -398,18 +403,20 @@ export const Settings: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setEmailModalOpen(true)}
-                    className="text-xs text-indigo-600 hover:underline"
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                   >
-                    Alterar email
+                    Alterar
                   </button>
                 </div>
                 <Input
                   id="pEmail"
+                  name="user_email_address"
+                  autoComplete="off"
                   value={email}
                   disabled
                   className="bg-slate-100 border-slate-200 text-slate-500 text-sm cursor-not-allowed"
                 />
-              </div>
+              </div>{' '}
             </div>
 
             <Button

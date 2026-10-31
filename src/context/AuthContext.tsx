@@ -52,13 +52,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
+  const clearLocalCaches = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        // Limpa possíveis chaves legadas de cache em localStorage e sessionStorage
+        // sem apagar a chave oficial de auth do pocketbase (pocketbase_auth)
+        const keysToPreserve = ['pocketbase_auth']
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i)
+          if (key && !keysToPreserve.includes(key)) {
+            localStorage.removeItem(key)
+          }
+        }
+        sessionStorage.clear()
+      }
+    } catch {
+      /* intentionally ignored */
+    }
+  }
+
   const login = async (email: string, pass: string) => {
+    clearLocalCaches()
     const authData = await pb.collection('users').authWithPassword<AuthUser>(email, pass)
     setUser(authData.record)
     setToken(authData.token)
   }
 
   const register = async (name: string, email: string, pass: string) => {
+    // Garante que não haja sessão residual antes de registrar nova conta
+    pb.authStore.clear()
+    setUser(null)
+    setToken(null)
+    clearLocalCaches()
+
     await pb.collection('users').create({
       email,
       name,
@@ -77,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     pb.authStore.clear()
     setUser(null)
     setToken(null)
+    clearLocalCaches()
   }
 
   const refreshUser = async () => {

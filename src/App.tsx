@@ -24,6 +24,7 @@ import Reports from '@/pages/Reports'
 import Assistant from '@/pages/Assistant'
 import Settings from '@/pages/Settings'
 import Onboarding from '@/pages/Onboarding'
+import ReleaseLog from '@/pages/ReleaseLog'
 import NotFound from '@/pages/NotFound'
 
 const App: React.FC = () => (
@@ -40,6 +41,9 @@ const App: React.FC = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
+
+          {/* Public Release Log Route */}
+          <Route path="/release/log" element={<ReleaseLog />} />
 
           {/* Protected Routes inside Global Layout */}
           <Route element={<ProtectedRoute />}>

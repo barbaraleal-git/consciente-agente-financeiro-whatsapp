@@ -6,6 +6,7 @@ export interface AuthUser extends RecordModel {
   email: string
   name?: string
   avatar?: string
+  phone?: string
   onboarding_completed?: boolean
 }
 
@@ -15,7 +16,7 @@ interface AuthContextType {
   isLoading: boolean
   isAuthenticated: boolean
   login: (email: string, pass: string) => Promise<void>
-  register: (name: string, email: string, pass: string) => Promise<void>
+  register: (name: string, email: string, pass: string, phone?: string) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
   completeOnboarding: () => Promise<void>
@@ -78,16 +79,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(authData.token)
   }
 
-  const register = async (name: string, email: string, pass: string) => {
+  const register = async (name: string, email: string, pass: string, phone?: string) => {
     // Garante que não haja sessão residual antes de registrar nova conta
     pb.authStore.clear()
     setUser(null)
     setToken(null)
     clearLocalCaches()
 
+    const cleanPhone = phone ? phone.replace(/\D/g, '') : ''
+
     await pb.collection('users').create({
       email,
       name,
+      phone: cleanPhone,
       password: pass,
       passwordConfirm: pass,
     })

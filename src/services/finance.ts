@@ -426,4 +426,29 @@ export const whatsappService = {
     }
     return data
   },
+
+  async linkContact(
+    contactId?: string,
+    phoneNumber?: string,
+  ): Promise<{ success: boolean; contact_id: string; user_id: string }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/link-contact`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: pb.authStore.token,
+        },
+        body: JSON.stringify({
+          contact_id: contactId,
+          phone_number: phoneNumber,
+        }),
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao vincular contato do WhatsApp')
+    }
+    return res.json()
+  },
 }

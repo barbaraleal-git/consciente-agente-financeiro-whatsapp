@@ -21,6 +21,7 @@ export const Register: React.FC = () => {
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -52,7 +53,7 @@ export const Register: React.FC = () => {
     setError(null)
 
     try {
-      await register(name, email, password)
+      await register(name, email, password, phone)
       setSuccess(true)
     } catch (err: unknown) {
       console.error(err)
@@ -161,6 +162,27 @@ export const Register: React.FC = () => {
                     {touched.email && !isEmailValid && (
                       <p className="text-xs text-red-400">Formato de email inválido</p>
                     )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="phone" className="text-xs text-slate-300">
+                        WhatsApp (com DDD)
+                      </Label>
+                      <span className="text-[11px] text-indigo-300 font-normal">Recomendado</span>
+                    </div>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="(11) 98765-4321"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500"
+                      disabled={isLoading}
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      O número que você usa para enviar gastos ao Consciente no WhatsApp
+                    </p>
                   </div>
 
                   <div className="space-y-1.5">

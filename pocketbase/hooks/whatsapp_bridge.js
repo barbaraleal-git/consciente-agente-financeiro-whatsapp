@@ -66,6 +66,26 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       return null
     }
 
+    const isUserAccountReady = function (u) {
+      if (!u || !u.id) return false
+      // Visitante técnico nunca é considerado usuário cadastrado
+      if (u.getString('email') === 'whatsapp-visitante@agente.internal') return false
+
+      // Critério único e centralizado de cadastro completo:
+      // Usuário existe no banco de dados. Tolera email pendente de verificação
+      // (usuária pode lançar gastos logo após criar conta sem travar no clique do email).
+      // Onboarding de caixinhas concluído (onboarding_completed: true) OU possui caixinhas/categorias criadas.
+      const onboardingFlag = u.getBool('onboarding_completed')
+      if (onboardingFlag) return true
+
+      try {
+        const cats = $app.findRecordsByFilter('categories', `owner = '${u.id}'`, '-created', 1, 0)
+        if (cats.length > 0) return true
+      } catch (_) {}
+
+      return false
+    }
+
     const resolveUser = function (phoneDigits, senderName) {
       if (!phoneDigits) return null
 
@@ -84,7 +104,9 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const contactUserId = contact.getString('user')
         if (contactUserId) {
           const u = $app.findRecordById('_pb_users_auth_', contactUserId)
-          if (u) return u
+          if (u && u.id && u.getString('email') !== 'whatsapp-visitante@agente.internal') {
+            return u
+          }
         }
       } catch (_) {}
 
@@ -93,6 +115,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 300, 0)
         for (let u = 0; u < users.length; u++) {
           const user = users[u]
+          if (user.getString('email') === 'whatsapp-visitante@agente.internal') continue
           const userPhone = normalizeDigits(user.getString('phone'))
           if (userPhone && suffixMatch(userPhone, phoneDigits)) {
             return user
@@ -100,12 +123,34 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         }
       } catch (_) {}
 
-      // 3. Busca na coleção whatsapp_status (canal do owner) — DESATIVADO
-      // O número do bot/canal da Meta não deve associar visitantes a usuários de forma implícita.
-
-      // 4. Heurística por nome de perfil no WhatsApp — DESATIVADA
-      // Não adivinhar nem religar números automaticamente por similaridade de nome de perfil,
-      // permitindo que qualquer contato (inclusive com mesmo nome) teste como novo cliente.
+      // 3. Fallback inteligente: se há exatamente 1 usuário real cadastrado no sistema
+      // (caso típico de single-user / ambiente de teste após reset) e o usuário ainda não
+      // preencheu o campo phone, faz a auto-associação automática e salva o phone
+      try {
+        const realUsers = $app.findRecordsByFilter(
+          '_pb_users_auth_',
+          "email != 'whatsapp-visitante@agente.internal'",
+          '-created',
+          10,
+          0,
+        )
+        if (realUsers.length === 1) {
+          const soleUser = realUsers[0]
+          const existingPhone = normalizeDigits(soleUser.getString('phone'))
+          if (!existingPhone || suffixMatch(existingPhone, phoneDigits)) {
+            if (!existingPhone) {
+              try {
+                soleUser.set('phone', phoneDigits)
+                $app.save(soleUser)
+                console.log(
+                  `[whatsapp_bridge] Telefone ${phoneDigits} auto-vinculado ao único usuário real cadastrado: ${soleUser.id} (${soleUser.getString('email')})`,
+                )
+              } catch (_) {}
+            }
+            return soleUser
+          }
+        }
+      } catch (_) {}
 
       return null
     }
@@ -344,13 +389,15 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
             $app.save(contact)
 
-            // 3. Determina usuário ativo para o agente
+            // 3. Determina usuário ativo para o agente e status de cadastro completo
             let activeUserId = ''
             let isRegistered = false
+            let hasCompletedOnboarding = false
 
             if (matchedUser) {
               activeUserId = matchedUser.id
               isRegistered = true
+              hasCompletedOnboarding = isUserAccountReady(matchedUser)
             } else {
               const guest = getOrCreateGuestUser()
               if (guest) {
@@ -359,14 +406,23 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
 
             console.log(
-              `[whatsapp_bridge] activeUserId para agente: "${activeUserId}", isRegistered=${isRegistered}`,
+              `[whatsapp_bridge] activeUserId para agente: "${activeUserId}", isRegistered=${isRegistered}, hasCompletedOnboarding=${hasCompletedOnboarding}`,
             )
 
             const existingConvId = contact.getString('conversation_id') || null
             const todayStr = new Date().toISOString().slice(0, 10)
-            let promptForAgent = `[Data atual para registro: ${todayStr}. IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500)]: ${textContent}`
+            let promptForAgent = `[Data atual para registro: ${todayStr}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${textContent}`
+
             if (!isRegistered) {
-              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${textContent}`
+              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
+Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Explique brevemente que você ajuda no controle diário de custos e caixinhas.
+Se a mensagem for um gasto ou dúvida, convide a pessoa a criar conta ou entrar na conta existente fornecendo OBRIGATORIAMENTE os links oficiais:
+- Link de Cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register
+- Link de Login: https://agente-financeiro-whatsapp-37fd3.goskip.app/login
+Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Configurações > Perfil para sincronizar seus lançamentos na hora!"]: ${textContent}`
+            } else if (!hasCompletedOnboarding) {
+              // Usuário cadastrado no banco mas que ainda não passou pelo onboarding de caixinhas
+              promptForAgent = `[ATENÇÃO: Usuário cadastrado (${matchedUser.getString('name') || matchedUser.getString('email')}), porém ainda sem caixinhas configuradas. Incentive-o amigavelmente a acessar https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas primeiras caixinhas ou registre o gasto em categoria padrão se ele insistir]: ${textContent}`
             }
 
             let agentReply = ''
@@ -436,7 +492,10 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             if (!agentReply) {
               if (!isRegistered) {
                 agentReply =
-                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está reconhecido no app.\n\n• Se ainda não tem conta, cadastre-se em: https://agente-financeiro-whatsapp-37fd3.goskip.app/register\n• Se já tem conta, faça login em: https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Configurações > Perfil para sincronizar seus lançamentos na hora!'
+              } else if (!hasCompletedOnboarding) {
+                agentReply =
+                  'Olá! Seu cadastro no Consciente foi localizado, mas suas caixinhas ainda precisam ser configuradas. Acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas caixinhas de gastos!'
               } else {
                 agentReply =
                   'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
@@ -824,7 +883,7 @@ routerAdd(
           const contactUserId = contact.getString('user')
           if (contactUserId) {
             const u = $app.findRecordById('_pb_users_auth_', contactUserId)
-            if (u) return u
+            if (u && u.id && u.getString('email') !== 'whatsapp-visitante@agente.internal') return u
           }
         } catch (_) {}
 
@@ -833,6 +892,7 @@ routerAdd(
           const users = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 300, 0)
           for (let u = 0; u < users.length; u++) {
             const user = users[u]
+            if (user.getString('email') === 'whatsapp-visitante@agente.internal') continue
             const userPhone = normalizeDigits(user.getString('phone'))
             if (userPhone && suffixMatch(userPhone, phoneDigits)) {
               return user
@@ -840,11 +900,29 @@ routerAdd(
           }
         } catch (_) {}
 
-        // 3. Busca na coleção whatsapp_status (canal do owner) — DESATIVADO
-        // O número do canal não deve associar visitantes a usuários de forma implícita.
-
-        // 4. Heurística por nome de perfil no WhatsApp — DESATIVADA
-        // Não religar números automaticamente por similaridade de nome no simulate.
+        // 3. Fallback: single real user
+        try {
+          const realUsers = $app.findRecordsByFilter(
+            '_pb_users_auth_',
+            "email != 'whatsapp-visitante@agente.internal'",
+            '-created',
+            10,
+            0,
+          )
+          if (realUsers.length === 1) {
+            const soleUser = realUsers[0]
+            const existingPhone = normalizeDigits(soleUser.getString('phone'))
+            if (!existingPhone || suffixMatch(existingPhone, phoneDigits)) {
+              if (!existingPhone) {
+                try {
+                  soleUser.set('phone', phoneDigits)
+                  $app.save(soleUser)
+                } catch (_) {}
+              }
+              return soleUser
+            }
+          }
+        } catch (_) {}
 
         return null
       }
@@ -980,9 +1058,14 @@ routerAdd(
       const existingConvId = contact.getString('conversation_id') || null
       const todayStr = new Date().toISOString().slice(0, 10)
 
-      let promptForAgent = `[Data atual para registro: ${todayStr}. IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500)]: ${message}`
+      let promptForAgent = `[Data atual para registro: ${todayStr}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${message}`
       if (!isRegistered) {
-        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}"). Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças, explique brevemente que você ajuda no controle diário de custos e caixinhas, responda à dúvida dele e convide-o a se cadastrar fornecendo OBRIGATORIAMENTE o link oficial de cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register para conectar as caixinhas e transações à conta dele. Se a pessoa pediu link/URL do site ou cadastro, forneça a URL completa imediatamente]: ${message}`
+        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
+Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Explique brevemente que você ajuda no controle diário de custos e caixinhas.
+Se a mensagem for um gasto ou dúvida, convide a pessoa a criar conta ou entrar na conta existente fornecendo OBRIGATORIAMENTE os links oficiais:
+- Link de Cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register
+- Link de Login: https://agente-financeiro-whatsapp-37fd3.goskip.app/login
+Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Configurações > Perfil para sincronizar seus lançamentos na hora!"]: ${message}`
       }
 
       let agentReply = ''

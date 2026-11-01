@@ -52,6 +52,7 @@ export const Settings: React.FC = () => {
   // Profile Form
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [userPhone, setUserPhone] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
 
   // WhatsApp connection state
@@ -102,6 +103,7 @@ export const Settings: React.FC = () => {
     if (user) {
       setName(user.name || '')
       setEmail(user.email || '')
+      setUserPhone(user.phone || '')
     } else {
       setName('')
       setEmail('')
@@ -139,9 +141,19 @@ export const Settings: React.FC = () => {
 
     setSavingProfile(true)
     try {
+      const cleanPhone = userPhone.replace(/\D/g, '')
       await pb.collection('users').update(user.id, {
         name: name.trim(),
+        phone: cleanPhone,
       })
+      // Se tiver contato em whatsapp_contacts com esse telefone, vincula
+      if (cleanPhone) {
+        try {
+          await whatsappService.linkContact(undefined, cleanPhone)
+        } catch {
+          /* intentionally ignored */
+        }
+      }
       await refreshUser()
       toast({ title: 'Perfil atualizado', description: 'Dados cadastrais salvos com sucesso.' })
     } catch {
@@ -416,7 +428,30 @@ export const Settings: React.FC = () => {
                   disabled
                   className="bg-slate-100 border-slate-200 text-slate-500 text-sm cursor-not-allowed"
                 />
-              </div>{' '}
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="pPhone" className="text-xs font-medium text-slate-700">
+                    WhatsApp Vinculado ao seu Perfil
+                  </Label>
+                  <span className="text-[11px] text-emerald-700 font-medium">
+                    Número que conversa com o agente
+                  </span>
+                </div>
+                <Input
+                  id="pPhone"
+                  name="user_phone_number"
+                  placeholder="Ex: 5511976729458 ou (11) 97672-9458"
+                  value={userPhone}
+                  onChange={(e) => setUserPhone(e.target.value)}
+                  className="bg-slate-50 border-slate-200 text-sm font-mono"
+                />
+                <p className="text-[11px] text-slate-500">
+                  Cadastre seu número com DDD (com ou sem 55). Toda mensagem enviada deste WhatsApp
+                  será automaticamente registrada nas suas caixinhas.
+                </p>
+              </div>
             </div>
 
             <Button
@@ -910,15 +945,26 @@ export const Settings: React.FC = () => {
             Você pode refazer a montagem guiada das suas caixinhas a qualquer momento, escolhendo
             quais categorias controlar e ajustando seus valores mensais.
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => navigate('/onboarding')}
-            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 text-xs sm:text-sm shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
-            Refazer onboarding das caixinhas
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/release/log')}
+              className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+              Ver Notas de Versão (/release/log)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/onboarding')}
+              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 text-xs sm:text-sm shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+              Refazer onboarding das caixinhas
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

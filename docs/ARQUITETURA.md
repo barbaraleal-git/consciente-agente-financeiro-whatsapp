@@ -19,14 +19,16 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
    - Recebe o payload da Meta (`entry[].changes[].value.messages[]`).
    - Dispara imediatamente status de lida e typing indicator ("digitando...") via Meta Status API para dar feedback instantâneo ao usuário sem custo de mensagens.
    - Normaliza o número E.164 (dígitos com DDI 55).
-   - **Fluxo de Mensagem de Áudio / Voice Message**:
+   - **Fluxo de Mensagem de Áudio / Voice Message (Pipeline Multi-Estratégia)**:
      - **Reconhecimento de voice message**: identifica se `type === 'audio'` ou `type === 'voice'` no payload do WhatsApp.
      - Extrai o `mediaId` do objeto (`msg.audio.id` ou `msg.voice.id`).
-     - **Download pela API da Meta**: consulta a Meta Graph API (`GET https://graph.facebook.com/v21.0/{mediaId}`) autenticando com o token permanente salvo em `whatsapp_status.access_token` para obter a URL temporária de download da mídia (`url`). Em seguida, baixa o arquivo de áudio binário utilizando o mesmo header de autorização, preservando os bytes intactos (`res.body`).
-     - **Transcrição de áudio (STT via Whisper)**: encapsula os bytes recebidos em um arquivo virtual através de `$filesystem.fileFromBytes(audioBytes, 'audio.ogg')` e submete via `multipart/form-data` utilizando a classe nativa `FormData` para o endpoint de transcrições de áudio (`/v1/audio/transcriptions`), utilizando o modelo Whisper (`whisper-1`) com idioma português (`language: 'pt'`).
-     - **Resiliência e Fallbacks**: o pipeline resolve dinamicamente as variáveis de IA (`SKIP_AI_GATEWAY_URL`, `SKIP_AI_CHAT_URL`, `SKIP_AI_GATEWAY_API_KEY`, `SKIP_AI_CHAT_API_KEY`) e testa endpoints candidatos com timeout de 30s.
-     - **Tratamento de áudio inaudível ou falha**: caso a transcrição retorne vazia ou ocorra falha momentânea, o agente responde de forma clara e orientativa, instruindo a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio sem fingir que houve fala ilegível.
-     - **Reuso do mesmo fluxo do agente**: uma vez obtido o texto transcrito (ex.: _"gastei trinta reais no almoço"_), o pipeline assume esse texto como o corpo da mensagem e segue exatamente pelo mesmo fluxo de identificação de usuário, verificação de onboarding, chamada do agente `$ai.agent('financeiro-whatsapp')` e registro na caixinha em centavos.
+     - **Download da mídia pela API da Meta**: consulta a Meta Graph API (`GET https://graph.facebook.com/v21.0/{mediaId}`) autenticando com o token permanente salvo em `whatsapp_status.access_token` para obter a URL temporária de download (`url`). Em seguida, baixa o arquivo de áudio binário utilizando o mesmo header de autorização, preservando os bytes intactos (`res.body` / `res.raw`).
+     - **Conversão Base64 e Logs por Etapa**: converte o slice de bytes para Base64 em blocos eficientes via `$security.base64Encode`, registrando logs analíticos detalhados por etapa com prefixo `[whatsapp_bridge] [AUDIO]` (tamanho em bytes, conversão base64 e status HTTP de cada tentativa).
+     - **Tentativa 1 (OpenRouter Multimodal com Áudio Base64)**: submete o áudio codificado em base64 com detecção do formato (`ogg`, `mp3`, `wav`, `m4a`) e `input_audio` aos modelos multimodais (`google/gemini-2.0-flash-001`, `google/gemini-flash-1.5`, `openai/gpt-4o-audio-preview`), instruindo retorno estrito do texto falado em pt-BR.
+     - **Tentativa 2 (Whisper Multipart FormData via OpenRouter / OpenAI)**: se a tentativa 1 não produzir texto, encapsula os bytes através de `$filesystem.fileFromBytes(audioBytes, 'audio.ogg')` e submete via `multipart/form-data` (`FormData` nativo) aos endpoints `/v1/audio/transcriptions` (`openai/whisper-large-v3`, `whisper-1`) com idioma `pt`.
+     - **Tentativa 3 (Fallback OpenAI Whisper Direto)**: caso ainda não transcreva e exista `OPENAI_API_KEY` configurada no ambiente, envia requisição direta ao endpoint da OpenAI (`https://api.openai.com/v1/audio/transcriptions`) com modelo `whisper-1`.
+     - **Mensagens Honestas e Claras ao Cliente**: caso a transcrição não produza texto (falha momentânea de rede ou áudio inaudível), o agente envia uma resposta amigável e honesta pelo WhatsApp orientando a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio, sem fingir que entendeu ou culpar o usuário.
+     - **Rastreabilidade de Origem e Data Original**: a transação é gravada com `source = 'whatsapp_audio'` (distinto de `whatsapp_text` e `manual`), preservando em `message_timestamp` a data/hora exata do envio na Meta (exibido na interface com badge dedicado "Áudio WhatsApp" e horário original). Uma vez obtido o texto transcrito, o pipeline aciona o agente `$ai.agent('financeiro-whatsapp')` e registra a despesa em centavos na caixinha correspondente.
    - Se for Texto ou Interativo: extrai o texto diretamente (`text.body`).
 2. **Resolução de Identidade (`resolveUser`)**:
    - Etapa A: Busca vínculo explícito em `whatsapp_contacts.phone_number == digits` e lê o campo `user`.
@@ -53,7 +55,7 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
   _Nota_: O usuário de serviço `whatsapp-visitante@agente.internal` é mantido para chats de visitantes.
 - **`categories`** (base): Caixinhas essenciais e personalizadas. Campos: `owner` (relation `users`), `name`, `type` (`despesa` | `receita` | `investimento`), `icon`, `color`.
 - **`budgets`** (base): Tetos mensais das caixinhas. Campos: `owner`, `category` (relation `categories`), `month` (`YYYY-MM`), `amount` (em **CENTAVOS**).
-- **`transactions`** (base): Lançamentos financeiros. Campos: `owner`, `description`, `amount` (em **CENTAVOS**), `date`, `category`, `type`, `source` (`whatsapp` | `manual` | `import` | `agent`), `note`.
+- **`transactions`** (base): Lançamentos financeiros. Campos: `owner`, `description`, `amount` (em **CENTAVOS**), `date`, `category`, `type`, `source` (`whatsapp_text` | `whatsapp_audio` | `manual` | `import` | `agent` | legado `whatsapp`), `message_timestamp` (ISO com data/hora original da mensagem na Meta), `note`.
 - **`alerts`** (base): Notificações de estouro de caixinhas (80%/90%). Campos: `owner`, `title`, `message`, `type`, `read`.
 - **`import_jobs`** (base): Histórico de importação de arquivos .txt do WhatsApp. Campos: `owner`, `filename`, `status`, `total_lines`, `imported_count`.
 

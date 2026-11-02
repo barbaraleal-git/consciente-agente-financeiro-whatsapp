@@ -169,26 +169,38 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 
 ---
 
-## H) Registro de Gasto por Áudio no WhatsApp (Voice Message)
+## H) Registro de Gasto por Áudio no WhatsApp (Voice Message — Pipeline Multi-Estratégia)
 
 1. **Passo a passo**:
    - Abra o WhatsApp no celular com o número cadastrado no Consciente.
-   - Grave uma mensagem de voz/áudio dizendo com clareza um gasto: _"gastei trinta reais no almoço"_ ou _"cinquenta reais no combustível"_.
+   - Grave e envie uma mensagem de voz/áudio dizendo com clareza um gasto: _"gastei 35 reais no almoço"_ (ou _"cinquenta reais no combustível"_).
    - Envie a mensagem de voz para o WhatsApp oficial `+55 11 94998-9868`.
 2. **Comportamento Esperado**:
    - O webhook detecta automaticamente a mensagem do tipo `audio` ou `voice`.
-   - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos).
-   - Baixa o arquivo de áudio pela Meta Cloud API autenticando com o token em `whatsapp_status.access_token` preservando os bytes intactos.
-   - Transcreve o áudio para texto via inteligência artificial (Whisper STT via multipart FormData nativo do PocketBase com `$filesystem.fileFromBytes`).
-   - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito.
-   - Registra o gasto com o **valor correto em centavos** (ex.: R$ 30,00 = `3000` centavos) e vinculado à **caixinha correta** (ex.: Alimentação ou Transporte).
-   - O agente responde em menos de 30 segundos confirmando o lançamento, o valor consumido no mês e o teto restante da caixinha.
-   - **Caso de Exceção (Áudio inaudível / Ruído / Oscilação técnica)**:
-     - Envie um áudio em silêncio ou com sopro inaudível.
-     - O agente responde de forma empática e amigável sem culpar a dicção da usuária, instruindo a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio para registro imediato na caixinha.
-3. **Validação no Painel e Banco**:
-   - Acesse `/transactions`: o lançamento consta com o valor exato, categoria correta e fonte `WhatsApp`.
-   - No banco (`transactions`): conferir que `amount` está em centavos.
+   - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos) via Meta Status API com custo zero.
+   - Baixa o binário de áudio da Meta via Graph API preservando bytes intactos e codifica em base64.
+   - Executa a cadeia multi-estratégia de transcrição:
+     - **Tentativa 1 (OpenRouter Multimodal)**: envia o áudio em base64 aos modelos multimodais (`gemini-2.0-flash-001`, `gemini-flash-1.5`, `gpt-4o-audio-preview`) com `input_audio`.
+     - **Tentativa 2 (Whisper Multipart)**: se necessário, submete FormData multipart com `$filesystem.fileFromBytes` aos endpoints Whisper.
+     - **Tentativa 3 (OpenAI Whisper Direto)**: fallback direto caso exista `OPENAI_API_KEY`.
+   - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito (ex.: _"gastei 35 reais no almoço"_).
+   - Registra a despesa na caixinha correspondente (ex.: Alimentação) com:
+     - `amount` em centavos (ex.: R$ 35,00 = `3500` centavos).
+     - `source` = `'whatsapp_audio'` (rastreabilidade precisa de áudio).
+     - `message_timestamp` preenchido com a data/hora original da mensagem da Meta (ISO).
+   - O agente responde cordialmente em menos de 30 segundos confirmando o lançamento, valor consumido e saldo restante da caixinha.
+   - **Caso de Exceção (Áudio inaudível / Ruído / Falha técnica momentânea)**:
+     - Envie um áudio em silêncio ou com ruído inaudível.
+     - O agente responde de forma empática e transparente sem culpar a usuária: informa com clareza que não foi possível decodificar a mensagem de voz e orienta a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio para registro imediato.
+3. **Validação no Painel Web e Banco**:
+   - Acesse `/transactions` ou o Dashboard:
+     - O lançamento aparece com o valor correto (R$ 35,00) e na caixinha correta (Alimentação).
+     - Exibe o badge dedicado lilás/índigo **"Áudio WhatsApp"** com ícone de microfone (diferenciado de "Texto WhatsApp" e "Manual").
+     - Exibe a **data e hora original da mensagem** (formatada a partir de `message_timestamp`).
+   - No banco de dados (`transactions`):
+     - `amount`: `3500` centavos.
+     - `source`: `'whatsapp_audio'`.
+     - `message_timestamp`: string ISO compatível com o timestamp enviado pela Meta.
 
 ---
 

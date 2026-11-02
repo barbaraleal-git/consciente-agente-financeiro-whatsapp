@@ -25,11 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.30',
+    date: '02/11/2026',
+    title: 'Pipeline de Transcrição de Áudio Multi-Estratégia e Rastreabilidade Completa de Origem',
+    tag: 'Atual',
+    highlights: [
+      'Pipeline multi-estratégia de áudio (STT): tentativa 1 com modelos multimodais de alta performance via OpenRouter (Gemini 2.0 Flash / Gemini 1.5 / GPT-4o Audio) utilizando áudio nativo em base64 com input_audio; tentativa 2 via endpoint Whisper multipart FormData nativo do PocketBase ($filesystem.fileFromBytes); tentativa 3 com fallback direto para OpenAI Whisper.',
+      'Logs analíticos por etapa: rastreamento completo de bytes baixados da Meta Graph API, codificação em base64, requisições HTTP enviadas a cada modelo e tempo de resposta, permitindo diagnóstico imediato.',
+      'Comunicação honesta e transparente: em caso de oscilação técnica ou áudio sem fala audível, o agente responde cordialmente pelo WhatsApp explicando a situação e orientando a reenviar o áudio ou digitar o gasto (ex.: "Almoço 35 reais"), sem culpar a fala do usuário nem fingir falso entendimento.',
+      'Rastreabilidade refinada de origem: distinção completa entre whatsapp_text, whatsapp_audio e manual no modelo de dados, registrando message_timestamp com a data/hora original da mensagem enviada na Meta.',
+      'Interface com badges e data/hora original: Dashboard e Extrato de Transações agora exibem badge dedicado "Áudio WhatsApp" com ícone de microfone e data-hora exata do envio original.',
+    ],
+    details: [
+      'Hook pocketbase/hooks/whatsapp_bridge.js refatorado com a cadeia multi-estratégia (Gemini 2.0 Flash, Whisper multipart e OpenAI direto), logs estruturados e propagação de message_timestamp.',
+      'Extrato de Transações (src/pages/Transactions.tsx) e Dashboard (src/pages/Dashboard.tsx) integrados com renderização do badge "Áudio WhatsApp" e formatação de message_timestamp.',
+      'Documentação técnica atualizada em docs/ARQUITETURA.md e roteiro regressivo detalhado em docs/TESTES_REGRESSIVOS.md com zero regressão.',
+    ],
+  },
+  {
     version: '0.0.28',
     date: '02/11/2026',
     title:
       'Correção do Pipeline de Transcrição de Áudio (Voice Message WhatsApp) com Multipart FormData Nativo e Tratamento Preciso',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Correção da causa raiz da transcrição de áudio: o payload enviado para a API Whisper agora utiliza FormData multipart nativo do PocketBase com $filesystem.fileFromBytes(audioBytes, "audio.ogg"), eliminando a falha de codificação que provocava respostas falsas de "não entendi".',
       'Download do binário da Meta preservado como slice de bytes (res.body) em vez de conversão prematura para texto plano (res.rawText), preservando a integridade dos cabeçalhos e codecs Ogg/Opus do WhatsApp.',

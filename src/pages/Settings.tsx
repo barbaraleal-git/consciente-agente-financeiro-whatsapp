@@ -41,6 +41,7 @@ import {
   Eye,
   Send,
   HelpCircle,
+  Mic,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -68,6 +69,11 @@ export const Settings: React.FC = () => {
   const [metaTokenInput, setMetaTokenInput] = useState('')
   const [showMetaToken, setShowMetaToken] = useState(false)
   const [savingMetaToken, setSavingMetaToken] = useState(false)
+
+  // STT Transcription API Key state (Groq / OpenAI)
+  const [sttKeyInput, setSttKeyInput] = useState('')
+  const [showSttKey, setShowSttKey] = useState(false)
+  const [savingSttKey, setSavingSttKey] = useState(false)
 
   // Test simulation & Direct message test
   const [testModalOpen, setTestModalOpen] = useState(false)
@@ -236,6 +242,42 @@ export const Settings: React.FC = () => {
       })
     } finally {
       setSavingMetaToken(false)
+    }
+  }
+
+  const handleSaveSttKey = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleanKey = sttKeyInput.trim()
+    if (!cleanKey) {
+      toast({
+        title: 'Chave vazia',
+        description: 'Cole a Chave de Transcrição (Groq ou OpenAI) antes de salvar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSavingSttKey(true)
+    try {
+      const res = await whatsappService.saveSttKey(cleanKey)
+      toast({
+        title: 'Chave de Transcrição Salva!',
+        description:
+          res.message ||
+          'Chave de voz configurada com sucesso para converter áudios do WhatsApp em texto.',
+      })
+      setSttKeyInput('')
+      setShowSttKey(false)
+      await loadAllWhatsAppInfo()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao salvar a chave de transcrição'
+      toast({
+        title: 'Erro ao salvar chave STT',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingSttKey(false)
     }
   }
 
@@ -542,6 +584,18 @@ export const Settings: React.FC = () => {
                           ? 'Token Meta Configurado'
                           : 'Token Meta Pendente'}
                       </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] font-medium ${
+                          liveStatus?.stt_configurado
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-slate-100 text-slate-600 border-slate-300'
+                        }`}
+                      >
+                        {liveStatus?.stt_configurado
+                          ? 'Transcrição de Áudio Ativa ✓'
+                          : 'Transcrição de Áudio Pendente'}
+                      </Badge>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Número oficial de atendimento pelo WhatsApp (
@@ -759,6 +813,102 @@ export const Settings: React.FC = () => {
                       )}
                       Testar Disparo Direto
                     </Button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Configuração da Chave de Transcrição de Voz (STT API Key - Groq / OpenAI) */}
+              <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-xs space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Mic className="w-3.5 h-3.5 text-indigo-600" />
+                      Chave de Transcrição de Voz / STT (Groq / OpenAI)
+                    </span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Chave de transcrição de voz (Groq/OpenAI) para converter áudios do WhatsApp em
+                      texto automaticamente. Recomendamos Groq Whisper Large v3 (gratuito e
+                      ultrarrápido).
+                    </p>
+                  </div>
+                  {liveStatus?.stt_configurado ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0"
+                    >
+                      <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
+                      Chave de transcrição configurada ✓
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0"
+                    >
+                      <AlertTriangle className="w-3 h-3 mr-1 text-amber-600" />
+                      Não configurada
+                    </Badge>
+                  )}
+                </div>
+
+                <form onSubmit={handleSaveSttKey} className="space-y-2 pt-1">
+                  <Label htmlFor="sttKey" className="text-[11px] font-medium text-slate-600">
+                    {liveStatus?.stt_configurado
+                      ? 'Substituir / Atualizar Chave de Transcrição'
+                      : 'Colar Chave de Transcrição (Groq ou OpenAI)'}
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="sttKey"
+                        type={showSttKey ? 'text' : 'password'}
+                        placeholder={
+                          liveStatus?.stt_configurado
+                            ? '•••••••••••••••••••••••••••••••••••••••• (Chave salva com segurança no banco)'
+                            : 'gsk_... ou sk-... (Cole sua chave de STT aqui)'
+                        }
+                        value={sttKeyInput}
+                        onChange={(e) => setSttKeyInput(e.target.value)}
+                        className="pr-9 font-mono text-xs bg-slate-50 border-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSttKey(!showSttKey)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        tabIndex={-1}
+                        aria-label={showSttKey ? 'Ocultar chave' : 'Mostrar chave'}
+                      >
+                        {showSttKey ? (
+                          <Eye className="w-3.5 h-3.5" />
+                        ) : (
+                          <EyeClosedIcon className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={savingSttKey || !sttKeyInput.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs shrink-0"
+                    >
+                      {savingSttKey ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          Salvando...
+                        </>
+                      ) : (
+                        'Salvar Chave'
+                      )}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span className="flex items-center gap-1">
+                      <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                      Onde pegar chave gratuita: <strong>console.groq.com/keys</strong> (modelo
+                      Whisper Large v3) ou plataforma OpenAI (platform.openai.com). O valor nunca é
+                      exibido na tela após salvo.
+                    </span>
                   </div>
                 </form>
               </div>

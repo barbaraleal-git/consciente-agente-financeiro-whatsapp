@@ -169,30 +169,39 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 
 ---
 
-## H) Registro de Gasto por Áudio no WhatsApp (Voice Message — Pipeline Multi-Estratégia)
+## H) Registro de Gasto por Áudio no WhatsApp (Voice Message — Pipeline Multi-Estratégia e Chave STT)
 
-1. **Passo a passo**:
+1. **Configuração Prévia da Chave de Transcrição (Exclusivo Admin)**:
+   - Faça login como Administrador (`barbara.ferreira.leal@gmail.com`).
+   - Acesse `/settings` (Configurações) na seção "Canal Oficial WhatsApp Business (Meta Cloud API)".
+   - Localize o card "Chave de Transcrição de Voz / STT (Groq / OpenAI)".
+   - **Cenário Sem Chave**: o badge exibe em amarelo "Não configurada" e o badge do canal exibe "Transcrição de Áudio Pendente".
+   - Cole a chave de transcrição (ex: chave da Groq obtida em `console.groq.com/keys` no formato `gsk_...` ou chave OpenAI `sk-...`).
+   - Clique em **"Salvar Chave"**.
+   - **Comportamento Esperado**: toast de sucesso, o campo é limpo e a tela atualiza exibindo o badge verde com check **"Chave de transcrição configurada ✓"** e no cabeçalho **"Transcrição de Áudio Ativa ✓"**. O valor da chave NUNCA é reexibido na interface.
+
+2. **Cenário 1: Com Chave STT Configurada (Transcreve e Registra Automaticamente)**:
    - Abra o WhatsApp no celular com o número cadastrado no Consciente.
    - Grave e envie uma mensagem de voz/áudio dizendo com clareza um gasto: _"gastei 35 reais no almoço"_ (ou _"cinquenta reais no combustível"_).
    - Envie a mensagem de voz para o WhatsApp oficial `+55 11 94998-9868`.
-2. **Comportamento Esperado**:
-   - O webhook detecta automaticamente a mensagem do tipo `audio` ou `voice`.
-   - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos) via Meta Status API com custo zero.
-   - Baixa o binário de áudio da Meta via Graph API preservando bytes intactos e codifica em base64.
-   - Executa a cadeia multi-estratégia de transcrição:
-     - **Codificação Base64**: utiliza encoder puro JavaScript de alta performance compatível com Goja JSVM (sem depender de `$security.base64Encode` ausente).
-     - **Tentativa 1 (Groq Whisper API)**: aciona Groq Whisper Large v3 (`GROQ_API_KEY`) via multipart FormData.
-     - **Tentativa 2 (OpenRouter STT)**: aciona OpenRouter Whisper Large v3 (`OPENROUTER_API_KEY`) com payload JSON e `input_audio`.
-     - **Tentativa 3 (OpenAI Whisper Direto)**: fallback direto caso exista `OPENAI_API_KEY`.
-   - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito (ex.: _"gastei 35 reais no almoço"_).
-   - Registra a despesa na caixinha correspondente (ex.: Alimentação) com:
-     - `amount` em centavos (ex.: R$ 35,00 = `3500` centavos).
-     - `source` = `'whatsapp_audio'` (rastreabilidade precisa de áudio).
-     - `message_timestamp` preenchido com a data/hora original da mensagem da Meta (ISO).
-   - O agente responde cordialmente em menos de 30 segundos confirmando o lançamento, valor consumido e saldo restante da caixinha.
-   - **Caso de Exceção (Áudio inaudível / Ruído / Provedor sem chave de STT configurada)**:
-     - Envie um áudio. Se não houver transcrição (por ausência de chave de terceiro ou ruído), o agente responde de forma empática e transparente sem culpar a usuária: "Recebi seu áudio aqui no Consciente! No momento tivemos uma instabilidade na conversão de voz para texto e não consegui ouvir o que você falou. Você pode digitar rapidinho o gasto aqui para mim (ex: "Almoço 35" ou "Mercado 120")? Já registro direto na sua caixinha!".
-3. **Validação no Painel Web e Banco**:
+   - **Comportamento Esperado**:
+     - O webhook detecta automaticamente a mensagem do tipo `audio` ou `voice`.
+     - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos) via Meta Status API com custo zero.
+     - Baixa o binário de áudio da Meta via Graph API preservando bytes intactos e codifica em base64.
+     - O hook lê `stt_api_key` de `whatsapp_status` no banco de dados e aciona Groq Whisper Large v3 (`https://api.groq.com/openai/v1/audio/transcriptions` ou OpenAI direta).
+     - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito (ex.: _"gastei 35 reais no almoço"_).
+     - Registra a despesa na caixinha correspondente (ex.: Alimentação) com:
+       - `amount` em centavos (ex.: R$ 35,00 = `3500` centavos).
+       - `source` = `'whatsapp_audio'` (rastreabilidade precisa de áudio).
+       - `message_timestamp` preenchido com a data/hora original da mensagem da Meta (ISO).
+     - O agente responde cordialmente em menos de 30 segundos confirmando o lançamento, valor consumido e saldo restante da caixinha.
+
+3. **Cenário 2: Sem Chave Configurada ou Falha Inaudível (Contingência Empática)**:
+   - Se nenhuma chave de STT estiver configurada ou se o áudio estiver completamente silencioso/com ruído inaudível:
+     - O agente envia resposta amigável, honesta e acolhedora pelo WhatsApp sem fingir que entendeu e sem culpar a fala do usuário:
+       _"Recebi seu áudio aqui no Consciente! No momento tivemos uma instabilidade na conversão de voz para texto e não consegui ouvir o que você falou. Você pode digitar rapidinho o gasto aqui para mim (ex: "Almoço 35" ou "Mercado 120")? Já registro direto na sua caixinha!"_
+
+4. **Validação no Painel Web e Banco**:
    - Acesse `/transactions` ou o Dashboard:
      - O lançamento aparece com o valor correto (R$ 35,00) e na caixinha correta (Alimentação).
      - Exibe o badge dedicado lilás/índigo **"Áudio WhatsApp"** com ícone de microfone (diferenciado de "Texto WhatsApp" e "Manual").

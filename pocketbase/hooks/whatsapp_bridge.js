@@ -570,17 +570,53 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                       `[whatsapp_bridge] [AUDIO] Áudio convertido em base64: length=${audioBase64 ? audioBase64.length : 0}`,
                     )
 
-                    // Obtenção de chaves STT configuradas no ambiente
-                    const openRouterKey =
-                      $os.getenv('OPENROUTER_API_KEY') || $os.getenv('OPENROUTER_KEY') || ''
-                    const groqKey = $os.getenv('GROQ_API_KEY') || ''
-                    const openAiKey = $os.getenv('OPENAI_API_KEY') || ''
+                    // Obtenção de chaves STT: primeiro tenta na coleção whatsapp_status (salva via painel admin)
+                    let dbSttKey = ''
+                    try {
+                      const wsListForStt = $app.findRecordsByFilter(
+                        'whatsapp_status',
+                        '',
+                        '-created',
+                        10,
+                        0,
+                      )
+                      for (let wsIdx = 0; wsIdx < wsListForStt.length; wsIdx++) {
+                        const sk = wsListForStt[wsIdx].getString('stt_api_key')
+                        if (sk) {
+                          dbSttKey = sk.trim()
+                          break
+                        }
+                      }
+                    } catch (wsErr) {
+                      console.log(
+                        '[whatsapp_bridge] [AUDIO] Falha ao consultar stt_api_key em whatsapp_status:',
+                        wsErr,
+                      )
+                    }
 
-                    // Estratégia 1: Groq Whisper API (whisper-large-v3) se GROQ_API_KEY estiver configurada
-                    if (!transcribedText && groqKey) {
+                    // Se a chave configurada no banco começar com gsk_ ou não for sk-, assume Groq por padrão (ou OpenAI se sk-)
+                    const envGroqKey = $os.getenv('GROQ_API_KEY') || ''
+                    const envOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
+                    const envOpenRouterKey =
+                      $os.getenv('OPENROUTER_API_KEY') || $os.getenv('OPENROUTER_KEY') || ''
+
+                    // Determina provedor e chave primária
+                    let dedicatedSttKey = dbSttKey || envGroqKey || envOpenAiKey || ''
+                    let isGroqFormat = true
+                    if (dedicatedSttKey.startsWith('sk-') && !dedicatedSttKey.startsWith('gsk_')) {
+                      isGroqFormat = false
+                    }
+
+                    console.log(
+                      `[whatsapp_bridge] [AUDIO] Chaves STT disponíveis: dbSttKey=${dbSttKey ? 'SIM (' + dbSttKey.slice(0, 7) + '...)' : 'NÃO'}, envGroqKey=${envGroqKey ? 'SIM' : 'NÃO'}, envOpenAiKey=${envOpenAiKey ? 'SIM' : 'NÃO'}, isGroqFormat=${isGroqFormat}`,
+                    )
+
+                    // Estratégia 1: Groq Whisper API (whisper-large-v3) se tiver chave dedicada Groq (ou configurada no banco)
+                    const activeGroqKey = isGroqFormat ? dedicatedSttKey : envGroqKey
+                    if (!transcribedText && activeGroqKey) {
                       try {
                         console.log(
-                          '[whatsapp_bridge] [AUDIO] [Estratégia 1] Tentando Groq Whisper API...',
+                          '[whatsapp_bridge] [AUDIO] [Estratégia 1] Tentando Groq Whisper API (whisper-large-v3)...',
                         )
                         const audioFileObj = $filesystem.fileFromBytes(audioBytes, 'audio.ogg')
                         const form = new FormData()
@@ -592,7 +628,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                           url: 'https://api.groq.com/openai/v1/audio/transcriptions',
                           method: 'POST',
                           headers: {
-                            Authorization: 'Bearer ' + groqKey,
+                            Authorization: 'Bearer ' + activeGroqKey,
                           },
                           body: form,
                           timeout: 25,
@@ -619,7 +655,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                     }
 
                     // Estratégia 2: OpenRouter STT dedicado (/api/v1/audio/transcriptions) se OPENROUTER_API_KEY estiver configurada
-                    if (!transcribedText && openRouterKey && audioBase64) {
+                    if (!transcribedText && envOpenRouterKey && audioBase64) {
                       const orModels = ['openai/whisper-large-v3', 'openai/whisper-1']
                       for (let om = 0; om < orModels.length; om++) {
                         const mSlug = orModels[om]
@@ -631,7 +667,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                             url: 'https://openrouter.ai/api/v1/audio/transcriptions',
                             method: 'POST',
                             headers: {
-                              Authorization: 'Bearer ' + openRouterKey,
+                              Authorization: 'Bearer ' + envOpenRouterKey,
                               'Content-Type': 'application/json',
                               'HTTP-Referer': 'https://goskip.app',
                               'X-Title': 'Consciente Financeiro',
@@ -675,8 +711,9 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                       }
                     }
 
-                    // Estratégia 3: OpenAI Audio Transcriptions direta se OPENAI_API_KEY estiver configurada
-                    if (!transcribedText && openAiKey) {
+                    // Estratégia 3: OpenAI Audio Transcriptions direta se tiver chave OpenAI (ou configurada no banco com sk-)
+                    const activeOpenAiKey = !isGroqFormat ? dedicatedSttKey : envOpenAiKey
+                    if (!transcribedText && activeOpenAiKey) {
                       try {
                         console.log(
                           '[whatsapp_bridge] [AUDIO] [Estratégia 3] Tentando OpenAI Whisper direto...',
@@ -691,7 +728,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                           url: 'https://api.openai.com/v1/audio/transcriptions',
                           method: 'POST',
                           headers: {
-                            Authorization: 'Bearer ' + openAiKey,
+                            Authorization: 'Bearer ' + activeOpenAiKey,
                           },
                           body: form,
                           timeout: 25,
@@ -1270,6 +1307,15 @@ routerAdd(
       } catch (_) {}
 
       if (!record) {
+        try {
+          const anyRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+          if (anyRecords.length > 0) {
+            record = anyRecords[0]
+          }
+        } catch (_) {}
+      }
+
+      if (!record) {
         record = new Record(wsCol)
         record.set('owner', authUser.id)
         record.set('phone_number', '+55 11 94998-9868')
@@ -1296,6 +1342,88 @@ routerAdd(
       })
     } catch (err) {
       console.log('[whatsapp_bridge] Erro ao salvar token da Meta:', err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 4.1 Rota para Salvar Chave de Transcrição de Voz (STT API Key) - RESTRITA A ADMIN
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/stt-key',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const sttKey = String(body.stt_api_key || body.key || '').trim()
+
+      if (!sttKey) {
+        return e.json(400, { error: 'A chave de transcrição (STT) não pode ser vazia' })
+      }
+
+      const wsCol = $app.findCollectionByNameOrId('whatsapp_status')
+      let record = null
+
+      try {
+        const records = $app.findRecordsByFilter(
+          'whatsapp_status',
+          `owner = '${authUser.id}'`,
+          '',
+          1,
+          0,
+        )
+        if (records.length > 0) {
+          record = records[0]
+        }
+      } catch (_) {}
+
+      // Se o registro não tem owner ou é global, reaproveita o existente
+      if (!record) {
+        try {
+          const anyRecords = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+          if (anyRecords.length > 0) {
+            record = anyRecords[0]
+          }
+        } catch (_) {}
+      }
+
+      if (!record) {
+        record = new Record(wsCol)
+        record.set('owner', authUser.id)
+        record.set('phone_number', '+55 11 94998-9868')
+        record.set('phone_number_id', '1314873981716321')
+        record.set('waba_id', '1888947369148112')
+        record.set('app_name', 'Consciente')
+        record.set('verify_token', 'agente-financeiro')
+        record.set('connected', true)
+      }
+
+      record.set('stt_api_key', sttKey)
+      $app.save(record)
+
+      console.log(
+        '[whatsapp_bridge] Chave de transcrição (STT) atualizada com sucesso para admin:',
+        authUser.id,
+      )
+
+      return e.json(200, {
+        success: true,
+        stt_configurado: true,
+        message: 'Chave de transcrição de voz salva com sucesso!',
+      })
+    } catch (err) {
+      console.log('[whatsapp_bridge] Erro ao salvar chave STT:', err)
       return e.json(500, { error: String(err) })
     }
   },
@@ -1685,6 +1813,7 @@ routerAdd(
 
       let activePhoneId = '1314873981716321'
       let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+      let sttKey = $os.getenv('GROQ_API_KEY') || $os.getenv('OPENAI_API_KEY') || ''
       let userConfiguredPhone = '+55 11 94998-9868'
       let userWaActive = true
       let wabaId = '1888947369148112'
@@ -1712,24 +1841,33 @@ routerAdd(
           if (recToken && !token) {
             token = recToken
           }
+          const recSttKey = rec.getString('stt_api_key')
+          if (recSttKey && !sttKey) {
+            sttKey = recSttKey
+          }
         }
       } catch (_) {}
 
-      // Fallback para encontrar se há qualquer token configurado na coleção
-      if (!token) {
+      // Fallback para encontrar se há qualquer token ou chave stt configurados na coleção
+      if (!token || !sttKey) {
         try {
           const anyWs = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
           for (let i = 0; i < anyWs.length; i++) {
-            const tk = anyWs[i].getString('access_token')
-            if (tk) {
-              token = tk
-              break
+            if (!token) {
+              const tk = anyWs[i].getString('access_token')
+              if (tk) token = tk
             }
+            if (!sttKey) {
+              const sk = anyWs[i].getString('stt_api_key')
+              if (sk) sttKey = sk
+            }
+            if (token && sttKey) break
           }
         } catch (_) {}
       }
 
       const hasToken = !!token
+      const hasSttKey = !!sttKey
 
       const instanceUrl =
         $os.getenv('PB_INSTANCE_URL') ||
@@ -1740,6 +1878,7 @@ routerAdd(
       return e.json(200, {
         owner_connected: hasToken,
         token_configurado: hasToken,
+        stt_configurado: hasSttKey,
         owner_phone: userConfiguredPhone,
         phone_number_id: activePhoneId,
         waba_id: wabaId,

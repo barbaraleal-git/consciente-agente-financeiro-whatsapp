@@ -19,15 +19,16 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
    - Recebe o payload da Meta (`entry[].changes[].value.messages[]`).
    - Dispara imediatamente status de lida e typing indicator ("digitando...") via Meta Status API para dar feedback instantâneo ao usuário sem custo de mensagens.
    - Normaliza o número E.164 (dígitos com DDI 55).
-   - **Fluxo de Mensagem de Áudio / Voice Message (Pipeline Multi-Estratégia)**:
+   - **Fluxo de Mensagem de Áudio / Voice Message (Pipeline Multi-Estratégia e Chave Dinâmica)**:
      - **Reconhecimento de voice message**: identifica se `type === 'audio'` ou `type === 'voice'` no payload do WhatsApp.
      - Extrai o `mediaId` do objeto (`msg.audio.id` ou `msg.voice.id`).
      - **Download da mídia pela API da Meta**: consulta a Meta Graph API (`GET https://graph.facebook.com/v21.0/{mediaId}`) autenticando com o token permanente salvo em `whatsapp_status.access_token` para obter a URL temporária de download (`url`). Em seguida, baixa o arquivo de áudio binário utilizando o mesmo header de autorização, preservando os bytes intactos (`res.body` / `res.raw`).
-     - **Conversão Base64 e Logs por Etapa**: converte o slice de bytes para Base64 em blocos eficientes via `$security.base64Encode`, registrando logs analíticos detalhados por etapa com prefixo `[whatsapp_bridge] [AUDIO]` (tamanho em bytes, conversão base64 e status HTTP de cada tentativa).
-     - **Tentativa 1 (OpenRouter Multimodal com Áudio Base64)**: submete o áudio codificado em base64 com detecção do formato (`ogg`, `mp3`, `wav`, `m4a`) e `input_audio` aos modelos multimodais (`google/gemini-2.0-flash-001`, `google/gemini-flash-1.5`, `openai/gpt-4o-audio-preview`), instruindo retorno estrito do texto falado em pt-BR.
-     - **Tentativa 2 (Whisper Multipart FormData via OpenRouter / OpenAI)**: se a tentativa 1 não produzir texto, encapsula os bytes através de `$filesystem.fileFromBytes(audioBytes, 'audio.ogg')` e submete via `multipart/form-data` (`FormData` nativo) aos endpoints `/v1/audio/transcriptions` (`openai/whisper-large-v3`, `whisper-1`) com idioma `pt`.
-     - **Tentativa 3 (Fallback OpenAI Whisper Direto)**: caso ainda não transcreva e exista `OPENAI_API_KEY` configurada no ambiente, envia requisição direta ao endpoint da OpenAI (`https://api.openai.com/v1/audio/transcriptions`) com modelo `whisper-1`.
-     - **Mensagens Honestas e Claras ao Cliente**: caso a transcrição não produza texto (falha momentânea de rede ou áudio inaudível), o agente envia uma resposta amigável e honesta pelo WhatsApp orientando a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio, sem fingir que entendeu ou culpar o usuário.
+     - **Conversão Base64 e Logs por Etapa**: converte o slice de bytes para Base64 em blocos eficientes via encoder Base64 puro em JavaScript, registrando logs analíticos detalhados por etapa com prefixo `[whatsapp_bridge] [AUDIO]` (tamanho em bytes, conversão base64 e status HTTP de cada tentativa).
+     - **Leitura da Chave de STT (`stt_api_key`) do Banco**: o hook consulta dinamicamente a coleção `whatsapp_status` pelo campo `stt_api_key` configurado pela admin em Configurações. Se presente, utiliza a chave primária; se ausente, faz fallback para variáveis de ambiente (`GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
+     - **Tentativa 1 (Groq Whisper Large v3)**: se houver chave configurada (Groq ou formato padrão), submete o áudio via multipart FormData com `$filesystem.fileFromBytes(audioBytes, 'audio.ogg')` ao endpoint `https://api.groq.com/openai/v1/audio/transcriptions` com modelo `whisper-large-v3` e idioma `pt`.
+     - **Tentativa 2 (OpenRouter STT com input_audio Base64)**: se houver chave OpenRouter, submete aos modelos Whisper dedicados via JSON payload com `input_audio`.
+     - **Tentativa 3 (Fallback OpenAI Whisper Direto)**: caso a chave configurada seja padrão OpenAI (`sk-...`) ou exista `OPENAI_API_KEY`, envia requisição direta ao endpoint da OpenAI (`https://api.openai.com/v1/audio/transcriptions`) com modelo `whisper-1`.
+     - **Mensagens Honestas e Claras ao Cliente (Contingência Empática)**: caso nenhuma chave esteja configurada ou ocorra ruído/áudio inaudível, o agente envia uma resposta amigável e honesta pelo WhatsApp orientando a digitar o gasto (ex.: "Recebi seu áudio aqui no Consciente! No momento tivemos uma instabilidade na conversão de voz para texto... Você pode digitar rapidinho o gasto aqui para mim? Já registro direto na sua caixinha!"), sem fingir que entendeu ou culpar a usuária.
      - **Rastreabilidade de Origem e Data Original**: a transação é gravada com `source = 'whatsapp_audio'` (distinto de `whatsapp_text` e `manual`), preservando em `message_timestamp` a data/hora exata do envio na Meta (exibido na interface com badge dedicado "Áudio WhatsApp" e horário original). Uma vez obtido o texto transcrito, o pipeline aciona o agente `$ai.agent('financeiro-whatsapp')` e registra a despesa em centavos na caixinha correspondente.
    - Se for Texto ou Interativo: extrai o texto diretamente (`text.body`).
 2. **Resolução de Identidade (`resolveUser`)**:
@@ -61,9 +62,10 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 ### Coleções Técnicas e de Infraestrutura (**NÃO APAGAR NA ZERAGEM**)
 
-- **`whatsapp_status`**: Configuração do canal oficial Meta Cloud API da proprietária.
-  - Campos: `owner`, `connected`, `phone_number` (+55 11 94998-9868), `phone_number_id` (1314873981716321), `waba_id` (1888947369148112), `verify_token` (`agente-financeiro`), `access_token` (token permanente da Meta), `last_send_status`, `last_send_error`, `last_send_at`.
-  - **ATENÇÃO**: Esta coleção guarda a conectividade da Meta. Nunca deve ter seus registros excluídos.
+- **`whatsapp_status`**: Configuração do canal oficial Meta Cloud API da proprietária e parâmetros de IA/Voz.
+  - Campos: `owner`, `connected`, `phone_number` (+55 11 94998-9868), `phone_number_id` (1314873981716321), `waba_id` (1888947369148112), `verify_token` (`agente-financeiro`), `access_token` (token permanente da Meta), `stt_api_key` (chave de transcrição de voz Groq/OpenAI salva com segurança), `last_send_status`, `last_send_error`, `last_send_at`.
+  - **Configuração da Chave STT via Painel Admin**: Na tela Configurações (`/settings`), a admin pode colar a chave Groq/OpenAI. O backend grava em `stt_api_key` e NUNCA reexibe o valor para o cliente ou admin, expondo apenas o flag booleano `stt_configurado` na rota `GET /backend/v1/whatsapp/status`.
+  - **ATENÇÃO**: Esta coleção guarda a conectividade da Meta e da transcrição de áudios. Nunca deve ter seus registros excluídos.
 - **`whatsapp_contacts`**: Agenda de números que interagiram pelo WhatsApp.
   - Campos: `phone_number`, `user`, `name`, `conversation_id`, `messages_count`, `last_message_at`.
   - _Na zeragem de desenvolvimento_: os campos `user` e `conversation_id` podem ser limpos para testes do zero, preservando o histórico se desejado.

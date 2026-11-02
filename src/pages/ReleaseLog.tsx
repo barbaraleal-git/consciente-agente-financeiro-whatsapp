@@ -25,11 +25,31 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.34',
+    date: '03/11/2026',
+    title:
+      'Campo Admin de Chave de Transcrição de Voz (STT) e Leitura Dinâmica pelo Hook do WhatsApp',
+    tag: 'Atual',
+    highlights: [
+      'Campo seguro no Painel Admin: em Configurações (exclusivo para administradores), adição de campo para colar a chave de transcrição de voz (Groq/OpenAI) com padrão seguro do token da Meta — o valor é persistido no banco e nunca é reexibido na tela.',
+      'Indicador claro stt_configurado: badge dinâmico no painel indicando se a transcrição de voz está ativa ("Chave de transcrição configurada ✓" / "Não configurada").',
+      'Leitura dinâmica no hook whatsapp_bridge.js: o pipeline de áudio lê a chave stt_api_key diretamente de whatsapp_status no momento da transcrição, priorizando Groq Whisper Large v3 (compatível com OpenAI whisper) ou OpenAI direta.',
+      'Contingência empática preservada: caso nenhuma chave de transcrição esteja configurada ou ocorra ruído inaudível, o agente envia mensagem acolhedora orientando o usuário a digitar o gasto.',
+      'Zero regressão: webhook da Meta, disparos diretos via Meta Cloud API, gravação em centavos e papéis admin vs cliente 100% preservados.',
+    ],
+    details: [
+      'Migração 0023_add_stt_api_key_to_whatsapp_status.js já aplicada adicionando o campo stt_api_key à coleção whatsapp_status.',
+      'Hook pocketbase/hooks/whatsapp_bridge.js atualizado com rota POST /backend/v1/whatsapp/stt-key e rota GET /backend/v1/whatsapp/status expondo flag stt_configurado.',
+      'Interface em src/pages/Settings.tsx com campo seguro, botão salvar e indicador de status.',
+      'Serviço finance.ts atualizado com método saveSttKey e tipagem stt_configurado.',
+    ],
+  },
+  {
     version: '0.0.32',
     date: '02/11/2026',
     title:
       'Correção de Diagnóstico e Resiliência do Pipeline de Áudio (STT) com Encoder Puro e Orientação Acolhedora',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Diagnóstico de causa raiz no backend: identificada ausência da função $security.base64Encode no runtime Goja do PocketBase (causando falha silenciosa no conversor anterior) e incompatibilidade do gateway interno de chat com transcrição de áudio.',
       'Implementação de encoder base64 puro em JavaScript: compatível com qualquer tamanho de stream binário (downloadRes.raw e downloadRes.body) sem depender de extensões Goja ausentes.',

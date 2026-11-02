@@ -76,6 +76,7 @@ export interface WhatsAppStatus extends RecordModel {
 export interface WhatsAppLiveStatus {
   owner_connected: boolean
   token_configurado?: boolean
+  stt_configurado?: boolean
   owner_phone: string | null
   phone_number_id?: string
   waba_id?: string
@@ -406,6 +407,26 @@ export const whatsappService = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err.error || 'Falha ao salvar o token da Meta')
+    }
+    return res.json()
+  },
+
+  async saveSttKey(
+    sttApiKey: string,
+  ): Promise<{ success: boolean; stt_configurado: boolean; message: string }> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/stt-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: pb.authStore.token,
+      },
+      body: JSON.stringify({
+        stt_api_key: sttApiKey,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao salvar a chave de transcrição (STT)')
     }
     return res.json()
   },

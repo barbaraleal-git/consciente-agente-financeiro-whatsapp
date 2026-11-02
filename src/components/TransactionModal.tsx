@@ -140,6 +140,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           category: categoryId,
           type,
           source: 'manual',
+          message_timestamp: new Date().toISOString(),
           note: note.trim() || undefined,
         })
         toast({

@@ -6,7 +6,7 @@ import {
   type Category,
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatCurrency, formatDate } from '@/lib/formatters'
+import { formatCurrency, formatDate, formatDateTime, getSourceLabel } from '@/lib/formatters'
 import { TransactionModal } from '@/components/TransactionModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,6 +41,11 @@ import {
   Filter,
   Receipt,
   FileSpreadsheet,
+  MessageSquare,
+  Mic,
+  PenLine,
+  Bot,
+  Clock,
 } from 'lucide-react'
 
 export const Transactions: React.FC = () => {
@@ -347,8 +352,30 @@ export const Transactions: React.FC = () => {
                               {tx.type}
                             </Badge>
                           </td>
-                          <td className="py-3.5 px-4 text-[11px] text-slate-400 capitalize">
-                            {tx.source === 'whatsapp' ? 'WhatsApp' : tx.source}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                              {tx.source === 'whatsapp_audio' ? (
+                                <Mic className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                              ) : tx.source === 'whatsapp_text' || tx.source === 'whatsapp' ? (
+                                <MessageSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              ) : tx.source === 'import' ? (
+                                <FileSpreadsheet className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                              ) : tx.source === 'agent' ? (
+                                <Bot className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              ) : (
+                                <PenLine className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              )}
+                              <span>{getSourceLabel(tx.source)}</span>
+                            </div>
+                            {tx.message_timestamp && (
+                              <div
+                                className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5"
+                                title="Data e hora da mensagem original"
+                              >
+                                <Clock className="w-3 h-3 text-slate-300 shrink-0" />
+                                <span>{formatDateTime(tx.message_timestamp)}</span>
+                              </div>
+                            )}
                           </td>
                           <td
                             className={`py-3.5 px-4 text-right font-bold tabular-nums ${
@@ -425,9 +452,29 @@ export const Transactions: React.FC = () => {
                       </div>
 
                       <div className="flex items-center justify-between pt-1">
-                        <Badge variant="outline" className="text-[10px] capitalize">
-                          {tx.type} • {tx.source}
-                        </Badge>
+                        <div className="space-y-0.5">
+                          <Badge variant="outline" className="text-[10px] gap-1">
+                            {tx.source === 'whatsapp_audio' ? (
+                              <Mic className="w-3 h-3 text-indigo-500" />
+                            ) : tx.source === 'whatsapp_text' || tx.source === 'whatsapp' ? (
+                              <MessageSquare className="w-3 h-3 text-emerald-500" />
+                            ) : tx.source === 'import' ? (
+                              <FileSpreadsheet className="w-3 h-3 text-sky-500" />
+                            ) : tx.source === 'agent' ? (
+                              <Bot className="w-3 h-3 text-purple-500" />
+                            ) : (
+                              <PenLine className="w-3 h-3 text-slate-400" />
+                            )}
+                            <span className="capitalize">{tx.type}</span> •{' '}
+                            <span>{getSourceLabel(tx.source)}</span>
+                          </Badge>
+                          {tx.message_timestamp && (
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 pl-0.5">
+                              <Clock className="w-2.5 h-2.5 text-slate-300" />
+                              <span>Msg: {formatDateTime(tx.message_timestamp)}</span>
+                            </div>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"

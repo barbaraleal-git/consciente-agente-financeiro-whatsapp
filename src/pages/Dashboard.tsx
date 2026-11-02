@@ -11,7 +11,15 @@ import {
   type Alert,
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatCurrency, formatDate, getCurrentMonthStr, formatMonthName } from '@/lib/formatters'
+import {
+  formatCurrency,
+  formatDate,
+  getCurrentMonthStr,
+  formatMonthName,
+  formatDateTime,
+  getSourceLabel,
+} from '@/lib/formatters'
+import { MessageSquare, Mic, PenLine, FileSpreadsheet, Bot, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -530,9 +538,29 @@ export const Dashboard: React.FC = () => {
                         >
                           {isInc ? '+' : isExp ? '-' : ''} {formatCurrency(tx.amount)}
                         </p>
-                        <span className="text-[10px] text-slate-400 uppercase tracking-wide">
-                          {tx.source === 'whatsapp' ? 'WhatsApp' : tx.source}
-                        </span>
+                        <div className="flex items-center justify-end gap-1 text-[11px] text-slate-400">
+                          {tx.source === 'whatsapp_audio' ? (
+                            <Mic className="w-3 h-3 text-indigo-500" />
+                          ) : tx.source === 'whatsapp_text' || tx.source === 'whatsapp' ? (
+                            <MessageSquare className="w-3 h-3 text-emerald-500" />
+                          ) : tx.source === 'import' ? (
+                            <FileSpreadsheet className="w-3 h-3 text-sky-500" />
+                          ) : tx.source === 'agent' ? (
+                            <Bot className="w-3 h-3 text-purple-500" />
+                          ) : (
+                            <PenLine className="w-3 h-3 text-slate-400" />
+                          )}
+                          <span>{getSourceLabel(tx.source)}</span>
+                        </div>
+                        {tx.message_timestamp && (
+                          <div
+                            className="flex items-center justify-end gap-1 text-[10px] text-slate-400 mt-0.5"
+                            title="Data e hora da mensagem original"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-slate-300" />
+                            <span>{formatDateTime(tx.message_timestamp)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )

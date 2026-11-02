@@ -9,6 +9,14 @@ export interface Category extends RecordModel {
   color: string
 }
 
+export type TransactionSource =
+  | 'manual'
+  | 'whatsapp'
+  | 'import'
+  | 'agent'
+  | 'whatsapp_text'
+  | 'whatsapp_audio'
+
 export interface Transaction extends RecordModel {
   owner: string
   description: string
@@ -19,7 +27,8 @@ export interface Transaction extends RecordModel {
     category?: Category
   }
   type: 'despesa' | 'receita' | 'investimento'
-  source: 'manual' | 'whatsapp' | 'import' | 'agent'
+  source: TransactionSource
+  message_timestamp?: string // Data/hora da mensagem original ISO
   note?: string
 }
 

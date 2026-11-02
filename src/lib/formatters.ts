@@ -74,3 +74,45 @@ export function formatMonthName(monthStr: string): string {
   const monthName = date.toLocaleDateString('pt-BR', { month: 'long' })
   return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} de ${year}`
 }
+
+/**
+ * Formats ISO timestamp to 'DD/MM/YYYY HH:mm'
+ */
+export function formatDateTime(isoString?: string): string {
+  if (!isoString) return '-'
+  try {
+    const d = new Date(isoString)
+    if (isNaN(d.getTime())) return isoString
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return isoString
+  }
+}
+
+/**
+ * Retorna rótulo legível e amigável da origem do lançamento
+ */
+export function getSourceLabel(source?: string): string {
+  switch (source) {
+    case 'whatsapp_text':
+      return 'Texto WhatsApp'
+    case 'whatsapp_audio':
+      return 'Áudio WhatsApp'
+    case 'whatsapp':
+      return 'WhatsApp'
+    case 'manual':
+      return 'Manual'
+    case 'import':
+      return 'Importação'
+    case 'agent':
+      return 'Agente Web'
+    default:
+      return source ? source.charAt(0).toUpperCase() + source.slice(1) : 'Manual'
+  }
+}

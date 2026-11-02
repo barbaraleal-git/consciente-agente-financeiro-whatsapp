@@ -403,6 +403,21 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
           const msgType = msg.type
           const incomingMsgId = msg.id
 
+          // Extrai o timestamp original da mensagem enviado pela Meta
+          // msg.timestamp é string de Unix seconds (ex: "1711234567")
+          let messageTimestampIso = ''
+          if (msg.timestamp) {
+            try {
+              const sec = parseInt(msg.timestamp, 10)
+              if (!isNaN(sec) && sec > 0) {
+                messageTimestampIso = new Date(sec * 1000).toISOString()
+              }
+            } catch (_) {}
+          }
+          if (!messageTimestampIso) {
+            messageTimestampIso = new Date().toISOString()
+          }
+
           let textContent = ''
           let isAudioMessage = msgType === 'audio' || msgType === 'voice'
 
@@ -728,8 +743,12 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             )
 
             const existingConvId = contact.getString('conversation_id') || null
-            const todayStr = new Date().toISOString().slice(0, 10)
-            let promptForAgent = `[Data atual para registro: ${todayStr}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${textContent}`
+            const todayStr = messageTimestampIso
+              ? messageTimestampIso.slice(0, 10)
+              : new Date().toISOString().slice(0, 10)
+            const msgSource = isAudioMessage ? 'whatsapp_audio' : 'whatsapp_text'
+
+            let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: ${msgSource}. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser '${msgSource}' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}'. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${textContent}`
 
             if (!isRegistered) {
               promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
@@ -1427,9 +1446,10 @@ routerAdd(
       }
 
       const existingConvId = contact.getString('conversation_id') || null
-      const todayStr = new Date().toISOString().slice(0, 10)
+      const messageTimestampIso = new Date().toISOString()
+      const todayStr = messageTimestampIso.slice(0, 10)
 
-      let promptForAgent = `[Data atual para registro: ${todayStr}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${message}`
+      let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: whatsapp_text. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser 'whatsapp_text' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}'. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${message}`
       if (!isRegistered) {
         promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
 Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Explique brevemente que você ajuda no controle diário de custos e caixinhas.

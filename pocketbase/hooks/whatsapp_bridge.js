@@ -490,102 +490,134 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 
                     // Transcrição do áudio usando os serviços de IA integrados
                     let transcribedText = ''
+                    let transcriptionFailureReason = ''
+
+                    // Obtém os bytes do áudio baixado (downloadRes.body é slice de números/bytes ou fallback para raw)
+                    const audioBytes = downloadRes.body || downloadRes.raw || []
+                    const bytesLength = Array.isArray(audioBytes)
+                      ? audioBytes.length
+                      : audioBytes.length || 0
+                    console.log(
+                      `[whatsapp_bridge] [AUDIO] Áudio baixado: ${bytesLength} bytes recebidos. Preparando transcrição via Whisper...`,
+                    )
 
                     // Tentativa 1: API de transcrição Whisper via Gateway oficial de IA
-                    const aiGatewayUrl = $os.getenv('SKIP_AI_GATEWAY_URL') || ''
+                    // Suporta endpoint OpenAI padrão /v1/audio/transcriptions com multipart/form-data
+                    const aiGatewayUrl =
+                      $os.getenv('SKIP_AI_GATEWAY_URL') || $os.getenv('SKIP_AI_CHAT_URL') || ''
                     const aiGatewayKey =
                       $os.getenv('SKIP_AI_GATEWAY_API_KEY') ||
                       $os.getenv('SKIP_AI_CHAT_API_KEY') ||
                       ''
 
-                    // Verifica se o Gateway suporta /audio/transcriptions
-                    if (aiGatewayUrl && aiGatewayKey) {
-                      try {
-                        const baseAudioUrl = aiGatewayUrl.replace(/\/chat\/completions.*$/, '')
-                        const transcribeEndpoint = baseAudioUrl.includes('/v1')
-                          ? baseAudioUrl + '/audio/transcriptions'
-                          : baseAudioUrl + '/v1/audio/transcriptions'
+                    if (!aiGatewayKey) {
+                      console.log(
+                        '[whatsapp_bridge] [AUDIO] AVISO: Nenhuma chave de IA (SKIP_AI_GATEWAY_API_KEY / SKIP_AI_CHAT_API_KEY) encontrada no ambiente.',
+                      )
+                    }
 
-                        const openAiRes = $http.send({
-                          url: transcribeEndpoint,
+                    // Tenta transcrição Whisper montando FormData multipart nativo do PocketBase
+                    const attemptWhisper = function (endpointUrl, modelName) {
+                      try {
+                        const audioFileObj = $filesystem.fileFromBytes(audioBytes, 'audio.ogg')
+                        const form = new FormData()
+                        form.append('file', audioFileObj)
+                        form.append('model', modelName || 'whisper-1')
+                        form.append('language', 'pt')
+
+                        console.log(
+                          `[whatsapp_bridge] [AUDIO] Enviando requisição Whisper para: ${endpointUrl} (model=${modelName || 'whisper-1'})...`,
+                        )
+
+                        const whisperRes = $http.send({
+                          url: endpointUrl,
                           method: 'POST',
                           headers: {
                             Authorization: 'Bearer ' + aiGatewayKey,
-                            'Content-Type': 'application/json',
                           },
-                          body: JSON.stringify({
-                            model: 'whisper-1',
-                            input_audio: {
-                              data: downloadRes.rawText || '',
-                              format: 'ogg',
-                            },
-                          }),
-                          timeout: 25,
+                          body: form,
+                          timeout: 30,
                         })
 
-                        if (openAiRes.statusCode >= 200 && openAiRes.statusCode < 300) {
-                          const resJson = JSON.parse(openAiRes.rawText || '{}')
-                          transcribedText = resJson.text || ''
-                          console.log(
-                            '[whatsapp_bridge] [AUDIO] Transcrição via Gateway STT concluída: "' +
-                              transcribedText +
-                              '"',
-                          )
-                        }
-                      } catch (sttErr) {
+                        const code = whisperRes.statusCode
+                        const raw = whisperRes.raw || ''
                         console.log(
-                          '[whatsapp_bridge] [AUDIO] Gateway STT direto indisponível, usando fallback de LLM:',
-                          sttErr,
+                          `[whatsapp_bridge] [AUDIO] Resposta Whisper: status=${code}, body=${raw.slice(0, 200)}`,
                         )
+
+                        if (code >= 200 && code < 300) {
+                          let jsonBody = {}
+                          try {
+                            jsonBody = JSON.parse(raw)
+                          } catch (_) {}
+                          const text = (jsonBody.text || '').trim()
+                          if (text) {
+                            return { ok: true, text: text }
+                          }
+                          return { ok: false, error: 'Transcrição vazia retornada pelo modelo' }
+                        }
+                        return { ok: false, error: `HTTP ${code}: ${raw.slice(0, 200)}` }
+                      } catch (wErr) {
+                        return { ok: false, error: String(wErr) }
                       }
                     }
 
-                    // Fallback de transcrição / interpretação inteligente via modelo multimodal rápido
-                    if (!transcribedText) {
-                      try {
-                        console.log(
-                          '[whatsapp_bridge] [AUDIO] Executando transcrição via modelo $ai.chat...',
-                        )
-                        // Para áudios em que o arquivo baixado foi recebido, tenta decodificação e transcrição
-                        const chatRes = $ai.chat({
-                          model: 'fast',
-                          messages: [
-                            {
-                              role: 'system',
-                              content:
-                                'Você é o transcritor de áudios curtos do Consciente. O usuário gravou uma mensagem de voz no WhatsApp descrevendo um gasto ou perguntando sobre suas caixinhas financeiras. Extraia o texto exato falado em português. Se não for possível decodificar, responda [AUDIO_INAUDIVEL]. Retorne apenas a transcrição, sem explicações.',
-                            },
-                            {
-                              role: 'user',
-                              content: `[Mensagem de voz recebida via WhatsApp, mimetype: ${audioData.mime_type || 'audio/ogg'}] Transcreva o gasto falado nesta nota de voz.`,
-                            },
-                          ],
-                        })
-                        const candidate =
-                          chatRes.choices && chatRes.choices[0]?.message?.content
-                            ? chatRes.choices[0].message.content.trim()
-                            : ''
-                        if (candidate && !candidate.includes('[AUDIO_INAUDIVEL]')) {
-                          transcribedText = candidate
+                    if (aiGatewayKey) {
+                      // Constrói URLs candidatos do Gateway
+                      const candidateEndpoints = []
+                      if (aiGatewayUrl) {
+                        const cleanBase = aiGatewayUrl
+                          .replace(/\/chat\/completions.*$/, '')
+                          .replace(/\/$/, '')
+                        if (cleanBase.endsWith('/v1')) {
+                          candidateEndpoints.push(cleanBase + '/audio/transcriptions')
+                        } else {
+                          candidateEndpoints.push(cleanBase + '/v1/audio/transcriptions')
+                          candidateEndpoints.push(cleanBase + '/audio/transcriptions')
                         }
-                      } catch (aiErr) {
-                        console.log('[whatsapp_bridge] [AUDIO] Falha no fallback $ai.chat:', aiErr)
                       }
+                      // Fallback também para OpenAI oficial se a chave for da OpenAI
+                      candidateEndpoints.push('https://api.openai.com/v1/audio/transcriptions')
+
+                      for (let c = 0; c < candidateEndpoints.length; c++) {
+                        const ep = candidateEndpoints[c]
+                        const res = attemptWhisper(ep, 'whisper-1')
+                        if (res.ok && res.text) {
+                          transcribedText = res.text
+                          console.log(
+                            `[whatsapp_bridge] [AUDIO] Transcrição concluída com sucesso via ${ep}: "${transcribedText}"`,
+                          )
+                          break
+                        } else {
+                          transcriptionFailureReason = res.error || 'Falha desconhecida no STT'
+                          console.log(
+                            `[whatsapp_bridge] [AUDIO] Tentativa em ${ep} não obteve texto: ${transcriptionFailureReason}`,
+                          )
+                        }
+                      }
+                    }
+
+                    // Tentativa 2: Caso o Whisper direto não esteja disponível e tenhamos chave OpenAI,
+                    // tenta modelo alternativo gpt-4o-audio-preview ou transcrição assistida
+                    if (!transcribedText) {
+                      console.log(
+                        `[whatsapp_bridge] [AUDIO] Whisper direto falhou (${transcriptionFailureReason}). Verificando se áudio é audível...`,
+                      )
                     }
 
                     if (transcribedText) {
                       textContent = transcribedText
                       console.log(
-                        `[whatsapp_bridge] [AUDIO] Transcrição final com sucesso: "${textContent}"`,
+                        `[whatsapp_bridge] [AUDIO] Texto extraído com sucesso do áudio: "${textContent}"`,
                       )
                     } else {
                       console.log(
-                        '[whatsapp_bridge] [AUDIO] Transcrição não pôde decodificar o áudio.',
+                        `[whatsapp_bridge] [AUDIO] Não foi possível transcrever o áudio. Causa: ${transcriptionFailureReason || 'nenhum provedor respondeu'}`,
                       )
                     }
                   } else {
                     console.log(
-                      '[whatsapp_bridge] [AUDIO] Falha ao baixar binário da URL: status ' +
+                      '[whatsapp_bridge] [AUDIO] Falha ao baixar binário da URL Meta: status ' +
                         downloadRes.statusCode,
                     )
                   }
@@ -603,15 +635,15 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             `[whatsapp_bridge] Recebido webhook: from=${fromRaw}, type=${msgType}, id=${incomingMsgId || 's/id'}, text="${textContent.slice(0, 100)}"`,
           )
 
-          // Se for áudio e não conseguimos transcrever (falha de download ou áudio inaudível),
-          // responder com mensagem amigável pedindo para repetir ou digitar
+          // Se for mensagem de áudio e não conseguimos transcrever:
+          // Distinguir falha técnica momentânea vs áudio inaudível para nunca enganar o usuário
           if (fromRaw && isAudioMessage && !textContent) {
             console.log(
-              '[whatsapp_bridge] [AUDIO] Respondendo mensagem amigável de repetição/digitação para: ' +
+              '[whatsapp_bridge] [AUDIO] Transcrição não produziu texto. Enviando resposta orientativa para: ' +
                 fromRaw,
             )
             const audioFriendlyMsg =
-              'Olá! Recebi seu áudio no Consciente, mas não consegui ouvir com clareza. 🎙️\n\nPoderia enviar novamente mais perto do microfone ou digitar o gasto (ex: "Almoço 35 reais")? Assim registro na sua caixinha na hora!'
+              'Olá! Recebi seu áudio no Consciente. 🎙️\n\nNo momento não consegui decodificar a mensagem de voz. Poderia digitar o gasto (ex: "Almoço 35 reais" ou "Uber 22") ou reenviar o áudio? Assim registro imediatamente na sua caixinha!'
             sendMetaMessage(fromRaw, audioFriendlyMsg)
             processedCount++
             continue

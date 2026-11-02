@@ -178,14 +178,14 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 2. **Comportamento Esperado**:
    - O webhook detecta automaticamente a mensagem do tipo `audio` ou `voice`.
    - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos).
-   - Baixa o arquivo de áudio pela Meta Cloud API autenticando com o token em `whatsapp_status.access_token`.
-   - Transcreve o áudio para texto via inteligência artificial.
+   - Baixa o arquivo de áudio pela Meta Cloud API autenticando com o token em `whatsapp_status.access_token` preservando os bytes intactos.
+   - Transcreve o áudio para texto via inteligência artificial (Whisper STT via multipart FormData nativo do PocketBase com `$filesystem.fileFromBytes`).
    - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito.
    - Registra o gasto com o **valor correto em centavos** (ex.: R$ 30,00 = `3000` centavos) e vinculado à **caixinha correta** (ex.: Alimentação ou Transporte).
    - O agente responde em menos de 30 segundos confirmando o lançamento, o valor consumido no mês e o teto restante da caixinha.
-   - **Caso de Exceção (Áudio inaudível / Ruído)**:
+   - **Caso de Exceção (Áudio inaudível / Ruído / Oscilação técnica)**:
      - Envie um áudio em silêncio ou com sopro inaudível.
-     - O agente responde de forma empática e amigável pedindo para repetir gravando mais próximo ao microfone ou para digitar a mensagem.
+     - O agente responde de forma empática e amigável sem culpar a dicção da usuária, instruindo a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio para registro imediato na caixinha.
 3. **Validação no Painel e Banco**:
    - Acesse `/transactions`: o lançamento consta com o valor exato, categoria correta e fonte `WhatsApp`.
    - No banco (`transactions`): conferir que `amount` está em centavos.

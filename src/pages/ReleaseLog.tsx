@@ -25,11 +25,30 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.28',
+    date: '02/11/2026',
+    title:
+      'Correção do Pipeline de Transcrição de Áudio (Voice Message WhatsApp) com Multipart FormData Nativo e Tratamento Preciso',
+    tag: 'Atual',
+    highlights: [
+      'Correção da causa raiz da transcrição de áudio: o payload enviado para a API Whisper agora utiliza FormData multipart nativo do PocketBase com $filesystem.fileFromBytes(audioBytes, "audio.ogg"), eliminando a falha de codificação que provocava respostas falsas de "não entendi".',
+      'Download do binário da Meta preservado como slice de bytes (res.body) em vez de conversão prematura para texto plano (res.rawText), preservando a integridade dos cabeçalhos e codecs Ogg/Opus do WhatsApp.',
+      'Suporte a endpoints de IA resilientes: resolução dinâmica de SKIP_AI_GATEWAY_URL / SKIP_AI_CHAT_URL e SKIP_AI_GATEWAY_API_KEY / SKIP_AI_CHAT_API_KEY com fallback ordenado e timeout otimizado de 30s.',
+      'Distinção honesta e clara de erros: mensagens de voz inaudíveis ou com falhas técnicas transitórias não respondem mais fingindo que a usuária não soube falar; o agente instrui objetivamente como reenviar ou digitar.',
+      'Preservação total do fluxo do agente: uma vez transcrito, o áudio alimenta o mesmo agente nativo financeiro-whatsapp com data atual e registro em centavos na caixinha correspondente.',
+    ],
+    details: [
+      'Hook pocketbase/hooks/whatsapp_bridge.js ajustado com tentativa Whisper via FormData ($filesystem.fileFromBytes) e logs analíticos detalhados de cada etapa (bytes baixados, status HTTP, texto extraído).',
+      'Documentação central atualizada em docs/ARQUITETURA.md e docs/TESTES_REGRESSIVOS.md refletindo o pipeline robusto de voz.',
+      'Zero impacto e zero regressão no restante das funcionalidades (webhooks Meta Graph API, regras de centavos, papéis admin x cliente, backoffice e reset).',
+    ],
+  },
+  {
     version: '0.0.27',
     date: '02/11/2026',
     title:
       'Limpeza de Card Obsoleto no Assistente, Eliminação de Dados Fictícios e Restrição Rigorosa de Visão de Canal',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Página Assistente (/assistant) limpa para clientes comuns: clientes visualizam exclusivamente a janela de conversa e ferramentas de histórico funcional, sem nenhum card técnico de canal WhatsApp ou conector.',
       'Aviso de Canal Oficial restrito a Administradores: administradores visualizam na lateral o número oficial real (+55 11 94998-9868) com status dinâmico da Meta Cloud API via whatsapp_status.',

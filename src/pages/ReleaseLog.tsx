@@ -25,10 +25,26 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: 'v1.5.0',
+    date: '02/11/2026',
+    title: 'Renovação do Token Permanente da Meta WhatsApp Cloud API',
+    tag: 'Atual',
+    highlights: [
+      'Atualização do token de acesso permanente da Meta Cloud API (WhatsApp Business) diretamente no banco.',
+      'Validação bem-sucedida contra a Meta Graph API (HTTP 200 OK) no canal +55 11 94998-9868.',
+      'Preservação integral do estado zerado para testes: 0 cadastros reais, 0 transações, 0 caixinhas.',
+      'Zero exposição de segredos ou tokens em código versionado.',
+    ],
+    details: [
+      'Registro único em whatsapp_status atualizado com o novo token de sistema permanente.',
+      'Pipeline de envio e webhook mantidos com 100% de estabilidade (zero regressão).',
+    ],
+  },
+  {
     version: 'v1.4.0',
     date: '01/11/2026',
     title: 'Correção de Reconhecimento no WhatsApp, Documentação Técnica e Script de Reset',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Correção definitiva do reconhecimento de contas recém-cadastradas no WhatsApp.',
       'Critério unificado de cadastro completo: usuário existente + tolerância de email + onboarding de caixinhas.',

@@ -14,6 +14,7 @@ import {
   type ImportJob,
   type WhatsAppLiveStatus,
 } from '@/services/finance'
+import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,8 @@ const SUGGESTIONS = [
 
 export const Assistant: React.FC = () => {
   const { toast } = useToast()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin' || user?.email === 'barbara.ferreira.leal@gmail.com'
 
   const [messages, setMessages] = useState<DisplayMessage[]>([
     {
@@ -88,11 +91,13 @@ export const Assistant: React.FC = () => {
 
   useEffect(() => {
     loadImportJobs()
-    whatsappService
-      .getLiveStatus()
-      .then(setWaLive)
-      .catch(() => null)
-  }, [])
+    if (isAdmin) {
+      whatsappService
+        .getLiveStatus()
+        .then(setWaLive)
+        .catch(() => null)
+    }
+  }, [isAdmin])
 
   // Realtime updates for import jobs
   useRealtime<ImportJob>('import_jobs', (e) => {
@@ -390,55 +395,65 @@ export const Assistant: React.FC = () => {
 
       {/* Right Column: WhatsApp Real Channel & History Import */}
       <div className="space-y-6">
-        {/* Real WhatsApp Status Card */}
-        <Card className="border-slate-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-emerald-600" />
-              Canal WhatsApp Real
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              Número oficial pelo qual o agente atende você e seus clientes
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-900">
-                  {waLive?.owner_phone || waLive?.user_phone || '+55 (11) 98765-4321'}
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {waLive?.owner_connected
-                    ? 'Conectado via WhatsApp Cloud API'
-                    : 'Aguardando autorização de conector do dono'}
-                </p>
+        {/* Real WhatsApp Status Card - VISÍVEL APENAS PARA ADMINISTRADORES */}
+        {isAdmin && (
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-emerald-600" />
+                  Canal WhatsApp Oficial
+                </CardTitle>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] bg-slate-100 text-slate-700 border-slate-300"
+                >
+                  Apenas Admin
+                </Badge>
               </div>
-              <Badge
-                variant="outline"
-                className={`text-[10px] ${
-                  waLive?.owner_connected
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                }`}
+              <CardDescription className="text-xs text-slate-500">
+                Número oficial pelo qual o agente atende seus clientes
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 font-mono">
+                    {waLive?.owner_phone || '+55 11 94998-9868'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {waLive?.token_configurado || waLive?.owner_connected
+                      ? 'Conectado via Meta Cloud API'
+                      : 'Token da Meta pendente de configuração'}
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] ${
+                    waLive?.token_configurado || waLive?.owner_connected
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                  }`}
+                >
+                  {waLive?.token_configurado || waLive?.owner_connected ? 'Ativo' : 'Pendente'}
+                </Badge>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Mensagens como <em>"Almoço 35 reais"</em> ou{' '}
+                <em>"Quanto sobrou na caixinha de lazer?"</em> enviadas nesse WhatsApp são
+                categorizadas instantaneamente.
+              </p>
+
+              <Link
+                to="/settings"
+                className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium pt-1"
               >
-                {waLive?.owner_connected ? 'Ativo' : 'Configurado'}
-              </Badge>
-            </div>
-
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Mensagens como <em>"Almoço 35 reais"</em> ou{' '}
-              <em>"Quanto sobrou na caixinha de lazer?"</em> enviadas nesse WhatsApp são
-              categorizadas instantaneamente.
-            </p>
-
-            <Link
-              to="/settings"
-              className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium pt-1"
-            >
-              Gerenciar conexão em Configurações <ExternalLink className="w-3 h-3" />
-            </Link>
-          </CardContent>
-        </Card>
+                Gerenciar conexão em Configurações <ExternalLink className="w-3 h-3" />
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Upload WhatsApp History Box */}
         <Card className="border-slate-200">

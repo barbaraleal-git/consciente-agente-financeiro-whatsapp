@@ -175,7 +175,7 @@ export const Register: React.FC = () => {
                     <Input
                       id="phone"
                       type="tel"
-                      placeholder="(11) 98765-4321"
+                      placeholder="(11) 94998-9868"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500"

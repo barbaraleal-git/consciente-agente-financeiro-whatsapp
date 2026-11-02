@@ -127,12 +127,23 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 
 ## E) Assistente e Chat no Painel Web (QUANDO ALTERAR IA/ASSISTENTE)
 
-1. **Passo a passo**:
-   - Acesse `/assistant`.
+1. **Visão do Cliente Comum (`role: 'client'`)**:
+   - Acesse `/assistant` logado como cliente comum.
+   - **Verificação**: O card "Canal WhatsApp Real" ou qualquer aviso técnico de conector/canal **NÃO APARECE**.
+   - O cliente vê exclusivamente o chat do assistente e, na coluna lateral, o card funcional de transferência de histórico (`.txt`) e status de importações.
    - Digite: `Quanto sobrou na minha caixinha de alimentação?`
    - Envie e observe a resposta em tempo real via streaming.
-2. **Comportamento Esperado**:
-   - Resposta precisa com o valor correto em reais, citando a caixinha correspondente.
+
+2. **Visão do Administrador (`role: 'admin'`)**:
+   - Acesse `/assistant` logado como administrador.
+   - **Verificação**: Na coluna lateral, o card "Canal WhatsApp Oficial" é exibido com o badge "Apenas Admin".
+   - O número exibido é o real **+55 11 94998-9868** (vindo dinamicamente de `whatsapp_status`).
+   - O status indica "Conectado via Meta Cloud API" (quando `token_configurado` ou `owner_connected` for true), com badge "Ativo" e link direto para Configurações.
+   - Nenhuma referência ao número fictício `98765-4321` ou à palavra "conector" aparece.
+
+3. **Transferência de Histórico do WhatsApp**:
+   - Envie um arquivo `.txt` exportado do WhatsApp.
+   - O upload cria um job em `import_jobs`, que é processado em segundo plano categorizando as despesas e criando os registros em `transactions` via hook backend.
 
 ---
 
@@ -188,6 +199,8 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - Acesse `/settings` (Configurações):
      - **Verificação**: A seção "Canal Oficial WhatsApp Business (Meta Cloud API)", campos de Token, IDs da Meta (Phone ID, WABA ID), Webhook URL e contatos técnicos **NÃO APARECEM**.
      - O cliente só enxerga seus dados pessoais (Nome, Email, Telefone, Senha).
+   - Acesse `/assistant` (Assistente):
+     - **Verificação**: Nenhum card de canal WhatsApp ou status de conector é exibido para o cliente comum. Apenas o chat e a ferramenta de histórico.
    - Observe o Menu Lateral (Sidebar):
      - **Verificação**: O item "Backoffice" **NÃO APARECE**.
    - Tente navegar manualmente digitando `/admin` na URL do navegador:

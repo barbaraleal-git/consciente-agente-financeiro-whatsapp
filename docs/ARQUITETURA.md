@@ -87,12 +87,13 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
    - **Cliente (`client` - padrão)**:
      - Foco 100% na experiência pessoal de finanças e caixinhas.
      - Vê: Dashboard, Caixinhas/Orçamentos, Extrato de Transações, Categorias, Relatórios e Configurações de Perfil/Senha.
-     - **Não vê dados técnicos**: cliente comum **NÃO** tem acesso à seção do canal WhatsApp, token de acesso, Phone Number ID, WABA ID, URL de Webhook ou listas de contatos de infraestrutura. Essa seção é totalmente ocultada da tela de Configurações (`/settings`).
+     - **Não vê dados técnicos**: cliente comum **NÃO** tem acesso à seção do canal WhatsApp, token de acesso, Phone Number ID, WABA ID, URL de Webhook ou listas de contatos de infraestrutura. Essa seção é totalmente ocultada da tela de Configurações (`/settings`). Na página do Assistente (`/assistant`), nenhum card de canal WhatsApp ou aviso de conector é exibido: o cliente visualiza apenas a janela de chat e a ferramenta de histórico.
      - **Não vê rota de Backoffice**: o link de Backoffice não é exibido no menu lateral (Sidebar) e a rota `/admin` barra o acesso com mensagem de "Acesso Restrito".
    - **Administrador (`admin`)**:
      - Conta da dona do produto (`barbara.ferreira.leal@gmail.com`) promovida automaticamente de forma idempotente (via migração e no login).
      - Possui a visão completa de cliente para gerenciar suas próprias finanças.
      - **Vê dados técnicos em Configurações (`/settings`)**: seção exclusiva "Canal Oficial WhatsApp Business (Meta Cloud API)", exibindo status da Meta Graph API, token configurado/ativo, Phone Number ID, WABA ID, Webhook URL e ferramenta de disparo de mensagem de teste.
+     - **Vê aviso oficial no Assistente (`/assistant`)**: card exclusivo com badge "Apenas Admin" exibindo o número oficial real (+55 11 94998-9868) e status dinâmico da Meta Cloud API.
      - **Vê e acessa o Backoffice (`/admin`)**: atalho com ícone de escudo na Sidebar para suporte operacional e monitoramento da base de clientes.
 
 2. **Proteção Estrita de Endpoints no Backend**:

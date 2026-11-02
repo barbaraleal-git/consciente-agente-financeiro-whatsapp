@@ -183,7 +183,7 @@ export const Settings: React.FC = () => {
       const nextState = !isWaConnected
       const updated = await whatsappService.updateStatus(
         nextState,
-        phoneNumber || '+55 (11) 98765-4321',
+        phoneNumber || '+55 11 94998-9868',
       )
       setIsWaConnected(updated.connected)
       setPhoneNumber(updated.phone_number || '')
@@ -1146,7 +1146,7 @@ export const Settings: React.FC = () => {
                 <Input
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
-                  placeholder="+55 11 98765-4321"
+                  placeholder="+55 11 94998-9868"
                   required
                 />
               </div>

@@ -25,11 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.27',
+    date: '02/11/2026',
+    title:
+      'Limpeza de Card Obsoleto no Assistente, Eliminação de Dados Fictícios e Restrição Rigorosa de Visão de Canal',
+    tag: 'Atual',
+    highlights: [
+      'Página Assistente (/assistant) limpa para clientes comuns: clientes visualizam exclusivamente a janela de conversa e ferramentas de histórico funcional, sem nenhum card técnico de canal WhatsApp ou conector.',
+      'Aviso de Canal Oficial restrito a Administradores: administradores visualizam na lateral o número oficial real (+55 11 94998-9868) com status dinâmico da Meta Cloud API via whatsapp_status.',
+      'Eliminação total de dados fictícios: número legado "+55 (11) 98765-4321" e frases obsoletas de "conector do dono" completamente removidas de todas as telas.',
+      'Validação de importação funcional mantida: ferramenta de transferência de histórico .txt do WhatsApp preservada com backend real de categorização e parse assíncrono.',
+    ],
+    details: [
+      'Card Canal WhatsApp Real obsoleto substituído por visão restrita ao papel admin em src/pages/Assistant.tsx.',
+      'Fallback de telefone em Settings.tsx e placeholder em Register.tsx atualizados para o número oficial real.',
+      'Documentação técnica em docs/TESTES_REGRESSIVOS.md atualizada com os novos cenários de teste para o Assistente.',
+    ],
+  },
+  {
     version: '0.0.25 (v1.7.0)',
     date: '02/11/2026',
     title:
       'Registro de Gastos por Áudio no WhatsApp, Papéis Admin × Cliente, Backoffice /admin, Ícone de Olho Fechado e Status de Leitura/Digitando',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Áudio via WhatsApp: reconhecimento automático de mensagens de voz (audio/voice), download seguro do binário pela Meta Cloud API, transcrição inteligente de fala para texto (STT) e reuso do mesmo fluxo do agente financeiro para registro da despesa na caixinha correta em centavos.',
       'Tratamento amigável de áudio inaudível: resposta empática e imediata caso o áudio esteja silencioso ou com ruído, orientando o cliente a gravar mais perto do microfone ou enviar por texto.',

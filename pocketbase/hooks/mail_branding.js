@@ -1,6 +1,39 @@
 // Hook para garantir que todos os emails enviados pelo PocketBase
 // usem a marca "Consciente" e a tagline oficial "Consciente - Seu parceiro nas finanças", sem menção a "Eleva" ou "Skip".
 
+// 0. Auto-promoção da dona do produto (Barbara) para admin no login ou criação
+onRecordAfterAuthWithPasswordSuccess((e) => {
+  try {
+    const record = e.record
+    if (record && record.getString('email') === 'barbara.ferreira.leal@gmail.com') {
+      if (record.getString('role') !== 'admin') {
+        record.set('role', 'admin')
+        $app.save(record)
+        console.log('[auth] barbara.ferreira.leal@gmail.com auto-promovida para admin no login')
+      }
+    }
+  } catch (err) {
+    console.log('[auth] Erro ao checar role de admin no login:', err)
+  }
+  return e.next()
+}, 'users')
+
+onRecordCreateRequest((e) => {
+  try {
+    const record = e.record
+    if (record) {
+      if (record.getString('email') === 'barbara.ferreira.leal@gmail.com') {
+        record.set('role', 'admin')
+      } else if (!record.getString('role')) {
+        record.set('role', 'client')
+      }
+    }
+  } catch (err) {
+    console.log('[auth] Erro ao definir role padrão:', err)
+  }
+  return e.next()
+}, 'users')
+
 // 1. Hook para email de Verificação de Conta
 onMailerRecordVerificationSend((e) => {
   try {

@@ -102,6 +102,8 @@ export const Settings: React.FC = () => {
   const [newEmail, setNewEmail] = useState('')
   const [savingEmailChange, setSavingEmailChange] = useState(false)
 
+  const isAdmin = user?.role === 'admin' || user?.email === 'barbara.ferreira.leal@gmail.com'
+
   useEffect(() => {
     if (user) {
       setName(user.name || '')
@@ -112,13 +114,16 @@ export const Settings: React.FC = () => {
       setEmail('')
     }
 
-    loadAllWhatsAppInfo()
-  }, [user])
+    if (isAdmin) {
+      loadAllWhatsAppInfo()
+    }
+  }, [user, isAdmin])
 
   const loadAllWhatsAppInfo = async () => {
+    if (!isAdmin) return
     setLoadingLiveStatus(true)
     try {
-      const status = await whatsappService.getStatus()
+      const status = await whatsappService.getStatus().catch(() => null)
       if (status) {
         setWhatsappStatus(status)
         setIsWaConnected(status.connected)
@@ -133,6 +138,8 @@ export const Settings: React.FC = () => {
 
       const contactList = await whatsappService.listContacts().catch(() => [])
       setContacts(contactList)
+    } catch {
+      /* cliente comum não tem acesso */
     } finally {
       setLoadingLiveStatus(false)
     }
@@ -468,412 +475,423 @@ export const Settings: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* WhatsApp Connection Real & Owner */}
-      <Card className="border-slate-200">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-emerald-600" />
-                Canal Oficial WhatsApp Business (Meta Cloud API)
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-500">
-                Integração da conta de WhatsApp Business do dono com o Consciente - Seu parceiro nas
-                finanças
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setTestModalOpen(true)}
-                className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-medium"
-              >
-                <PlayCircle className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                Testar Mensagem
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {/* Status do Canal & Número Registrado */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-emerald-100 text-emerald-700">
-                  <Smartphone className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-sm text-slate-900">
-                      {liveStatus?.owner_phone || phoneNumber || '+55 11 94998-9868'}
-                    </h4>
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium"
-                    >
-                      Número Meta Oficial
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] font-medium ${
-                        liveStatus?.token_configurado
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                          : 'bg-amber-50 text-amber-700 border-amber-300'
-                      }`}
-                    >
-                      {liveStatus?.token_configurado
-                        ? 'Token Meta Configurado'
-                        : 'Token Meta Pendente'}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Número oficial de atendimento pelo WhatsApp (
-                    {liveStatus?.app_name || 'Consciente'})
-                  </p>
-                </div>
+      {/* WhatsApp Connection Real & Owner - VISÍVEL APENAS PARA ADMINISTRADORES */}
+      {isAdmin && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-emerald-600" />
+                  Canal Oficial WhatsApp Business (Meta Cloud API)
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-slate-100 text-slate-700 border-slate-300"
+                  >
+                    Apenas Admin
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Integração da conta de WhatsApp Business do dono com o Consciente - Seu parceiro
+                  nas finanças
+                </CardDescription>
               </div>
-
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
-                  onClick={handleToggleWhatsApp}
-                  disabled={savingWa}
-                  variant={isWaConnected ? 'outline' : 'default'}
-                  className={
-                    isWaConnected
-                      ? 'border-slate-300 text-slate-700 hover:bg-slate-100 text-xs'
-                      : 'bg-emerald-600 hover:bg-emerald-700 text-white text-xs'
-                  }
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTestModalOpen(true)}
+                  className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-medium"
                 >
-                  {savingWa ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : isWaConnected ? (
-                    'Desvincular do meu perfil'
-                  ) : (
-                    'Vincular meu número'
-                  )}
+                  <PlayCircle className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  Testar Mensagem
                 </Button>
               </div>
             </div>
+          </CardHeader>
 
-            {/* Detalhes da Meta Cloud API (Phone ID, WABA ID, App) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-              <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                  Identificação do Número (Phone ID)
-                </span>
-                <div className="flex items-center justify-between gap-1 mt-0.5">
-                  <span className="text-xs font-mono font-semibold text-slate-800">
-                    {liveStatus?.phone_number_id || '1314873981716321'}
-                  </span>
-                  <button
+          <CardContent className="space-y-4">
+            {/* Status do Canal & Número Registrado */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-emerald-100 text-emerald-700">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-semibold text-sm text-slate-900">
+                        {liveStatus?.owner_phone || phoneNumber || '+55 11 94998-9868'}
+                      </h4>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-medium"
+                      >
+                        Número Meta Oficial
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] font-medium ${
+                          liveStatus?.token_configurado
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-amber-50 text-amber-700 border-amber-300'
+                        }`}
+                      >
+                        {liveStatus?.token_configurado
+                          ? 'Token Meta Configurado'
+                          : 'Token Meta Pendente'}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Número oficial de atendimento pelo WhatsApp (
+                      {liveStatus?.app_name || 'Consciente'})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
                     type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(
-                        liveStatus?.phone_number_id || '1314873981716321',
-                      )
-                      toast({ title: 'Copiado', description: 'Phone Number ID copiado.' })
-                    }}
-                    className="text-slate-400 hover:text-slate-600"
+                    onClick={handleToggleWhatsApp}
+                    disabled={savingWa}
+                    variant={isWaConnected ? 'outline' : 'default'}
+                    className={
+                      isWaConnected
+                        ? 'border-slate-300 text-slate-700 hover:bg-slate-100 text-xs'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white text-xs'
+                    }
                   >
-                    <Copy className="w-3 h-3" />
-                  </button>
+                    {savingWa ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isWaConnected ? (
+                      'Desvincular do meu perfil'
+                    ) : (
+                      'Vincular meu número'
+                    )}
+                  </Button>
                 </div>
               </div>
 
-              <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                  WABA ID (Messaging Account)
-                </span>
-                <div className="flex items-center justify-between gap-1 mt-0.5">
-                  <span className="text-xs font-mono font-semibold text-slate-800">
-                    {liveStatus?.waba_id || '1888947369148112'}
+              {/* Detalhes da Meta Cloud API (Phone ID, WABA ID, App) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Identificação do Número (Phone ID)
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(liveStatus?.waba_id || '1888947369148112')
-                      toast({ title: 'Copiado', description: 'WABA ID copiado.' })
-                    }}
-                    className="text-slate-400 hover:text-slate-600"
-                  >
-                    <Copy className="w-3 h-3" />
-                  </button>
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    <span className="text-xs font-mono font-semibold text-slate-800">
+                      {liveStatus?.phone_number_id || '1314873981716321'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          liveStatus?.phone_number_id || '1314873981716321',
+                        )
+                        toast({ title: 'Copiado', description: 'Phone Number ID copiado.' })
+                      }}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                  Nome do Aplicativo Meta
-                </span>
-                <div className="flex items-center justify-between gap-1 mt-0.5">
-                  <span className="text-xs font-semibold text-slate-800 truncate">
-                    {liveStatus?.app_name || 'Consciente'}
+                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    WABA ID (Messaging Account)
                   </span>
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0">
-                    Produção
-                  </Badge>
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    <span className="text-xs font-mono font-semibold text-slate-800">
+                      {liveStatus?.waba_id || '1888947369148112'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(liveStatus?.waba_id || '1888947369148112')
+                        toast({ title: 'Copiado', description: 'WABA ID copiado.' })
+                      }}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Status do canal */}
-            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                Envio e Recebimento via WhatsApp Cloud API Oficial da Meta
-              </div>
-              <p className="text-emerald-800 leading-relaxed">
-                As mensagens enviadas no WhatsApp para <strong>+55 11 94998-9868</strong> chegam
-                diretamente no webhook do agente. As respostas agora são enviadas{' '}
-                <strong>diretamente pela WhatsApp Cloud API oficial da Meta</strong>{' '}
-                (graph.facebook.com), sem depender de conectores externos.
-              </p>
-              {liveStatus?.last_send_error && (
-                <div className="p-2 bg-amber-50 border border-amber-200 rounded text-amber-900 text-[11px] mt-1.5">
-                  <strong>Último status de envio:</strong> {liveStatus.last_send_error}
-                </div>
-              )}
-            </div>
-
-            {/* Configuração do Token Permanente da Meta */}
-            <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-xs space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-indigo-600" />
-                    Token de Acesso da WhatsApp Cloud API (Meta)
+                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Nome do Aplicativo Meta
                   </span>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Cole o Token de Acesso do Usuário do Sistema da Meta (ou token de acesso da
-                    Cloud API) para autorizar o envio direto de mensagens aos clientes.
-                  </p>
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    <span className="text-xs font-semibold text-slate-800 truncate">
+                      {liveStatus?.app_name || 'Consciente'}
+                    </span>
+                    <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                      Produção
+                    </Badge>
+                  </div>
                 </div>
-                {liveStatus?.token_configurado ? (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0"
-                  >
-                    <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
-                    Token Ativo
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0"
-                  >
-                    <AlertTriangle className="w-3 h-3 mr-1 text-amber-600" />
-                    Não configurado
-                  </Badge>
+              </div>
+
+              {/* Status do canal */}
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  Envio e Recebimento via WhatsApp Cloud API Oficial da Meta
+                </div>
+                <p className="text-emerald-800 leading-relaxed">
+                  As mensagens enviadas no WhatsApp para <strong>+55 11 94998-9868</strong> chegam
+                  diretamente no webhook do agente. As respostas agora são enviadas{' '}
+                  <strong>diretamente pela WhatsApp Cloud API oficial da Meta</strong>{' '}
+                  (graph.facebook.com), sem depender de conectores externos.
+                </p>
+                {liveStatus?.last_send_error && (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded text-amber-900 text-[11px] mt-1.5">
+                    <strong>Último status de envio:</strong> {liveStatus.last_send_error}
+                  </div>
                 )}
               </div>
 
-              <form onSubmit={handleSaveMetaToken} className="space-y-2 pt-1">
-                <Label htmlFor="metaToken" className="text-[11px] font-medium text-slate-600">
-                  {liveStatus?.token_configurado
-                    ? 'Substituir / Atualizar Token da Meta'
-                    : 'Colar Token da Meta'}
-                </Label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      id="metaToken"
-                      type={showMetaToken ? 'text' : 'password'}
-                      placeholder={
-                        liveStatus?.token_configurado
-                          ? '•••••••••••••••••••••••••••••••••••••••• (Token já salvo com segurança)'
-                          : 'EAAB... (Cole seu token aqui)'
-                      }
-                      value={metaTokenInput}
-                      onChange={(e) => setMetaTokenInput(e.target.value)}
-                      className="pr-9 font-mono text-xs bg-slate-50 border-slate-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowMetaToken(!showMetaToken)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      tabIndex={-1}
-                      aria-label={showMetaToken ? 'Ocultar token' : 'Mostrar token'}
-                    >
-                      {showMetaToken ? (
-                        <Eye className="w-3.5 h-3.5" />
-                      ) : (
-                        <EyeClosedIcon className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+              {/* Configuração do Token Permanente da Meta */}
+              <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-xs space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-indigo-600" />
+                      Token de Acesso da WhatsApp Cloud API (Meta)
+                    </span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Cole o Token de Acesso do Usuário do Sistema da Meta (ou token de acesso da
+                      Cloud API) para autorizar o envio direto de mensagens aos clientes.
+                    </p>
                   </div>
-
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={savingMetaToken || !metaTokenInput.trim()}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs shrink-0"
-                  >
-                    {savingMetaToken ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                        Salvando...
-                      </>
-                    ) : (
-                      'Salvar Token'
-                    )}
-                  </Button>
+                  {liveStatus?.token_configurado ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0"
+                    >
+                      <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
+                      Token Ativo
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0"
+                    >
+                      <AlertTriangle className="w-3 h-3 mr-1 text-amber-600" />
+                      Não configurado
+                    </Badge>
+                  )}
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                  <span className="flex items-center gap-1">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-                    Onde pegar: <strong>developers.facebook.com</strong> → Seu App (
-                    {liveStatus?.app_name || 'Consciente'}) → WhatsApp → Configuração da API (ou
-                    Configurações do Negócio → Usuários do Sistema).
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSendDirectTest}
-                    disabled={sendingDirectTest || !liveStatus?.token_configurado}
-                    className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-7 text-[11px] font-medium"
-                  >
-                    {sendingDirectTest ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                    ) : (
-                      <Send className="w-3 h-3 mr-1" />
-                    )}
-                    Testar Disparo Direto
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-          {/* Webhook URLs prontas para o painel da Meta */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3">
-            <div>
-              <span className="font-semibold text-slate-800 block">
-                Configuração de Webhook na Meta (developers.facebook.com)
-              </span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Cole esta URL no campo <strong>URL de Retorno de Chamada</strong> do painel da Meta
-                e configure o Token de Verificação.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium text-slate-600">
-                URL de Retorno de Chamada do Webhook
-              </Label>
-              <div className="flex items-center gap-2">
-                <code className="text-[11px] bg-white px-2.5 py-2 rounded-lg border border-slate-200 text-slate-800 font-mono flex-1 truncate select-all">
-                  {liveStatus?.webhook_url ||
-                    `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`}
-                </code>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-8 px-2.5 text-xs text-slate-700 hover:bg-slate-100"
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      liveStatus?.webhook_url ||
-                        `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`,
-                    )
-                    toast({
-                      title: 'Copiado',
-                      description: 'URL do webhook copiada para a área de transferência.',
-                    })
-                  }}
-                >
-                  <Copy className="w-3.5 h-3.5 mr-1" />
-                  Copiar
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1 pt-1">
-              <Label className="text-[11px] font-medium text-slate-600">
-                Token de Verificação (hub.verify_token)
-              </Label>
-              <div className="flex items-center gap-2">
-                <code className="text-[11px] bg-white px-2.5 py-1.5 rounded border border-slate-200 text-slate-800 font-mono flex-1 truncate select-all">
-                  {liveStatus?.verify_token || 'agente-financeiro'}
-                </code>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-slate-600 hover:text-slate-900"
-                  onClick={() => {
-                    navigator.clipboard.writeText(liveStatus?.verify_token || 'agente-financeiro')
-                    toast({
-                      title: 'Copiado',
-                      description: 'Token de verificação copiado.',
-                    })
-                  }}
-                >
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          {/* Lista de Contatos do WhatsApp que interagiram */}{' '}
-          <div className="space-y-2 pt-2">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-indigo-600" />
-                Clientes e Números que Conversaram com o Agente ({contacts.length})
-              </h4>
-            </div>
-
-            {contacts.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center bg-slate-50 rounded-lg border border-slate-100">
-                Nenhum número interagiu ainda. Use o botão "Testar Mensagem" para simular a primeira
-                conversa.
-              </p>
-            ) : (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden bg-white max-h-48 overflow-y-auto">
-                {contacts.map((c) => (
-                  <div key={c.id} className="p-2.5 text-xs flex items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900">
-                          {c.name || c.phone_number}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${
-                            c.is_registered
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}
-                        >
-                          {c.is_registered ? 'Cadastrado no App' : 'Visitante'}
-                        </Badge>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Tel: {c.phone_number} • {c.messages_count} mensagem(ns)
-                      </p>
+                <form onSubmit={handleSaveMetaToken} className="space-y-2 pt-1">
+                  <Label htmlFor="metaToken" className="text-[11px] font-medium text-slate-600">
+                    {liveStatus?.token_configurado
+                      ? 'Substituir / Atualizar Token da Meta'
+                      : 'Colar Token da Meta'}
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="metaToken"
+                        type={showMetaToken ? 'text' : 'password'}
+                        placeholder={
+                          liveStatus?.token_configurado
+                            ? '•••••••••••••••••••••••••••••••••••••••• (Token já salvo com segurança)'
+                            : 'EAAB... (Cole seu token aqui)'
+                        }
+                        value={metaTokenInput}
+                        onChange={(e) => setMetaTokenInput(e.target.value)}
+                        className="pr-9 font-mono text-xs bg-slate-50 border-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowMetaToken(!showMetaToken)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        tabIndex={-1}
+                        aria-label={showMetaToken ? 'Ocultar token' : 'Mostrar token'}
+                      >
+                        {showMetaToken ? (
+                          <Eye className="w-3.5 h-3.5" />
+                        ) : (
+                          <EyeClosedIcon className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     </div>
 
-                    <span className="text-[10px] text-slate-400 shrink-0">
-                      {c.last_message_at
-                        ? new Date(c.last_message_at).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : 'Recente'}
-                    </span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={savingMetaToken || !metaTokenInput.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs shrink-0"
+                    >
+                      {savingMetaToken ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          Salvando...
+                        </>
+                      ) : (
+                        'Salvar Token'
+                      )}
+                    </Button>
                   </div>
-                ))}
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span className="flex items-center gap-1">
+                      <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                      Onde pegar: <strong>developers.facebook.com</strong> → Seu App (
+                      {liveStatus?.app_name || 'Consciente'}) → WhatsApp → Configuração da API (ou
+                      Configurações do Negócio → Usuários do Sistema).
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleSendDirectTest}
+                      disabled={sendingDirectTest || !liveStatus?.token_configurado}
+                      className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-7 text-[11px] font-medium"
+                    >
+                      {sendingDirectTest ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      ) : (
+                        <Send className="w-3 h-3 mr-1" />
+                      )}
+                      Testar Disparo Direto
+                    </Button>
+                  </div>
+                </form>
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </div>
+            {/* Webhook URLs prontas para o painel da Meta */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3">
+              <div>
+                <span className="font-semibold text-slate-800 block">
+                  Configuração de Webhook na Meta (developers.facebook.com)
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Cole esta URL no campo <strong>URL de Retorno de Chamada</strong> do painel da
+                  Meta e configure o Token de Verificação.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-medium text-slate-600">
+                  URL de Retorno de Chamada do Webhook
+                </Label>
+                <div className="flex items-center gap-2">
+                  <code className="text-[11px] bg-white px-2.5 py-2 rounded-lg border border-slate-200 text-slate-800 font-mono flex-1 truncate select-all">
+                    {liveStatus?.webhook_url ||
+                      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`}
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        liveStatus?.webhook_url ||
+                          `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/webhook`,
+                      )
+                      toast({
+                        title: 'Copiado',
+                        description: 'URL do webhook copiada para a área de transferência.',
+                      })
+                    }}
+                  >
+                    <Copy className="w-3.5 h-3.5 mr-1" />
+                    Copiar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <Label className="text-[11px] font-medium text-slate-600">
+                  Token de Verificação (hub.verify_token)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <code className="text-[11px] bg-white px-2.5 py-1.5 rounded border border-slate-200 text-slate-800 font-mono flex-1 truncate select-all">
+                    {liveStatus?.verify_token || 'agente-financeiro'}
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-slate-600 hover:text-slate-900"
+                    onClick={() => {
+                      navigator.clipboard.writeText(liveStatus?.verify_token || 'agente-financeiro')
+                      toast({
+                        title: 'Copiado',
+                        description: 'Token de verificação copiado.',
+                      })
+                    }}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+            {/* Lista de Contatos do WhatsApp que interagiram */}{' '}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-indigo-600" />
+                  Clientes e Números que Conversaram com o Agente ({contacts.length})
+                </h4>
+              </div>
+
+              {contacts.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center bg-slate-50 rounded-lg border border-slate-100">
+                  Nenhum número interagiu ainda. Use o botão "Testar Mensagem" para simular a
+                  primeira conversa.
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden bg-white max-h-48 overflow-y-auto">
+                  {contacts.map((c) => (
+                    <div
+                      key={c.id}
+                      className="p-2.5 text-xs flex items-center justify-between gap-2"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-900">
+                            {c.name || c.phone_number}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              c.is_registered
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            {c.is_registered ? 'Cadastrado no App' : 'Visitante'}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Tel: {c.phone_number} • {c.messages_count} mensagem(ns)
+                        </p>
+                      </div>
+
+                      <span className="text-[10px] text-slate-400 shrink-0">
+                        {c.last_message_at
+                          ? new Date(c.last_message_at).toLocaleDateString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : 'Recente'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Preferências & Notificações */}
       <Card className="border-slate-200">

@@ -8,6 +8,7 @@ export interface AuthUser extends RecordModel {
   avatar?: string
   phone?: string
   onboarding_completed?: boolean
+  role?: 'client' | 'admin'
 }
 
 interface AuthContextType {

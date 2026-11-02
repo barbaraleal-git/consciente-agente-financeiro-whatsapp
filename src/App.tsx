@@ -23,6 +23,7 @@ import Budgets from '@/pages/Budgets'
 import Reports from '@/pages/Reports'
 import Assistant from '@/pages/Assistant'
 import Settings from '@/pages/Settings'
+import AdminBackoffice from '@/pages/AdminBackoffice'
 import Onboarding from '@/pages/Onboarding'
 import ReleaseLog from '@/pages/ReleaseLog'
 import NotFound from '@/pages/NotFound'
@@ -58,6 +59,7 @@ const App: React.FC = () => (
               <Route path="/reports" element={<Reports />} />
               <Route path="/assistant" element={<Assistant />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/admin" element={<AdminBackoffice />} />
             </Route>
           </Route>
 

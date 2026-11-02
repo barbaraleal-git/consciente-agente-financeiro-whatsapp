@@ -16,9 +16,10 @@ import {
   LogOut,
   Plus,
   Wallet,
+  ShieldCheck,
 } from 'lucide-react'
 
-const navItems = [
+const baseNavItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/transactions', label: 'Transações', icon: Receipt },
   { path: '/categories', label: 'Categorias', icon: Tags },
@@ -40,6 +41,13 @@ export const Layout: React.FC = () => {
   }
 
   // Get active page title
+  const isAdmin = user?.role === 'admin' || user?.email === 'barbara.ferreira.leal@gmail.com'
+
+  const navItems = [
+    ...baseNavItems,
+    ...(isAdmin ? [{ path: '/admin', label: 'Backoffice', icon: ShieldCheck }] : []),
+  ]
+
   const currentNav = navItems.find((n) => n.path === location.pathname)
   const pageTitle = currentNav ? currentNav.label : 'Painel Financeiro'
 

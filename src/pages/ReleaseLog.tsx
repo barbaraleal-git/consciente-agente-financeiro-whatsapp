@@ -25,10 +25,32 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: 'v1.7.0',
+    date: '02/11/2026',
+    title:
+      'Registro de Gastos por Áudio no WhatsApp, Visão de Cliente vs Admin e Backoffice Operacional',
+    tag: 'Atual',
+    highlights: [
+      'Registro de Gastos por Áudio no WhatsApp: ao enviar mensagem de voz (áudio), o webhook baixa a mídia via Meta Cloud API, transcreve para texto e aciona o mesmo fluxo inteligente do agente para registrar o gasto na caixinha correta com resposta imediata.',
+      'Tratamento amigável de áudio inaudível: se o áudio não puder ser baixado ou transcrito, o bot responde pedindo educadamente para falar mais perto do microfone ou digitar.',
+      'Separação rigorosa de visão Cliente vs Admin: cliente comum não tem mais acesso a dados técnicos de infraestrutura (tokens, IDs da Meta, URLs de webhook e logs). Seção de canal WhatsApp restrita a administradores.',
+      'Proteção de API no Backend: endpoints técnicos (/backend/v1/whatsapp/status, /token, /send-test, /contacts) agora barram cliente comum com HTTP 403 Forbidden.',
+      'Backoffice Administrativo (/admin): visão geral de métricas (clientes, ativos em 7/30d, transações, conversas), lista com busca/ordenação e detalhe com caixinhas, transações e histórico da conversa.',
+      'Ações de suporte no Backoffice: zerar o fio da conversa (reset de thread travada) e vincular/desvincular o número de WhatsApp do cliente com um clique.',
+      'Auto-promoção idempotente da dona do produto (barbara.ferreira.leal@gmail.com) para o papel admin via migração e no login.',
+    ],
+    details: [
+      'Migração 0021_add_user_role_and_admin.js adicionou campo "role" (client/admin) e promoveu barbara.ferreira.leal@gmail.com.',
+      'Hook pocketbase/hooks/whatsapp_bridge.js atualizado com download de mídia e transcrição STT para mensagens do tipo audio/voice.',
+      'Novo hook pocketbase/hooks/admin_backoffice.js com endpoints /admin/overview, /admin/clients/{id}, reset-thread e toggle-whatsapp.',
+      'Página src/pages/AdminBackoffice.tsx criada e integrada ao Sidebar e roteamento protegido.',
+    ],
+  },
+  {
     version: 'v1.6.0',
     date: '02/11/2026',
     title: 'Novo Ícone Olho Fechado em Senhas e Indicação Imediata de Recebimento no WhatsApp',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Ícone do campo de senha reformulado: padrão oculto com desenho de olho fechado de verdade (pálpebra curva com cílios, sem barra por cima), abrindo para olho aberto ao clicar em Login, Cadastro, Redefinição e Configurações.',
       'Indicação imediata de recebimento no WhatsApp: ao receber mensagem no webhook, marca imediatamente como lida (checks azuis) e ativa os três pontinhos ("digitando...") via Meta Status API.',

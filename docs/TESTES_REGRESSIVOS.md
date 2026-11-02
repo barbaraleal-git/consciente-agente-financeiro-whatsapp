@@ -151,7 +151,55 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 1. **Verificação de Webhook Challenge**:
    - Dispare GET em `/backend/v1/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=agente-financeiro&hub.challenge=teste123`.
    - Resposta esperada: `200` com corpo `teste123`.
-2. **Disparo de Teste no Painel**:
-   - Acesse `/settings` > Canal Oficial WhatsApp Business.
+2. **Disparo de Teste no Painel (Admin)**:
+   - Acesse `/settings` como admin > Canal Oficial WhatsApp Business.
    - Clique em "Testar Mensagem" e envie para o número do celular de teste.
    - Confirme recebimento no celular e status `success` no painel.
+
+---
+
+## H) Registro de Gasto por Áudio no WhatsApp (NOVO)
+
+1. **Passo a passo**:
+   - Abra o WhatsApp no celular com o número cadastrado no Consciente.
+   - Grave uma mensagem de voz/áudio dizendo: _"gastei trinta reais no almoço"_ ou _"almoço quarenta e cinco reais"_.
+   - Envie a nota de voz para o WhatsApp oficial `+55 11 94998-9868`.
+2. **Comportamento Esperado**:
+   - O webhook detecta `msg.type === 'audio'` ou `'voice'`.
+   - Marca imediatamente como lida e ativa "digitando..." (três pontinhos).
+   - Baixa a mídia via Meta Cloud API usando o token em `whatsapp_status.access_token`.
+   - Transcreve o áudio para texto.
+   - Registra o gasto de R$ 30,00 (3000 centavos) na caixinha de Alimentação.
+   - Responde cordialmente confirmando o valor registrado e saldo da caixinha.
+   - Caso o áudio seja inaudível ou ruído puro: responde mensagem amigável pedindo para repetir mais perto do microfone ou digitar.
+
+---
+
+## I) Restrição de Visão do Cliente Comum vs Admin (NOVO)
+
+1. **Passo a passo com Cliente Comum (`role: 'client'`)**:
+   - Faça login com uma conta de cliente comum (ex.: qualquer usuário que não seja Barbara).
+   - Acesse `/settings`: a seção "Canal Oficial WhatsApp Business (Meta Cloud API)", campos de Token, IDs da Meta, Webhook e lista de contatos NÃO devem aparecer.
+   - No menu lateral (Sidebar): o item "Backoffice" NÃO deve aparecer.
+   - Tente acessar diretamente `/admin`: a tela bloqueia exibindo "Acesso Restrito".
+   - Tente chamar diretamente `GET /backend/v1/whatsapp/status`: recebe HTTP 403 Forbidden.
+2. **Passo a passo com Administradora (`role: 'admin'`)**:
+   - Faça login com `barbara.ferreira.leal@gmail.com` (ou usuário com role `admin`).
+   - Acesse `/settings`: a seção do Canal Oficial WhatsApp aparece normalmente com todos os controles.
+   - No menu lateral (Sidebar): o item "Backoffice" aparece com ícone de escudo.
+   - Acesse `/admin`: a página carrega perfeitamente com métricas, lista de clientes e ferramentas de suporte.
+
+---
+
+## J) Backoffice Administrativo e Ações de Suporte (NOVO)
+
+1. **Visão Geral e Métricas**:
+   - Em `/admin`, confira os 4 cartões: Total de Clientes, Clientes Ativos (7d/30d), Total de Transações e Conversas WhatsApp.
+2. **Busca e Lista de Clientes**:
+   - Digite o nome ou email de um cliente no campo de busca: a tabela filtra instantaneamente.
+   - Clique nos cabeçalhos de coluna (Caixinhas, Transações, Cadastro) para ordenar.
+3. **Detalhes do Cliente e Suporte**:
+   - Clique em "Detalhes" em qualquer cliente da lista.
+   - Modal abre com 3 abas: Caixinhas (consumido vs teto), Últimas Transações e Histórico da Conversa WhatsApp.
+   - Clique em "Zerar Fio da Conversa": reseta o contexto do agente daquele contato (limpa `thread_id`).
+   - Clique em "Desvincular WhatsApp" / "Vincular WhatsApp": atualiza o vínculo do telefone do cliente com feedback imediato.

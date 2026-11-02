@@ -452,3 +452,108 @@ export const whatsappService = {
     return res.json()
   },
 }
+
+export interface AdminMetrics {
+  total_clients: number
+  active_clients_7d: number
+  active_clients_30d: number
+  total_transactions: number
+  active_whatsapp_conversations: number
+}
+
+export interface AdminClientSummary {
+  id: string
+  name: string
+  email: string
+  phone: string
+  role: 'client' | 'admin'
+  created: string
+  updated: string
+  onboarding_completed: boolean
+  has_whatsapp_linked: boolean
+  whatsapp_contact_id: string
+  caixinhas_count: number
+  transactions_count: number
+}
+
+export interface AdminClientDetail {
+  client: {
+    id: string
+    name: string
+    email: string
+    phone: string
+    role: 'client' | 'admin'
+    onboarding_completed: boolean
+    created: string
+    updated: string
+  }
+  caixinhas: Array<{
+    id: string
+    category_id: string
+    category_name: string
+    icon: string
+    color: string
+    limit_cents: number
+    spent_cents: number
+    period: string
+  }>
+  recent_transactions: Array<{
+    id: string
+    amount_cents: number
+    type: string
+    description: string
+    category_name: string
+    date: string
+    created: string
+    is_recurring: boolean
+  }>
+  whatsapp: {
+    phone: string
+    is_linked: boolean
+    contact_id: string | null
+    contact_name: string | null
+    contact_phone: string | null
+    last_interaction: string | null
+    thread_id: string | null
+  }
+  conversation_history: Array<{
+    id: string
+    direction: string
+    message_text: string
+    status: string
+    created: string
+  }>
+}
+
+export const adminService = {
+  getOverview: async (): Promise<{ metrics: AdminMetrics; clients: AdminClientSummary[] }> => {
+    return pb.send('/backend/v1/admin/overview', {
+      method: 'GET',
+    })
+  },
+
+  getClientDetail: async (clientId: string): Promise<AdminClientDetail> => {
+    return pb.send(`/backend/v1/admin/clients/${clientId}`, {
+      method: 'GET',
+    })
+  },
+
+  resetClientThread: async (
+    clientId: string,
+  ): Promise<{ success: boolean; message: string; contacts_reset: number }> => {
+    return pb.send(`/backend/v1/admin/clients/${clientId}/reset-thread`, {
+      method: 'POST',
+    })
+  },
+
+  toggleClientWhatsapp: async (
+    clientId: string,
+    action: 'link' | 'unlink' | 'toggle',
+    phone?: string,
+  ): Promise<{ success: boolean; phone: string; is_linked: boolean; message: string }> => {
+    return pb.send(`/backend/v1/admin/clients/${clientId}/toggle-whatsapp`, {
+      method: 'POST',
+      body: { action, phone },
+    })
+  },
+}

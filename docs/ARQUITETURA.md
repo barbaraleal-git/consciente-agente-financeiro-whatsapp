@@ -17,8 +17,14 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 1. **Webhook Inbound (POST /backend/v1/whatsapp/webhook)**:
    - Recebe o payload da Meta (`entry[].changes[].value.messages[]`).
+   - Dispara imediatamente status de lida e typing indicator ("digitando...").
    - Normaliza o número E.164 (dígitos com DDI 55).
-   - Extrai o texto da mensagem (`text.body` ou botões interativos).
+   - Se for Áudio (`type === 'audio'` ou `'voice'`):
+     - Baixa a mídia usando o mediaId e o token em `whatsapp_status.access_token`.
+     - Transcreve o áudio para texto via API de transcrição integrada.
+     - Se o áudio for inaudível ou falhar, envia mensagem amigável solicitando repetição ou digitação.
+     - Se transcrito com sucesso, segue o fluxo exatamente igual a uma mensagem de texto.
+   - Se for Texto ou Interativo: extrai o texto diretamente (`text.body`).
 2. **Resolução de Identidade (`resolveUser`)**:
    - Etapa A: Busca vínculo explícito em `whatsapp_contacts.phone_number == digits` e lê o campo `user`.
    - Etapa B: Busca na coleção `users` comparando o campo `phone` (com match exato ou pelos últimos 8 dígitos).
@@ -40,7 +46,7 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 ### Coleções de Negócio / Aplicação (Aptas a Zeragem Controlada)
 
-- **`users`** (auth): Contas de usuários. Campos-chave: `email`, `name`, `phone`, `onboarding_completed`, `verified`.
+- **`users`** (auth): Contas de usuários. Campos-chave: `email`, `name`, `phone`, `onboarding_completed`, `verified`, `role` (`client` | `admin`). A dona do produto (`barbara.ferreira.leal@gmail.com`) possui `role: 'admin'`. Clientes comuns possuem `role: 'client'`.
   _Nota_: O usuário de serviço `whatsapp-visitante@agente.internal` é mantido para chats de visitantes.
 - **`categories`** (base): Caixinhas essenciais e personalizadas. Campos: `owner` (relation `users`), `name`, `type` (`despesa` | `receita` | `investimento`), `icon`, `color`.
 - **`budgets`** (base): Tetos mensais das caixinhas. Campos: `owner`, `category` (relation `categories`), `month` (`YYYY-MM`), `amount` (em **CENTAVOS**).
@@ -70,6 +76,24 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
    - Endpoint: `/backend/v1/whatsapp/webhook`
    - Parâmetros: `hub.mode=subscribe`, `hub.verify_token=agente-financeiro`, `hub.challenge`
    - Retorno: `200` com o challenge em texto plano.
+
+---
+
+## 4.1. Papéis de Usuário (Cliente vs Administrador) e Backoffice
+
+1. **Separação de Privilégios**:
+   - `client` (Padrão): Acesso apenas aos seus próprios dados de caixinhas, transações e perfil. Não tem acesso a telas de infraestrutura nem a endpoints técnicos da Meta.
+   - `admin`: Possui visão normal de cliente no app E acesso a:
+     - Configurações do canal oficial Meta WhatsApp Business (token, Phone ID, WABA ID, Webhook).
+     - Rota `/admin` (Backoffice Operacional) no menu lateral.
+2. **Proteção de Endpoints**:
+   - Endpoints `/backend/v1/whatsapp/status`, `/token`, `/send-test` e `/contacts` recusam clientes comuns com HTTP 403.
+   - Endpoints `/backend/v1/admin/overview`, `/backend/v1/admin/clients/{id}`, `reset-thread` e `toggle-whatsapp` exigem estritamente autenticação de admin.
+3. **Backoffice Operacional (/admin)**:
+   - Métricas: Total de clientes, ativos (7d/30d), total de transações, conversas no WhatsApp.
+   - Tabela de Clientes: Busca por nome/email/telefone, ordenação e status de onboarding/WhatsApp.
+   - Detalhe do Cliente: Suas caixinhas (consumido vs teto), últimas 20 transações, situação WhatsApp e histórico recente de conversa.
+   - Ações de Suporte: Zerar Fio da Conversa (limpa `thread_id` travado) e Vincular/Desvincular WhatsApp do cliente.
 
 ---
 

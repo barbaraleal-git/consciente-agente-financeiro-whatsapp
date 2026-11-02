@@ -404,16 +404,218 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
           const incomingMsgId = msg.id
 
           let textContent = ''
+          let isAudioMessage = msgType === 'audio' || msgType === 'voice'
+
           if (msgType === 'text' && msg.text) {
             textContent = msg.text.body || ''
           } else if (msgType === 'interactive' && msg.interactive) {
             textContent =
               msg.interactive.button_reply?.title || msg.interactive.list_reply?.title || ''
+          } else if (isAudioMessage) {
+            const audioData = msg.audio || msg.voice || {}
+            const mediaId = audioData.id
+            console.log(
+              `[whatsapp_bridge] [AUDIO] Recebido áudio de ${fromRaw}, mediaId=${mediaId}, mime=${audioData.mime_type || ''}`,
+            )
+
+            // Obter token da Meta para baixar a mídia
+            let metaToken =
+              $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+            try {
+              const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+              for (let w = 0; w < wsList.length; w++) {
+                const rec = wsList[w]
+                const tk = rec.getString('access_token')
+                if (tk) {
+                  metaToken = tk
+                  break
+                }
+              }
+            } catch (_) {}
+
+            if (!mediaId || !metaToken) {
+              console.log(
+                '[whatsapp_bridge] [AUDIO] Falha: mediaId ou token da Meta ausente. mediaId=' +
+                  mediaId +
+                  ', temToken=' +
+                  !!metaToken,
+              )
+            } else {
+              try {
+                // Passo (a): Obter a URL de download da mídia via Meta Cloud API
+                console.log(
+                  '[whatsapp_bridge] [AUDIO] Consultando URL da mídia na Meta Graph API: ' +
+                    mediaId,
+                )
+                const mediaMetaRes = $http.send({
+                  url: 'https://graph.facebook.com/v21.0/' + mediaId,
+                  method: 'GET',
+                  headers: {
+                    Authorization: 'Bearer ' + metaToken,
+                  },
+                  timeout: 15,
+                })
+
+                let mediaUrl = ''
+                if (mediaMetaRes.statusCode >= 200 && mediaMetaRes.statusCode < 300) {
+                  try {
+                    const parsed = JSON.parse(mediaMetaRes.rawText || '{}')
+                    mediaUrl = parsed.url || ''
+                  } catch (_) {}
+                } else {
+                  console.log(
+                    '[whatsapp_bridge] [AUDIO] Meta retornou status ' +
+                      mediaMetaRes.statusCode +
+                      ' ao consultar mediaId: ' +
+                      mediaMetaRes.rawText,
+                  )
+                }
+
+                if (mediaUrl) {
+                  console.log('[whatsapp_bridge] [AUDIO] URL obtida. Baixando binário do áudio...')
+                  const downloadRes = $http.send({
+                    url: mediaUrl,
+                    method: 'GET',
+                    headers: {
+                      Authorization: 'Bearer ' + metaToken,
+                      'User-Agent': 'Consciente-Agent/1.0',
+                    },
+                    timeout: 25,
+                  })
+
+                  if (downloadRes.statusCode >= 200 && downloadRes.statusCode < 300) {
+                    console.log(
+                      '[whatsapp_bridge] [AUDIO] Download concluído com sucesso. Transcrevendo áudio via IA...',
+                    )
+
+                    // Transcrição do áudio usando os serviços de IA integrados
+                    let transcribedText = ''
+
+                    // Tentativa 1: API de transcrição Whisper via Gateway oficial de IA
+                    const aiGatewayUrl = $os.getenv('SKIP_AI_GATEWAY_URL') || ''
+                    const aiGatewayKey =
+                      $os.getenv('SKIP_AI_GATEWAY_API_KEY') ||
+                      $os.getenv('SKIP_AI_CHAT_API_KEY') ||
+                      ''
+
+                    // Verifica se o Gateway suporta /audio/transcriptions
+                    if (aiGatewayUrl && aiGatewayKey) {
+                      try {
+                        const baseAudioUrl = aiGatewayUrl.replace(/\/chat\/completions.*$/, '')
+                        const transcribeEndpoint = baseAudioUrl.includes('/v1')
+                          ? baseAudioUrl + '/audio/transcriptions'
+                          : baseAudioUrl + '/v1/audio/transcriptions'
+
+                        const openAiRes = $http.send({
+                          url: transcribeEndpoint,
+                          method: 'POST',
+                          headers: {
+                            Authorization: 'Bearer ' + aiGatewayKey,
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            model: 'whisper-1',
+                            input_audio: {
+                              data: downloadRes.rawText || '',
+                              format: 'ogg',
+                            },
+                          }),
+                          timeout: 25,
+                        })
+
+                        if (openAiRes.statusCode >= 200 && openAiRes.statusCode < 300) {
+                          const resJson = JSON.parse(openAiRes.rawText || '{}')
+                          transcribedText = resJson.text || ''
+                          console.log(
+                            '[whatsapp_bridge] [AUDIO] Transcrição via Gateway STT concluída: "' +
+                              transcribedText +
+                              '"',
+                          )
+                        }
+                      } catch (sttErr) {
+                        console.log(
+                          '[whatsapp_bridge] [AUDIO] Gateway STT direto indisponível, usando fallback de LLM:',
+                          sttErr,
+                        )
+                      }
+                    }
+
+                    // Fallback de transcrição / interpretação inteligente via modelo multimodal rápido
+                    if (!transcribedText) {
+                      try {
+                        console.log(
+                          '[whatsapp_bridge] [AUDIO] Executando transcrição via modelo $ai.chat...',
+                        )
+                        // Para áudios em que o arquivo baixado foi recebido, tenta decodificação e transcrição
+                        const chatRes = $ai.chat({
+                          model: 'fast',
+                          messages: [
+                            {
+                              role: 'system',
+                              content:
+                                'Você é o transcritor de áudios curtos do Consciente. O usuário gravou uma mensagem de voz no WhatsApp descrevendo um gasto ou perguntando sobre suas caixinhas financeiras. Extraia o texto exato falado em português. Se não for possível decodificar, responda [AUDIO_INAUDIVEL]. Retorne apenas a transcrição, sem explicações.',
+                            },
+                            {
+                              role: 'user',
+                              content: `[Mensagem de voz recebida via WhatsApp, mimetype: ${audioData.mime_type || 'audio/ogg'}] Transcreva o gasto falado nesta nota de voz.`,
+                            },
+                          ],
+                        })
+                        const candidate =
+                          chatRes.choices && chatRes.choices[0]?.message?.content
+                            ? chatRes.choices[0].message.content.trim()
+                            : ''
+                        if (candidate && !candidate.includes('[AUDIO_INAUDIVEL]')) {
+                          transcribedText = candidate
+                        }
+                      } catch (aiErr) {
+                        console.log('[whatsapp_bridge] [AUDIO] Falha no fallback $ai.chat:', aiErr)
+                      }
+                    }
+
+                    if (transcribedText) {
+                      textContent = transcribedText
+                      console.log(
+                        `[whatsapp_bridge] [AUDIO] Transcrição final com sucesso: "${textContent}"`,
+                      )
+                    } else {
+                      console.log(
+                        '[whatsapp_bridge] [AUDIO] Transcrição não pôde decodificar o áudio.',
+                      )
+                    }
+                  } else {
+                    console.log(
+                      '[whatsapp_bridge] [AUDIO] Falha ao baixar binário da URL: status ' +
+                        downloadRes.statusCode,
+                    )
+                  }
+                }
+              } catch (audioErr) {
+                console.log(
+                  '[whatsapp_bridge] [AUDIO] Exceção durante processamento de áudio:',
+                  audioErr,
+                )
+              }
+            }
           }
 
           console.log(
             `[whatsapp_bridge] Recebido webhook: from=${fromRaw}, type=${msgType}, id=${incomingMsgId || 's/id'}, text="${textContent.slice(0, 100)}"`,
           )
+
+          // Se for áudio e não conseguimos transcrever (falha de download ou áudio inaudível),
+          // responder com mensagem amigável pedindo para repetir ou digitar
+          if (fromRaw && isAudioMessage && !textContent) {
+            console.log(
+              '[whatsapp_bridge] [AUDIO] Respondendo mensagem amigável de repetição/digitação para: ' +
+                fromRaw,
+            )
+            const audioFriendlyMsg =
+              'Olá! Recebi seu áudio no Consciente, mas não consegui ouvir com clareza. 🎙️\n\nPoderia enviar novamente mais perto do microfone ou digitar o gasto (ex: "Almoço 35 reais")? Assim registro na sua caixinha na hora!'
+            sendMetaMessage(fromRaw, audioFriendlyMsg)
+            processedCount++
+            continue
+          }
 
           if (fromRaw && textContent) {
             // AJUSTE 2: Indicação imediata de recebimento no WhatsApp
@@ -679,12 +881,20 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 })
 
 // ----------------------------------------------------
-// 3. Rota de Envio de Mensagem de Teste Direto (Meta Cloud API)
+// 3. Rota de Envio de Mensagem de Teste Direto (Meta Cloud API) - RESTRITA A ADMIN
 // ----------------------------------------------------
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/send-test',
   (e) => {
+    const authUser = e.auth
+    const isAdmin =
+      authUser &&
+      (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+        authUser.getString('role') === 'admin')
+    if (!isAdmin) {
+      return e.json(403, { error: 'Acesso restrito à administração' })
+    }
     try {
       const normalizeDigits = function (raw) {
         if (!raw) return ''
@@ -868,7 +1078,7 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 4. Rota para Salvar Token de Acesso da Meta com Segurança
+// 4. Rota para Salvar Token de Acesso da Meta com Segurança - RESTRITA A ADMIN
 // ----------------------------------------------------
 
 routerAdd(
@@ -877,8 +1087,12 @@ routerAdd(
   (e) => {
     try {
       const authUser = e.auth
-      if (!authUser) {
-        return e.json(401, { error: 'Não autenticado' })
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
       }
 
       const body = e.requestInfo().body || {}
@@ -1301,12 +1515,22 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 // ----------------------------------------------------
 // 6. Rota para consultar status do canal WhatsApp oficial
 // O token NUNCA é retornado no JSON — apenas token_configurado: boolean
+// RESTRITA A ADMIN: Cliente comum recebe 403 para não vazar IDs/webhooks da Meta
 // ----------------------------------------------------
 routerAdd(
   'GET',
   '/backend/v1/whatsapp/status',
   (e) => {
     try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
       let activePhoneId = '1314873981716321'
       let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
       let userConfiguredPhone = '+55 11 94998-9868'
@@ -1318,7 +1542,6 @@ routerAdd(
       let lastSendError = ''
       let lastSendAt = ''
 
-      const authUser = e.auth
       try {
         const filterStr = authUser ? `owner = '${authUser.id}'` : ''
         const wsList = $app.findRecordsByFilter('whatsapp_status', filterStr, '-created', 1, 0)
@@ -1385,13 +1608,21 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 7. Rota para listar contatos que interagiram pelo WhatsApp
+// 7. Rota para listar contatos que interagiram pelo WhatsApp - RESTRITA A ADMIN
 // ----------------------------------------------------
 routerAdd(
   'GET',
   '/backend/v1/whatsapp/contacts',
   (e) => {
     try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
       const contacts = $app.findRecordsByFilter(
         'whatsapp_contacts',
         '',

@@ -155,6 +155,76 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       return null
     }
 
+    const sendMetaStatusAndTyping = function (messageId) {
+      if (!messageId) return { success: false, error: 'message_id ausente' }
+
+      let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+
+      try {
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+        for (let idx = 0; idx < wsList.length; idx++) {
+          const rec = wsList[idx]
+          if (rec.getString('phone_number_id')) {
+            activePhoneId = rec.getString('phone_number_id')
+          }
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+          }
+          if (recToken) break
+        }
+      } catch (_) {}
+
+      if (!token) {
+        console.log('[whatsapp_bridge] [status+typing] Token ausente, prosseguindo sem indicação')
+        return { success: false, error: 'Token ausente' }
+      }
+
+      const endpoint = 'https://graph.facebook.com/v21.0/' + activePhoneId + '/messages'
+      const payload = {
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: String(messageId),
+        typing_indicator: {
+          type: 'text',
+        },
+      }
+
+      try {
+        const res = $http.send({
+          url: endpoint,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          timeout: 10,
+        })
+        const statusCode = res.statusCode
+        if (statusCode >= 200 && statusCode < 300) {
+          console.log(
+            '[whatsapp_bridge] [status+typing] Sucesso status=read + typing_indicator para msg:',
+            messageId,
+          )
+          return { success: true, status: statusCode }
+        }
+        console.log(
+          '[whatsapp_bridge] [status+typing] Meta retornou status HTTP ' +
+            statusCode +
+            ', seguindo normalmente',
+        )
+        return { success: false, status: statusCode }
+      } catch (err) {
+        console.log(
+          '[whatsapp_bridge] [status+typing] Exceção na chamada de status (fail-safe):',
+          err,
+        )
+        return { success: false, error: String(err) }
+      }
+    }
+
     const sendMetaMessage = function (toNumber, textBody) {
       const cleanTo = normalizeDigits(toNumber)
       if (!cleanTo) return { success: false, error: 'Número inválido' }
@@ -331,6 +401,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
           const msg = messages[k]
           const fromRaw = msg.from
           const msgType = msg.type
+          const incomingMsgId = msg.id
 
           let textContent = ''
           if (msgType === 'text' && msg.text) {
@@ -341,10 +412,23 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
           }
 
           console.log(
-            `[whatsapp_bridge] Recebido webhook: from=${fromRaw}, type=${msgType}, text="${textContent.slice(0, 100)}"`,
+            `[whatsapp_bridge] Recebido webhook: from=${fromRaw}, type=${msgType}, id=${incomingMsgId || 's/id'}, text="${textContent.slice(0, 100)}"`,
           )
 
           if (fromRaw && textContent) {
+            // AJUSTE 2: Indicação imediata de recebimento no WhatsApp
+            // Marca imediatamente a mensagem como lida e dispara os três pontinhos (typing indicator)
+            // Custo ZERO na Meta e fail-safe (qualquer erro é apenas logado e não afeta o agente)
+            if (incomingMsgId) {
+              try {
+                sendMetaStatusAndTyping(incomingMsgId)
+              } catch (typeErr) {
+                console.log(
+                  '[whatsapp_bridge] Falha ao acionar typing inicial (ignorado):',
+                  typeErr,
+                )
+              }
+            }
             const phoneDigits = normalizeDigits(fromRaw)
             let senderName = ''
             if (contactsList && contactsList[k]) {
@@ -440,6 +524,39 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
             // Executa o agente se tivermos activeUserId válido
             if (activeUserId) {
+              // Suporte a reemissão periódica de typing a cada ~12s caso a resposta demore,
+              // com limite estrito de no máximo 3 reemissões para não martelar a Meta.
+              let typingIntervalId = null
+              let typingRetries = 0
+              let isReplyFinished = false
+
+              if (incomingMsgId && typeof setInterval === 'function') {
+                try {
+                  typingIntervalId = setInterval(() => {
+                    if (isReplyFinished || typingRetries >= 3) {
+                      if (typingIntervalId && typeof clearInterval === 'function') {
+                        try {
+                          clearInterval(typingIntervalId)
+                        } catch (_) {}
+                      }
+                      return
+                    }
+                    typingRetries++
+                    console.log(
+                      `[whatsapp_bridge] Reemitindo typing indicator (${typingRetries}/3) para msg: ${incomingMsgId}`,
+                    )
+                    try {
+                      sendMetaStatusAndTyping(incomingMsgId)
+                    } catch (_) {}
+                  }, 12000)
+                } catch (timerErr) {
+                  console.log(
+                    '[whatsapp_bridge] Timer de typing indicator não suportado no runtime (ignorado):',
+                    timerErr,
+                  )
+                }
+              }
+
               try {
                 console.log(
                   `[whatsapp_bridge] Chamando $ai.agent('financeiro-whatsapp').chat user_id=${activeUserId}, conv_id=${existingConvId}`,
@@ -480,6 +597,13 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                     console.log('[whatsapp_bridge] Falha no retry de nova conversa:', retryErr)
                     newConvId = null
                   }
+                }
+              } finally {
+                isReplyFinished = true
+                if (typingIntervalId && typeof clearInterval === 'function') {
+                  try {
+                    clearInterval(typingIntervalId)
+                  } catch (_) {}
                 }
               }
             } else {

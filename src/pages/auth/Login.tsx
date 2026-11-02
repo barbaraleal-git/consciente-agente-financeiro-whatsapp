@@ -13,7 +13,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Bot, Loader2, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react'
+import { Bot, Loader2, AlertCircle, ArrowRight, Eye } from 'lucide-react'
+import { EyeClosedIcon } from '@/components/icons/EyeClosedIcon'
 
 export const Login: React.FC = () => {
   const { login, isAuthenticated, user, logout } = useAuth()
@@ -198,9 +199,9 @@ export const Login: React.FC = () => {
                     aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4" aria-hidden="true" />
-                    ) : (
                       <Eye className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <EyeClosedIcon className="h-4 w-4" />
                     )}
                   </button>
                 </div>

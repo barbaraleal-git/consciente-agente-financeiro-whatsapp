@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Bot, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Bot, Loader2, CheckCircle2, AlertCircle, Eye } from 'lucide-react'
+import { EyeClosedIcon } from '@/components/icons/EyeClosedIcon'
 
 export const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams()
@@ -133,9 +134,9 @@ export const ResetPassword: React.FC = () => {
                         aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                       >
                         {showPassword ? (
-                          <EyeOff className="h-4 w-4" aria-hidden="true" />
-                        ) : (
                           <Eye className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <EyeClosedIcon className="h-4 w-4" />
                         )}
                       </button>
                     </div>
@@ -168,9 +169,9 @@ export const ResetPassword: React.FC = () => {
                         }
                       >
                         {showConfirmPassword ? (
-                          <EyeOff className="h-4 w-4" aria-hidden="true" />
-                        ) : (
                           <Eye className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <EyeClosedIcon className="h-4 w-4" />
                         )}
                       </button>
                     </div>

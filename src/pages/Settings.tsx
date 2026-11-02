@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { EyeClosedIcon } from '@/components/icons/EyeClosedIcon'
 import pb from '@/lib/pocketbase/client'
 import {
   whatsappService,
@@ -38,7 +39,6 @@ import {
   Users,
   Key,
   Eye,
-  EyeOff,
   Send,
   HelpCircle,
 } from 'lucide-react'
@@ -90,8 +90,11 @@ export const Settings: React.FC = () => {
   // Password Modal
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
   const [oldPassword, setOldPassword] = useState('')
+  const [showOldPassword, setShowOldPassword] = useState(false)
   const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
 
   // Email Change Modal
@@ -693,11 +696,12 @@ export const Settings: React.FC = () => {
                       onClick={() => setShowMetaToken(!showMetaToken)}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                       tabIndex={-1}
+                      aria-label={showMetaToken ? 'Ocultar token' : 'Mostrar token'}
                     >
                       {showMetaToken ? (
-                        <EyeOff className="w-3.5 h-3.5" />
-                      ) : (
                         <Eye className="w-3.5 h-3.5" />
+                      ) : (
+                        <EyeClosedIcon className="w-3.5 h-3.5" />
                       )}
                     </button>
                   </div>
@@ -1005,32 +1009,80 @@ export const Settings: React.FC = () => {
           <form onSubmit={handleChangePassword} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-700">Senha Atual</Label>
-              <Input
-                type="password"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  type={showOldPassword ? 'text' : 'password'}
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  className="pr-9"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOldPassword((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  tabIndex={-1}
+                  aria-label={showOldPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showOldPassword ? (
+                    <Eye className="w-4 h-4" />
+                  ) : (
+                    <EyeClosedIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-700">Nova Senha (mín. 8)</Label>
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="pr-9"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  tabIndex={-1}
+                  aria-label={showNewPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showNewPassword ? (
+                    <Eye className="w-4 h-4" />
+                  ) : (
+                    <EyeClosedIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-700">Confirmar Nova Senha</Label>
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="pr-9"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  tabIndex={-1}
+                  aria-label={showConfirmPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showConfirmPassword ? (
+                    <Eye className="w-4 h-4" />
+                  ) : (
+                    <EyeClosedIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <DialogFooter className="pt-2">

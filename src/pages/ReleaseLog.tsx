@@ -25,10 +25,27 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: 'v1.6.0',
+    date: '02/11/2026',
+    title: 'Novo Ícone Olho Fechado em Senhas e Indicação Imediata de Recebimento no WhatsApp',
+    tag: 'Atual',
+    highlights: [
+      'Ícone do campo de senha reformulado: padrão oculto com desenho de olho fechado de verdade (pálpebra curva com cílios, sem barra por cima), abrindo para olho aberto ao clicar em Login, Cadastro, Redefinição e Configurações.',
+      'Indicação imediata de recebimento no WhatsApp: ao receber mensagem no webhook, marca imediatamente como lida (checks azuis) e ativa os três pontinhos ("digitando...") via Meta Status API.',
+      'Custo ZERO na Meta: a API de status não consome mensagens nem gera cobrança de conversa.',
+      'Tolerância a falha estrita (fail-safe): qualquer oscilação da Meta é apenas logada e nunca atrasa nem bloqueia a resposta do agente.',
+    ],
+    details: [
+      'Componente EyeClosedIcon em SVG dedicado criado e aplicado nas telas de autenticação e no modal de alteração de senha.',
+      'Webhook em pocketbase/hooks/whatsapp_bridge.js atualizado com sendMetaStatusAndTyping imediato no caminho de entrada.',
+      'Zero regressão: nenhuma coleção alterada, sem exposição de tokens e sem interferência no webhook de verificação.',
+    ],
+  },
+  {
     version: 'v1.5.0',
     date: '02/11/2026',
     title: 'Renovação do Token Permanente da Meta WhatsApp Cloud API',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Atualização do token de acesso permanente da Meta Cloud API (WhatsApp Business) diretamente no banco.',
       'Validação bem-sucedida contra a Meta Graph API (HTTP 200 OK) no canal +55 11 94998-9868.',

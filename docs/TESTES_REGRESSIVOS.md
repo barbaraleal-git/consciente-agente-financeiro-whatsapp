@@ -158,48 +158,84 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 
 ---
 
-## H) Registro de Gasto por Áudio no WhatsApp (NOVO)
+## H) Registro de Gasto por Áudio no WhatsApp (Voice Message)
 
 1. **Passo a passo**:
    - Abra o WhatsApp no celular com o número cadastrado no Consciente.
-   - Grave uma mensagem de voz/áudio dizendo: _"gastei trinta reais no almoço"_ ou _"almoço quarenta e cinco reais"_.
-   - Envie a nota de voz para o WhatsApp oficial `+55 11 94998-9868`.
+   - Grave uma mensagem de voz/áudio dizendo com clareza um gasto: _"gastei trinta reais no almoço"_ ou _"cinquenta reais no combustível"_.
+   - Envie a mensagem de voz para o WhatsApp oficial `+55 11 94998-9868`.
 2. **Comportamento Esperado**:
-   - O webhook detecta `msg.type === 'audio'` ou `'voice'`.
-   - Marca imediatamente como lida e ativa "digitando..." (três pontinhos).
-   - Baixa a mídia via Meta Cloud API usando o token em `whatsapp_status.access_token`.
-   - Transcreve o áudio para texto.
-   - Registra o gasto de R$ 30,00 (3000 centavos) na caixinha de Alimentação.
-   - Responde cordialmente confirmando o valor registrado e saldo da caixinha.
-   - Caso o áudio seja inaudível ou ruído puro: responde mensagem amigável pedindo para repetir mais perto do microfone ou digitar.
+   - O webhook detecta automaticamente a mensagem do tipo `audio` ou `voice`.
+   - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos).
+   - Baixa o arquivo de áudio pela Meta Cloud API autenticando com o token em `whatsapp_status.access_token`.
+   - Transcreve o áudio para texto via inteligência artificial.
+   - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito.
+   - Registra o gasto com o **valor correto em centavos** (ex.: R$ 30,00 = `3000` centavos) e vinculado à **caixinha correta** (ex.: Alimentação ou Transporte).
+   - O agente responde em menos de 30 segundos confirmando o lançamento, o valor consumido no mês e o teto restante da caixinha.
+   - **Caso de Exceção (Áudio inaudível / Ruído)**:
+     - Envie um áudio em silêncio ou com sopro inaudível.
+     - O agente responde de forma empática e amigável pedindo para repetir gravando mais próximo ao microfone ou para digitar a mensagem.
+3. **Validação no Painel e Banco**:
+   - Acesse `/transactions`: o lançamento consta com o valor exato, categoria correta e fonte `WhatsApp`.
+   - No banco (`transactions`): conferir que `amount` está em centavos.
 
 ---
 
-## I) Restrição de Visão do Cliente Comum vs Admin (NOVO)
+## I) Restrição de Visão: Conta Cliente vs Conta Admin
 
-1. **Passo a passo com Cliente Comum (`role: 'client'`)**:
-   - Faça login com uma conta de cliente comum (ex.: qualquer usuário que não seja Barbara).
-   - Acesse `/settings`: a seção "Canal Oficial WhatsApp Business (Meta Cloud API)", campos de Token, IDs da Meta, Webhook e lista de contatos NÃO devem aparecer.
-   - No menu lateral (Sidebar): o item "Backoffice" NÃO deve aparecer.
-   - Tente acessar diretamente `/admin`: a tela bloqueia exibindo "Acesso Restrito".
-   - Tente chamar diretamente `GET /backend/v1/whatsapp/status`: recebe HTTP 403 Forbidden.
-2. **Passo a passo com Administradora (`role: 'admin'`)**:
-   - Faça login com `barbara.ferreira.leal@gmail.com` (ou usuário com role `admin`).
-   - Acesse `/settings`: a seção do Canal Oficial WhatsApp aparece normalmente com todos os controles.
-   - No menu lateral (Sidebar): o item "Backoffice" aparece com ícone de escudo.
-   - Acesse `/admin`: a página carrega perfeitamente com métricas, lista de clientes e ferramentas de suporte.
+1. **Teste com Conta Cliente Comum (`role: 'client'`)**:
+   - Faça login com qualquer usuário de teste com papel de cliente comum (ex.: usuário criado em `/register`).
+   - Acesse `/settings` (Configurações):
+     - **Verificação**: A seção "Canal Oficial WhatsApp Business (Meta Cloud API)", campos de Token, IDs da Meta (Phone ID, WABA ID), Webhook URL e contatos técnicos **NÃO APARECEM**.
+     - O cliente só enxerga seus dados pessoais (Nome, Email, Telefone, Senha).
+   - Observe o Menu Lateral (Sidebar):
+     - **Verificação**: O item "Backoffice" **NÃO APARECE**.
+   - Tente navegar manualmente digitando `/admin` na URL do navegador:
+     - **Verificação**: Acesso é imediatamente bloqueado, exibindo a tela de alerta "Acesso Restrito: Esta área é restrita a administradores do Consciente." com botão para voltar ao início.
+   - Tente realizar requisição direta à API: `GET /backend/v1/whatsapp/status`:
+     - **Verificação**: Responde com código HTTP `403 Forbidden`.
+
+2. **Teste com Conta Administradora (`role: 'admin'`)**:
+   - Faça login com a conta da dona do produto (`barbara.ferreira.leal@gmail.com`) ou conta com `role: 'admin'`.
+   - Acesse `/settings`:
+     - **Verificação**: A seção técnica "Canal Oficial WhatsApp Business (Meta Cloud API)" aparece com todos os dados: status de conexão, badge "Token Meta Configurado", Phone Number ID, WABA ID, Webhook URL e ferramenta de disparo de teste.
+   - Observe o Menu Lateral (Sidebar):
+     - **Verificação**: O item "Backoffice" com ícone de escudo é exibido com destaque.
+   - Acesse `/admin`:
+     - **Verificação**: A página carrega perfeitamente com todas as métricas, lista de clientes e ferramentas de suporte.
 
 ---
 
-## J) Backoffice Administrativo e Ações de Suporte (NOVO)
+## J) Backoffice Administrativo (/admin) e Ações de Suporte
 
-1. **Visão Geral e Métricas**:
-   - Em `/admin`, confira os 4 cartões: Total de Clientes, Clientes Ativos (7d/30d), Total de Transações e Conversas WhatsApp.
-2. **Busca e Lista de Clientes**:
-   - Digite o nome ou email de um cliente no campo de busca: a tabela filtra instantaneamente.
-   - Clique nos cabeçalhos de coluna (Caixinhas, Transações, Cadastro) para ordenar.
-3. **Detalhes do Cliente e Suporte**:
-   - Clique em "Detalhes" em qualquer cliente da lista.
-   - Modal abre com 3 abas: Caixinhas (consumido vs teto), Últimas Transações e Histórico da Conversa WhatsApp.
-   - Clique em "Zerar Fio da Conversa": reseta o contexto do agente daquele contato (limpa `thread_id`).
-   - Clique em "Desvincular WhatsApp" / "Vincular WhatsApp": atualiza o vínculo do telefone do cliente com feedback imediato.
+1. **Métricas e Contagens Globais**:
+   - Acesse `/admin` logado como admin.
+   - Verifique se os 4 cartões de indicadores carregam números reais do banco:
+     - Total de Clientes cadastrados.
+     - Clientes Ativos (últimos 7 dias e últimos 30 dias).
+     - Total de Transações registradas.
+     - Conversas / Contatos ativos no WhatsApp.
+
+2. **Listagem e Busca de Clientes**:
+   - Na tabela de clientes, teste o campo de busca:
+     - Digite parte do nome, email ou telefone de um cliente existente: a tabela filtra em tempo real.
+     - Limpe a busca: a lista completa retorna.
+   - Teste a ordenação clicando nas colunas (Nome, Cadastro, Caixinhas, Transações): a lista reordena crescentemente/decrescentemente.
+   - Observe os badges de status de cada cliente: Onboarding (Concluído/Pendente), WhatsApp (Vinculado/Pendente) e Papel (Admin/Cliente).
+
+3. **Detalhe do Cliente**:
+   - Clique no botão "Detalhes" de um cliente na lista.
+   - O modal de detalhes abre carregando os dados do cliente em 3 abas:
+     - **Aba Caixinhas**: lista as caixinhas do cliente com valores consumidos no mês vs teto estipulado e barra visual de progresso.
+     - **Aba Transações**: lista as últimas transações com valor formatado em R$, data, caixinha e origem.
+     - **Aba Histórico WhatsApp**: exibe o número de telefone vinculado, data do último contato, total de mensagens e histórico de mensagens trocadas.
+
+4. **Ação de Suporte: Zerar Fio de Conversa**:
+   - No modal de detalhes do cliente (ou no menu de ações), clique em **"Zerar Fio da Conversa"**.
+   - Confirme a ação no diálogo de segurança.
+   - **Comportamento Esperado**: Notificação toast verde de sucesso confirmando que o fio da conversa foi resetado. No banco, o campo `conversation_id` do contato é limpo para destravar o agente.
+
+5. **Ação de Suporte: Desvincular / Vincular WhatsApp**:
+   - No modal de detalhes do cliente com WhatsApp vinculado, clique em **"Desvincular WhatsApp"**.
+   - Confirme: o telefone é desvinculado e o badge muda para "Não vinculado".
+   - Clique em **"Vincular WhatsApp"** e informe/confirme o número com DDD: o telefone é vinculado com sucesso.

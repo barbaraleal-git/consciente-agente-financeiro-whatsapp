@@ -17,13 +17,15 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 1. **Webhook Inbound (POST /backend/v1/whatsapp/webhook)**:
    - Recebe o payload da Meta (`entry[].changes[].value.messages[]`).
-   - Dispara imediatamente status de lida e typing indicator ("digitando...").
+   - Dispara imediatamente status de lida e typing indicator ("digitando...") via Meta Status API para dar feedback instantâneo ao usuário sem custo de mensagens.
    - Normaliza o número E.164 (dígitos com DDI 55).
-   - Se for Áudio (`type === 'audio'` ou `'voice'`):
-     - Baixa a mídia usando o mediaId e o token em `whatsapp_status.access_token`.
-     - Transcreve o áudio para texto via API de transcrição integrada.
-     - Se o áudio for inaudível ou falhar, envia mensagem amigável solicitando repetição ou digitação.
-     - Se transcrito com sucesso, segue o fluxo exatamente igual a uma mensagem de texto.
+   - **Fluxo de Mensagem de Áudio / Voice Message**:
+     - **Reconhecimento de voice message**: identifica se `type === 'audio'` ou `type === 'voice'` no payload do WhatsApp.
+     - Extrai o `mediaId` do objeto (`msg.audio.id` ou `msg.voice.id`).
+     - **Download pela API da Meta**: consulta a Meta Graph API (`GET https://graph.facebook.com/v21.0/{mediaId}`) autenticando com o token permanente salvo em `whatsapp_status.access_token` para obter a URL temporária de download da mídia (`url`). Em seguida, baixa o arquivo de áudio binário utilizando o mesmo header de autorização.
+     - **Transcrição de áudio**: executa a transcrição de fala para texto (STT) do arquivo de áudio recebido.
+     - **Tratamento de áudio inaudível ou falha**: caso a mídia não possa ser baixada, o áudio seja ruído inaudível ou a transcrição retorne vazia, o bot envia uma resposta imediata e empática orientando o cliente a gravar falando mais próximo ao microfone ou a enviar digitado.
+     - **Reuso do mesmo fluxo do agente**: uma vez obtido o texto transcrito (ex.: _"gastei trinta reais no almoço"_), o pipeline assume esse texto como o corpo da mensagem e segue exatamente pelo mesmo fluxo de identificação de usuário, verificação de onboarding, chamada do agente `$ai.agent('financeiro-whatsapp')` e registro na caixinha em centavos.
    - Se for Texto ou Interativo: extrai o texto diretamente (`text.body`).
 2. **Resolução de Identidade (`resolveUser`)**:
    - Etapa A: Busca vínculo explícito em `whatsapp_contacts.phone_number == digits` e lê o campo `user`.
@@ -79,21 +81,42 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 ---
 
-## 4.1. Papéis de Usuário (Cliente vs Administrador) e Backoffice
+## 4.1. Papéis de Usuário (Admin × Cliente) e Backoffice (/admin)
 
-1. **Separação de Privilégios**:
-   - `client` (Padrão): Acesso apenas aos seus próprios dados de caixinhas, transações e perfil. Não tem acesso a telas de infraestrutura nem a endpoints técnicos da Meta.
-   - `admin`: Possui visão normal de cliente no app E acesso a:
-     - Configurações do canal oficial Meta WhatsApp Business (token, Phone ID, WABA ID, Webhook).
-     - Rota `/admin` (Backoffice Operacional) no menu lateral.
-2. **Proteção de Endpoints**:
-   - Endpoints `/backend/v1/whatsapp/status`, `/token`, `/send-test` e `/contacts` recusam clientes comuns com HTTP 403.
-   - Endpoints `/backend/v1/admin/overview`, `/backend/v1/admin/clients/{id}`, `reset-thread` e `toggle-whatsapp` exigem estritamente autenticação de admin.
-3. **Backoffice Operacional (/admin)**:
-   - Métricas: Total de clientes, ativos (7d/30d), total de transações, conversas no WhatsApp.
-   - Tabela de Clientes: Busca por nome/email/telefone, ordenação e status de onboarding/WhatsApp.
-   - Detalhe do Cliente: Suas caixinhas (consumido vs teto), últimas 20 transações, situação WhatsApp e histórico recente de conversa.
-   - Ações de Suporte: Zerar Fio da Conversa (limpa `thread_id` travado) e Vincular/Desvincular WhatsApp do cliente.
+1. **Separação de Papéis e O Que Cada Um Vê**:
+   - **Cliente (`client` - padrão)**:
+     - Foco 100% na experiência pessoal de finanças e caixinhas.
+     - Vê: Dashboard, Caixinhas/Orçamentos, Extrato de Transações, Categorias, Relatórios e Configurações de Perfil/Senha.
+     - **Não vê dados técnicos**: cliente comum **NÃO** tem acesso à seção do canal WhatsApp, token de acesso, Phone Number ID, WABA ID, URL de Webhook ou listas de contatos de infraestrutura. Essa seção é totalmente ocultada da tela de Configurações (`/settings`).
+     - **Não vê rota de Backoffice**: o link de Backoffice não é exibido no menu lateral (Sidebar) e a rota `/admin` barra o acesso com mensagem de "Acesso Restrito".
+   - **Administrador (`admin`)**:
+     - Conta da dona do produto (`barbara.ferreira.leal@gmail.com`) promovida automaticamente de forma idempotente (via migração e no login).
+     - Possui a visão completa de cliente para gerenciar suas próprias finanças.
+     - **Vê dados técnicos em Configurações (`/settings`)**: seção exclusiva "Canal Oficial WhatsApp Business (Meta Cloud API)", exibindo status da Meta Graph API, token configurado/ativo, Phone Number ID, WABA ID, Webhook URL e ferramenta de disparo de mensagem de teste.
+     - **Vê e acessa o Backoffice (`/admin`)**: atalho com ícone de escudo na Sidebar para suporte operacional e monitoramento da base de clientes.
+
+2. **Proteção Estrita de Endpoints no Backend**:
+   - Endpoints de infraestrutura do WhatsApp (`/backend/v1/whatsapp/status`, `/backend/v1/whatsapp/token`, `/backend/v1/whatsapp/send-test`, `/backend/v1/whatsapp/contacts`) recusam usuários comuns com HTTP `403 Forbidden`.
+   - Endpoints do Backoffice (`/backend/v1/admin/overview`, `/backend/v1/admin/clients/{id}`, `/backend/v1/admin/clients/{id}/reset-thread`, `/backend/v1/admin/clients/{id}/toggle-whatsapp`) exigem autenticação ativa e validação estrita de `role === 'admin'`.
+
+3. **Arquitetura do Backoffice Operacional (`/admin`)**:
+   - **Contagens e Métricas Globais**:
+     - Total de Clientes cadastrados.
+     - Clientes Ativos em 7 dias e em 30 dias.
+     - Volume total de Transações registradas no sistema.
+     - Total de Conversas / Contatos ativos no WhatsApp.
+   - **Lista de Clientes com Busca e Ordenação**:
+     - Listagem paginada/filtrada com busca em tempo real por nome, e-mail ou número de telefone.
+     - Indicadores visuais de status: onboarding concluído/pendente, WhatsApp vinculado/desvinculado, papel (admin/cliente).
+     - Ordenação dinâmica por colunas (nome, data de cadastro, caixinhas, transações).
+   - **Painel de Detalhes do Cliente**:
+     - Modal completo ao clicar em "Detalhes" de qualquer cliente da base.
+     - **Aba Caixinhas**: lista todas as caixinhas do cliente com valor gasto no mês vs teto estipulado e barra de progresso.
+     - **Aba Transações**: exibe as últimas transações do cliente com valor em R$, data, caixinha e fonte (WhatsApp / Manual).
+     - **Aba Histórico WhatsApp**: exibe o telefone E.164, data da última mensagem, total de mensagens e histórico de interações registradas no canal.
+   - **Ações de Suporte Operacional**:
+     - **Zerar Fio da Conversa (`reset-thread`)**: limpa o `thread_id`/`conversation_id` travado na agenda do WhatsApp (`whatsapp_contacts`), permitindo que o cliente recomece uma conversa limpa com o agente do zero caso tenha ficado em um estado confuso.
+     - **Des/vincular WhatsApp (`toggle-whatsapp`)**: permite ao suporte vincular manualmente o telefone do cliente ou desvincular o número em caso de troca de aparelho ou conflito cadastral.
 
 ---
 

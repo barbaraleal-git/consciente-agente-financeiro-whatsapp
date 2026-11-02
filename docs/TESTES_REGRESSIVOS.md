@@ -9,7 +9,7 @@ Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente.
 Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 1. Abra o terminal na raiz do projeto.
-2. Execute o dry-run para revisar o que será limpo:
+2. Execute o dry-run para revisar o que será limpo e verificar a integridade pré-reset:
    ```bash
    node scripts/reset-dev.js
    ```
@@ -18,6 +18,22 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    node scripts/reset-dev.js --yes
    ```
 4. **O que é preservado**: O canal Meta Cloud API (`whatsapp_status`), tokens permanentes, Phone ID e WABA ID são mantidos intactos.
+5. **Passo OBRIGATÓRIO pós-reset de verificação do canal WhatsApp**:
+   - Conferir a saída do script: a seção `[TRAVA PÓS-RESET]` deve exibir `Canal Meta Cloud API: ATIVO E INTACTO` e `Token Configurado: SIM`.
+   - **Como conferir pelo banco de dados**:
+     - Coleção: `whatsapp_status`
+     - Verificar que existe 1 registro com:
+       - `phone_number`: `+55 11 94998-9868`
+       - `phone_number_id`: `1314873981716321`
+       - `waba_id`: `1888947369148112`
+       - `access_token`: não vazio (token permanente iniciado por `EA...`)
+       - `last_send_status`: `meta_token_verified_200` ou `success`
+   - **Como conferir pelo painel Web**:
+     - Acesse `/settings` > Canal Oficial WhatsApp Business.
+     - Confirme que o badge verde **"Token Meta Configurado"** / **"Token Ativo"** está visível.
+     - Clique em "Testar Disparo Direto" ou "Testar Mensagem" para atestar a comunicação 200 com a Meta Graph API.
+   - **Como conferir via API**:
+     - Requisição `GET /backend/v1/whatsapp/status` deve retornar `{ token_configurado: true, owner_connected: true, phone_number_id: "1314873981716321", waba_id: "1888947369148112" }`.
 
 ---
 

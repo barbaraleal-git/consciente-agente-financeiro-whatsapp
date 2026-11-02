@@ -87,14 +87,21 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 ---
 
-## 6. Procedimento de Zeragem (Runbook de Reset)
+## 6. Procedimento de Zeragem (Runbook de Reset e Preservação do Canal)
 
-Qualquer limpeza de dados para testes do zero deve ser executada exclusivamente pelo script permanente:
+Qualquer limpeza de dados para testes do zero deve ser executada exclusivamente pela rotina permanente protegida:
 
 ```bash
 node scripts/reset-dev.js --yes
 ```
 
-- O script preserva a coleção `whatsapp_status` (token da Meta, IDs do canal e webhook).
-- Zera transações, categorias, orçamentos, alertas e import_jobs.
-- Zera usuários de teste garantindo que novos registros comecem exatamente como clientes novos.
+### Regras de Ouro e Proteções Estruturais
+
+1. **JAMAIS usar migrações ad-hoc temporárias**: migrações são imutáveis e rodam em toda réplica do banco. Limpezas anteriores feitas por migrações causaram remoção indevida de dados, recriação automática de usuários e quebras de token.
+2. **Preservação Estrutural de `whatsapp_status`**:
+   - A coleção `whatsapp_status` armazena a chave de autenticação do canal oficial Meta Cloud API (`access_token`, `phone_number_id`, `waba_id`, `phone_number`, `verify_token`).
+   - Esta coleção **nunca** é incluída na lista de coleções esvaziadas pelo script (proteção via trava `FORBIDDEN_COLLECTIONS`).
+   - Se houver vínculo de `owner` com algum usuário prestes a ser removido, o script desvincula o `owner = ""` antes da remoção dos usuários para evitar qualquer risco de cascade delete.
+3. **Trava Pré-Reset**: O script valida a existência de `whatsapp_status` e se o token Meta está ativo antes de apagar qualquer dado. Se o canal estiver ausente ou sem token, o script aborta a operação.
+4. **Trava Pós-Reset Obrigatória**: Imediatamente após a limpeza das coleções de negócio, o script executa uma checagem mandatória de que `whatsapp_status` permanece intacto com `token_configurado: true`, `phone_number_id` e `waba_id` preservados. Caso o canal não passe na validação, o script reporta erro crítico.
+5. **O que é zerado**: `alerts`, `import_jobs`, `transactions`, `budgets`, `categories`, `whatsapp_contacts` e `users` (o visitante de serviço `whatsapp-visitante@agente.internal` é recriado sob demanda no primeiro contato).

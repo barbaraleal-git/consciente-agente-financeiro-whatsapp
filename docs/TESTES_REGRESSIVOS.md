@@ -180,8 +180,9 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos) via Meta Status API com custo zero.
    - Baixa o binário de áudio da Meta via Graph API preservando bytes intactos e codifica em base64.
    - Executa a cadeia multi-estratégia de transcrição:
-     - **Tentativa 1 (OpenRouter Multimodal)**: envia o áudio em base64 aos modelos multimodais (`gemini-2.0-flash-001`, `gemini-flash-1.5`, `gpt-4o-audio-preview`) com `input_audio`.
-     - **Tentativa 2 (Whisper Multipart)**: se necessário, submete FormData multipart com `$filesystem.fileFromBytes` aos endpoints Whisper.
+     - **Codificação Base64**: utiliza encoder puro JavaScript de alta performance compatível com Goja JSVM (sem depender de `$security.base64Encode` ausente).
+     - **Tentativa 1 (Groq Whisper API)**: aciona Groq Whisper Large v3 (`GROQ_API_KEY`) via multipart FormData.
+     - **Tentativa 2 (OpenRouter STT)**: aciona OpenRouter Whisper Large v3 (`OPENROUTER_API_KEY`) com payload JSON e `input_audio`.
      - **Tentativa 3 (OpenAI Whisper Direto)**: fallback direto caso exista `OPENAI_API_KEY`.
    - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito (ex.: _"gastei 35 reais no almoço"_).
    - Registra a despesa na caixinha correspondente (ex.: Alimentação) com:
@@ -189,9 +190,8 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
      - `source` = `'whatsapp_audio'` (rastreabilidade precisa de áudio).
      - `message_timestamp` preenchido com a data/hora original da mensagem da Meta (ISO).
    - O agente responde cordialmente em menos de 30 segundos confirmando o lançamento, valor consumido e saldo restante da caixinha.
-   - **Caso de Exceção (Áudio inaudível / Ruído / Falha técnica momentânea)**:
-     - Envie um áudio em silêncio ou com ruído inaudível.
-     - O agente responde de forma empática e transparente sem culpar a usuária: informa com clareza que não foi possível decodificar a mensagem de voz e orienta a digitar o gasto (ex.: "Almoço 35 reais") ou reenviar o áudio para registro imediato.
+   - **Caso de Exceção (Áudio inaudível / Ruído / Provedor sem chave de STT configurada)**:
+     - Envie um áudio. Se não houver transcrição (por ausência de chave de terceiro ou ruído), o agente responde de forma empática e transparente sem culpar a usuária: "Recebi seu áudio aqui no Consciente! No momento tivemos uma instabilidade na conversão de voz para texto e não consegui ouvir o que você falou. Você pode digitar rapidinho o gasto aqui para mim (ex: "Almoço 35" ou "Mercado 120")? Já registro direto na sua caixinha!".
 3. **Validação no Painel Web e Banco**:
    - Acesse `/transactions` ou o Dashboard:
      - O lançamento aparece com o valor correto (R$ 35,00) e na caixinha correta (Alimentação).

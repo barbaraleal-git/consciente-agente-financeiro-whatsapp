@@ -25,10 +25,28 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.32',
+    date: '02/11/2026',
+    title:
+      'Correção de Diagnóstico e Resiliência do Pipeline de Áudio (STT) com Encoder Puro e Orientação Acolhedora',
+    tag: 'Atual',
+    highlights: [
+      'Diagnóstico de causa raiz no backend: identificada ausência da função $security.base64Encode no runtime Goja do PocketBase (causando falha silenciosa no conversor anterior) e incompatibilidade do gateway interno de chat com transcrição de áudio.',
+      'Implementação de encoder base64 puro em JavaScript: compatível com qualquer tamanho de stream binário (downloadRes.raw e downloadRes.body) sem depender de extensões Goja ausentes.',
+      'Cadeia de provedores resiliente: suporte a GROQ_API_KEY (Groq Whisper v3), OPENROUTER_API_KEY (Whisper Large v3) e OPENAI_API_KEY (Whisper-1), com logs explícitos de cada tentativa.',
+      'Mensagem acolhedora e honesta: quando o áudio não pode ser transcrito por oscilação ou ausência de chave de provedor, o agente orienta o usuário de forma transparente e amigável ("Recebi seu áudio aqui no Consciente! No momento tivemos uma instabilidade na conversão de voz para texto... Você pode digitar rapidinho o gasto aqui para mim? Já registro direto na sua caixinha!"), sem culpar a fala nem a pessoa.',
+      'Zero regressão: webhook da Meta, fluxo de texto, registro de centavos, data/hora original da Meta e segurança permanecem 100% intactos.',
+    ],
+    details: [
+      'Hook pocketbase/hooks/whatsapp_bridge.js atualizado com encoder Base64 puro e resposta de áudio acolhedora.',
+      'Docs de arquitetura e testes regressivos atualizados com os achados de diagnóstico.',
+    ],
+  },
+  {
     version: '0.0.30',
     date: '02/11/2026',
     title: 'Pipeline de Transcrição de Áudio Multi-Estratégia e Rastreabilidade Completa de Origem',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Pipeline multi-estratégia de áudio (STT): tentativa 1 com modelos multimodais de alta performance via OpenRouter (Gemini 2.0 Flash / Gemini 1.5 / GPT-4o Audio) utilizando áudio nativo em base64 com input_audio; tentativa 2 via endpoint Whisper multipart FormData nativo do PocketBase ($filesystem.fileFromBytes); tentativa 3 com fallback direto para OpenAI Whisper.',
       'Logs analíticos por etapa: rastreamento completo de bytes baixados da Meta Graph API, codificação em base64, requisições HTTP enviadas a cada modelo e tempo de resposta, permitindo diagnóstico imediato.',

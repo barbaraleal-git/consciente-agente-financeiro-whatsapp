@@ -11,6 +11,59 @@ routerAdd('GET', '/backend/v1/whatsapp/webhook', (e) => {
   const token = query['hub.verify_token']
   const challenge = query['hub.challenge']
 
+  if (query['test_b64'] === '1') {
+    // Teste interno de validação do decodificador Base64 e magic bytes de JPEG
+    const sampleJpegB64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA='
+    const cleanB64 = sampleJpegB64.replace(/[\s\r\n]+/g, '')
+    const b64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    const b64Lookup = {}
+    for (let idx = 0; idx < b64Alphabet.length; idx++) {
+      b64Lookup[b64Alphabet[idx]] = idx
+    }
+    b64Lookup['-'] = 62
+    b64Lookup['_'] = 63
+
+    let padCount = 0
+    if (cleanB64.endsWith('==')) padCount = 2
+    else if (cleanB64.endsWith('=')) padCount = 1
+
+    const b64Len = cleanB64.length
+    const outputLen = Math.floor((b64Len * 3) / 4) - padCount
+    const decodedArray = new Uint8Array(outputLen)
+    let outIdx = 0
+
+    for (let i = 0; i < b64Len; i += 4) {
+      const b0 = b64Lookup[cleanB64[i]]
+      const b1 = i + 1 < b64Len ? b64Lookup[cleanB64[i + 1]] : undefined
+      const b2 = i + 2 < b64Len && cleanB64[i + 2] !== '=' ? b64Lookup[cleanB64[i + 2]] : undefined
+      const b3 = i + 3 < b64Len && cleanB64[i + 3] !== '=' ? b64Lookup[cleanB64[i + 3]] : undefined
+
+      const triple =
+        (b0 << 18) | (b1 << 12) | ((b2 !== undefined ? b2 : 0) << 6) | (b3 !== undefined ? b3 : 0)
+
+      if (outIdx < outputLen) decodedArray[outIdx++] = (triple >> 16) & 255
+      if (b2 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = (triple >> 8) & 255
+      if (b3 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = triple & 255
+    }
+
+    const b0Hex = (decodedArray[0] || 0).toString(16).toUpperCase()
+    const b1Hex = (decodedArray[1] || 0).toString(16).toUpperCase()
+    const isJpegMagic = decodedArray[0] === 0xff && decodedArray[1] === 0xd8
+
+    console.log(
+      `[whatsapp_bridge] [TEST_B64] length=${outputLen}, b0=0x${b0Hex}, b1=0x${b1Hex}, isJpegMagic=${isJpegMagic}`,
+    )
+
+    return e.json(200, {
+      success: true,
+      length: outputLen,
+      byte0: '0x' + b0Hex,
+      byte1: '0x' + b1Hex,
+      isJpegMagic: isJpegMagic,
+    })
+  }
+
   const verifySecret = $os.getenv('WHATSAPP_VERIFY_TOKEN') || 'agente-financeiro-token'
 
   if (mode === 'subscribe' && (token === verifySecret || token === 'agente-financeiro')) {
@@ -1960,6 +2013,80 @@ routerAdd(
 // em seguida atualiza o perfil via POST /{phone_number_id}/whatsapp_business_profile com profile_picture_handle.
 // O token NUNCA é exposto ao frontend.
 // ----------------------------------------------------
+routerAdd('GET', '/backend/v1/whatsapp/test-decoder', (e) => {
+  try {
+    // 1x1 JPEG de teste válido padrão (SOI: FF D8, APP0: FF E0, etc.)
+    const sampleJpegB64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA='
+
+    const query = e.requestInfo().query || {}
+    const rawB64 = query.b64 || sampleJpegB64
+    const cleanB64 = rawB64.replace(/^data:[^;]+;base64,/, '').replace(/[\s\r\n]+/g, '')
+
+    if (!cleanB64 || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(cleanB64)) {
+      return e.json(400, { success: false, error: 'A string fornecida não é um Base64 válido.' })
+    }
+
+    const b64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    const b64Lookup = {}
+    for (let idx = 0; idx < b64Alphabet.length; idx++) {
+      b64Lookup[b64Alphabet[idx]] = idx
+    }
+    b64Lookup['-'] = 62
+    b64Lookup['_'] = 63
+
+    let padCount = 0
+    if (cleanB64.endsWith('==')) padCount = 2
+    else if (cleanB64.endsWith('=')) padCount = 1
+
+    const b64Len = cleanB64.length
+    const outputLen = Math.floor((b64Len * 3) / 4) - padCount
+    if (outputLen <= 0) {
+      return e.json(400, { success: false, error: 'Conteúdo Base64 vazio.' })
+    }
+
+    const decodedArray = new Uint8Array(outputLen)
+    let outIdx = 0
+
+    for (let i = 0; i < b64Len; i += 4) {
+      const b0 = b64Lookup[cleanB64[i]]
+      const b1 = i + 1 < b64Len ? b64Lookup[cleanB64[i + 1]] : undefined
+      const b2 = i + 2 < b64Len && cleanB64[i + 2] !== '=' ? b64Lookup[cleanB64[i + 2]] : undefined
+      const b3 = i + 3 < b64Len && cleanB64[i + 3] !== '=' ? b64Lookup[cleanB64[i + 3]] : undefined
+
+      if (b0 === undefined || b1 === undefined) {
+        return e.json(400, { success: false, error: 'Caractere Base64 corrompido na posição ' + i })
+      }
+
+      const triple =
+        (b0 << 18) | (b1 << 12) | ((b2 !== undefined ? b2 : 0) << 6) | (b3 !== undefined ? b3 : 0)
+
+      if (outIdx < outputLen) decodedArray[outIdx++] = (triple >> 16) & 255
+      if (b2 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = (triple >> 8) & 255
+      if (b3 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = triple & 255
+    }
+
+    const byte0 = decodedArray[0]
+    const byte1 = decodedArray[1]
+    const isJpegMagic = byte0 === 0xff && byte1 === 0xd8
+
+    console.log(
+      `[whatsapp_bridge] [test-decoder] Decodificados ${outputLen} bytes. byte0=0x${(byte0 || 0).toString(16)}, byte1=0x${(byte1 || 0).toString(16)}, isJpegMagic=${isJpegMagic}`,
+    )
+
+    return e.json(200, {
+      success: true,
+      length: outputLen,
+      byte0_hex: (byte0 || 0).toString(16),
+      byte1_hex: (byte1 || 0).toString(16),
+      isJpegMagic: isJpegMagic,
+      first_8_bytes: Array.from(decodedArray.slice(0, 8)),
+    })
+  } catch (err) {
+    return e.json(500, { success: false, error: String(err) })
+  }
+})
+
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/profile-picture',
@@ -2034,11 +2161,69 @@ routerAdd(
         if (body.file_name) fileName = String(body.file_name)
 
         try {
-          fileBytes = $security.base64Decode(rawB64)
+          // Decodificador Base64 puro para Goja / PocketBase v0.36
+          // Verifica se há método nativo no runtime como preferencial
+          if (typeof $security !== 'undefined' && typeof $security.base64Decode === 'function') {
+            fileBytes = $security.base64Decode(rawB64)
+          } else {
+            // Decodificador puro JS com validação estrita
+            const cleanB64 = rawB64.replace(/[\s\r\n]+/g, '')
+            if (!cleanB64 || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(cleanB64)) {
+              throw new Error('A string fornecida não é um Base64 válido.')
+            }
+
+            const b64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+            const b64Lookup = {}
+            for (let idx = 0; idx < b64Alphabet.length; idx++) {
+              b64Lookup[b64Alphabet[idx]] = idx
+            }
+            b64Lookup['-'] = 62
+            b64Lookup['_'] = 63
+
+            let padCount = 0
+            if (cleanB64.endsWith('==')) padCount = 2
+            else if (cleanB64.endsWith('=')) padCount = 1
+
+            const b64Len = cleanB64.length
+            const outputLen = Math.floor((b64Len * 3) / 4) - padCount
+            if (outputLen <= 0) {
+              throw new Error('Conteúdo Base64 vazio.')
+            }
+
+            const decodedArray = new Uint8Array(outputLen)
+            let outIdx = 0
+
+            for (let i = 0; i < b64Len; i += 4) {
+              const b0 = b64Lookup[cleanB64[i]]
+              const b1 = i + 1 < b64Len ? b64Lookup[cleanB64[i + 1]] : undefined
+              const b2 =
+                i + 2 < b64Len && cleanB64[i + 2] !== '=' ? b64Lookup[cleanB64[i + 2]] : undefined
+              const b3 =
+                i + 3 < b64Len && cleanB64[i + 3] !== '=' ? b64Lookup[cleanB64[i + 3]] : undefined
+
+              if (b0 === undefined || b1 === undefined) {
+                throw new Error('Caractere Base64 corrompido na posição ' + i)
+              }
+
+              const triple =
+                (b0 << 18) |
+                (b1 << 12) |
+                ((b2 !== undefined ? b2 : 0) << 6) |
+                (b3 !== undefined ? b3 : 0)
+
+              if (outIdx < outputLen) decodedArray[outIdx++] = (triple >> 16) & 255
+              if (b2 !== undefined && outIdx < outputLen)
+                decodedArray[outIdx++] = (triple >> 8) & 255
+              if (b3 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = triple & 255
+            }
+
+            fileBytes = decodedArray
+          }
         } catch (b64Err) {
           return e.json(400, {
             success: false,
-            error: 'Formato de imagem inválido (base64 inválido): ' + String(b64Err),
+            error:
+              'Formato de imagem inválido (base64 inválido): ' + String(b64Err.message || b64Err),
           })
         }
       }
@@ -2052,7 +2237,7 @@ routerAdd(
 
       const fileLength = fileBytes.length
       console.log(
-        `[whatsapp_bridge] [profile-picture] Recebida imagem: ${fileName}, tipo=${fileType}, tamanho=${fileLength} bytes`,
+        `[whatsapp_bridge] [profile-picture] Recebida imagem: ${fileName}, tipo=${fileType}, tamanho=${fileLength} bytes, bytesIniciais=${(fileBytes[0] || 0).toString(16)} ${(fileBytes[1] || 0).toString(16)}`,
       )
 
       // Validação de tipo suportado pela Meta (tolerante a extensões e variações de MIME como image/pjpeg)

@@ -216,3 +216,25 @@ Implementado no endpoint restrito à administração `POST /backend/v1/whatsapp/
 4. **Envio de Bytes (Passo 2):** Transmite os bytes brutos da imagem via `POST https://graph.facebook.com/v21.0/{upload_session_id}` com header `file_offset: 0`, recebendo o `profile_picture_handle` (`uploadBytesJson.h`).
 5. **Atualização do Perfil (Passo 3):** Aplica a imagem no número de atendimento via `POST https://graph.facebook.com/v21.0/{phone_number_id}/whatsapp_business_profile` com payload `{ messaging_product: 'whatsapp', profile_picture_handle }`.
 6. **Restrição Oficial sobre Nome de Exibição:** Conforme documentação e política da Meta, o **nome de exibição** não pode ser alterado via API (exige revisão humana e aprovação no WhatsApp Manager). O painel administrativo exibe nota explicativa clara com link para o WhatsApp Manager.
+
+---
+
+## 13. Correção de Detalhes do Cliente no Backoffice (Item 31)
+
+- **Causa Raiz Identificada:** A rota `/backend/v1/admin/clients/:id` lia `limit_cents` e `spent_cents` diretamente do registro de `budgets`. No entanto, no modelo de dados do Consciente, o valor limite é armazenado no campo `amount` e o gasto mensal precisa ser calculado agregando as transações reais daquele cliente no mês (`type = 'despesa'`). Além disso, as transações eram lidas usando `amount_cents` em vez de `amount`, e o histórico de mensagens buscava em tabela inexistente em vez de consultar as threads ativas do agente nativo.
+- **Solução Implementada:**
+  - Leitura correta do teto em centavos usando `b.getInt('amount')`.
+  - Agregação do total de despesas do cliente filtradas pelo mês de referência selecionado (`date` ou `created`).
+  - Mapeamento das transações recentes com `amount` real.
+  - Leitura do histórico de mensagens do agente financeiro nativo via `$ai.agent('financeiro-whatsapp').listMessages({ conversation_id, user_id })` ou listagem por `listConversations({ user_id })`.
+
+---
+
+## 14. Correção e Robustez no Upload de Foto de Perfil (Item 36)
+
+- **Causa Raiz Identificada:** No frontend (`Settings.tsx`), a validação exigia estritamente `file.type.includes('jpeg')`, falhando em arquivos onde o navegador reportava MIME alternativo (como `image/pjpeg` ou sem subtipo claro), emitindo o toast genérico de formato/tamanho. No backend, erros da Meta na criação da sessão ou no envio dos bytes eram mascarados e não retornavam a mensagem amigável correta.
+- **Solução Implementada:**
+  - Frontend valida `file.type` e a extensão do arquivo (`.jpg`, `.jpeg`, `.png`) de forma tolerante.
+  - Backend aceita tipos MIME padrão e variações e normaliza o cabeçalho para `image/jpeg` ou `image/png`.
+  - Tratamento aprimorado de erros da Meta: mensagens reais retornadas pela Graph API são expostas claramente no toast do frontend, sem qualquer mensagem enganosa genérica.
+  - O token permanente da Meta permanece 100% restrito ao backend, sem risco de exposição.

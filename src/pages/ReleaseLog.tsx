@@ -25,11 +25,31 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.40',
+    date: '03/11/2026',
+    title:
+      'Correção de Detalhes do Cliente no Backoffice (Item 31), Upload de Foto de Perfil JPEG Pequeno (Item 36) e Backlog Integrado (Itens 1 a 36)',
+    tag: 'Atual',
+    highlights: [
+      'Correção Crítica do Backoffice (Item 31): corrigido o endpoint /backend/v1/admin/clients/:id para mapear o teto real da caixinha (campo amount), calcular o gasto real do mês por agregação das despesas do cliente, exibir valores reais em R$ das últimas 20 transações e recuperar o histórico ativo de conversas do WhatsApp direto do agente nativo $ai.agent("financeiro-whatsapp") via listMessages/listConversations.',
+      'Correção do Upload de Foto de Perfil (Item 36): corrigida a validação de arquivo no frontend (Settings.tsx) e backend (whatsapp_bridge.js) para aceitar JPEGs válidos pequenos (ex.: 37.1 KB) sem falsas rejeições de MIME; normalização de cabeçalhos e exibição do erro real retornado pela Meta Graph API sem mascarar com a mensagem genérica enganosa de formato ou 5MB.',
+      'Integração Completa do Backlog (Itens 30 a 36): lista oficial expandida de 1 a 36 no docs/BACKLOG.md, src/data/docsContent.ts e tela /admin/docs, com estrutura de 3 seções (Concluídos, Respondidos e Backlog) e reclassificação de pendências por velocidade e complexidade.',
+      'Novos Itens de Backlog Mapeados com Sinergias: Item 30 (Alerta admin suporte, sinergia com 25 e 26), Item 32 (Rotina de fechamento de mês WhatsApp, sinergia com 3 e template visual 19), Item 33 (Controle de vigência mensal de caixinhas, sinergia com 6 e 10/11) e Item 34 (Billing: custos vs faturamento bruto, sinergia com 24 e 9). Item 35 respondido sem pendência de código (LGPD e fallback no perfil WhatsApp).',
+      'Roteiro Regressivo Atualizado: Cenários A a P preservados 100% intactos com adição dos novos cenários Q (detalhes com dados reais no backoffice) e R (upload de foto JPEG pequeno e mensagens de erro da Meta).',
+      'Zero Vazamento de Segredos: Token permanente da Meta e chave de transcrição continuam estritamente mascarados no backend.',
+    ],
+    details: [
+      'Hook pocketbase/hooks/admin_backoffice.js atualizado com agregações reais de transações por categoria, cálculo de gastos mensais, campo amount e busca de mensagens via $ai.agent("financeiro-whatsapp").',
+      'Hook pocketbase/hooks/whatsapp_bridge.js e src/pages/Settings.tsx com validação tolerante de imagem (MIME/extensão) e propagação do erro real da Meta.',
+      'docs/BACKLOG.md, docs/TESTES_REGRESSIVOS.md, docs/ARQUITETURA.md e src/data/docsContent.ts atualizados.',
+    ],
+  },
+  {
     version: '0.0.39',
     date: '03/11/2026',
     title:
       'Documento Formal de Backlog / Pendências no /admin/docs e Versionamento de Prioridades do Produto',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Documento formal "Backlog / Pendências" criado em docs/BACKLOG.md e disponibilizado em /admin/docs como aba dedicada.',
       'Lista completa com numeração oficial mantida e três status em texto claro: Concluído, Respondido/Aguardando decisão e Backlog.',

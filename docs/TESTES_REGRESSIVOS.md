@@ -415,3 +415,51 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
      - Em caso de token não configurado ou rejeição da Meta: Toast vermelho com a mensagem descritiva do erro retornado pela Graph API.
    - **Segurança de Segredos**:
      - O token permanente da Meta permanece 100% restrito ao backend PocketBase e nunca é retornado nem inspecionável na resposta HTTP do navegador.
+
+---
+
+## Q) Detalhes por Cliente no Backoffice com Dados Reais (Correção do Item 31)
+
+1. **Acesso ao Detalhe do Cliente no /admin**:
+   - Faça login como Administradora (`barbara.ferreira.leal@gmail.com`).
+   - Acesse o Backoffice (`/admin`).
+   - Localize um cliente com caixinhas configuradas e movimentações (ex.: Barbara Leal ou outro cliente com transações reais).
+   - Clique no botão **"Detalhes"**.
+
+2. **Verificação da Aba Caixinhas (Gasto Real vs Teto)**:
+   - Abra a aba **"Caixinhas"**:
+     - **Verificação**: Os valores de **Teto** e **Gasto no Mês** NÃO estão zerados nem em branco.
+     - As caixinhas configuradas do cliente (ex.: Alimentação, Transporte, Moradia, etc.) são listadas com seus nomes, ícones e cores oficiais.
+     - O valor do Teto corresponde ao campo `amount` cadastrado para a caixinha.
+     - O valor do Gasto reflete a soma real das despesas (`type = 'despesa'`) daquela categoria no mês de referência.
+     - A barra de progresso reflete visualmente a proporção gasta em relação ao teto.
+
+3. **Verificação da Aba Transações (Últimas Transações com Valores Reais)**:
+   - Abra a aba **"Transações"**:
+     - **Verificação**: As últimas transações do cliente são exibidas com valores preenchidos em Real (ex.: `R$ 35,00`, `R$ 120,00`), tipo (despesa/receita), caixinha correspondente, origem (`whatsapp_text`, `whatsapp_audio`, `manual`) e data/hora.
+     - Nada aparece zerado ou como `R$ 0,00` indevido quando há transações com valor real.
+
+4. **Verificação da Aba Histórico WhatsApp (Conversas do Agente)**:
+   - Abra a aba **"Histórico WhatsApp"**:
+     - **Verificação**: O painel exibe as mensagens trocadas entre o cliente e o agente financeiro no WhatsApp (mensagens recebidas `incoming` e enviadas `outgoing` pelo agente), com texto completo e carimbo de data/hora.
+     - Em caso de cliente que acabou de interagir ou tem histórico de conversas no agente nativo (`financeiro-whatsapp`), as mensagens são carregadas e renderizadas no diálogo.
+
+---
+
+## R) Upload de Foto de Perfil JPEG Pequeno e Tratamento de Erros da Meta (Correção do Item 36)
+
+1. **Aceitação de Arquivo JPEG Válido Pequeno (ex.: 37.1 KB)**:
+   - Acesse `/settings` como Administradora.
+   - No card "Foto de Perfil do WhatsApp via API", clique em "Escolher Imagem...".
+   - Selecione um arquivo JPEG válido de tamanho reduzido (ex.: 37 KB ou arquivo .jpg/.jpeg padrão).
+   - **Verificação**:
+     - O arquivo NÃO é rejeitado com a mensagem genérica enganosa de formato ou tamanho.
+     - A pré-visualização carrega normalmente e exibe o tamanho real em KB.
+     - Ao clicar em "Atualizar Foto via API", o upload é submetido à Meta Graph API.
+     - Em caso de sucesso, toast verde confirma a atualização do perfil.
+
+2. **Exibição do Erro Real da Meta Sem Mensagem Enganosa**:
+   - Se o token da Meta estiver inválido, expirado ou a Meta recusar por qualquer motivo (ex.: política de imagem ou permissão de WABA):
+     - **Verificação**: O alerta vermelho exibe o erro REAL retornado pela Meta (ex.: "Meta recusou a criação da sessão de upload: (...)", "Token inválido ou expirado" ou mensagem específica da Graph API).
+     - **NUNCA** é exibida a mensagem enganosa "preciso utilizar uma imagem jpeg ou png de no máximo 5MB" quando o arquivo já cumpria esses requisitos.
+   - O token da Meta permanece protegido e nunca é exposto na mensagem nem no console do cliente.

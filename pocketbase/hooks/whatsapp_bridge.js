@@ -2027,13 +2027,30 @@ routerAdd(
         `[whatsapp_bridge] [profile-picture] Recebida imagem: ${fileName}, tipo=${fileType}, tamanho=${fileLength} bytes`,
       )
 
-      // Validação de tipo suportado pela Meta
-      const cleanMime = fileType.toLowerCase()
-      if (!cleanMime.includes('jpeg') && !cleanMime.includes('jpg') && !cleanMime.includes('png')) {
+      // Validação de tipo suportado pela Meta (tolerante a extensões e variações de MIME como image/pjpeg)
+      const cleanMime = (fileType || '').toLowerCase()
+      const cleanName = (fileName || '').toLowerCase()
+      const isAccepted =
+        cleanMime.includes('jpeg') ||
+        cleanMime.includes('jpg') ||
+        cleanMime.includes('png') ||
+        cleanMime.includes('pjpeg') ||
+        cleanName.endsWith('.jpg') ||
+        cleanName.endsWith('.jpeg') ||
+        cleanName.endsWith('.png')
+
+      if (!isAccepted) {
         return e.json(400, {
           success: false,
-          error: 'Formato de imagem não suportado. A Meta aceita apenas imagens JPEG ou PNG.',
+          error: `Formato de imagem não suportado (${fileType || fileName}). A Meta aceita apenas imagens JPEG ou PNG.`,
         })
+      }
+
+      // Normaliza o MIME para o que a Meta espera
+      if (cleanMime.includes('png') || cleanName.endsWith('.png')) {
+        fileType = 'image/png'
+      } else {
+        fileType = 'image/jpeg'
       }
 
       // 1. Obtém credenciais oficiais salvas em whatsapp_status (o token NUNCA é exposto)

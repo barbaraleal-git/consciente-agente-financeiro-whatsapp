@@ -257,11 +257,21 @@ export const Settings: React.FC = () => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Valida tipo
-    if (!file.type.includes('jpeg') && !file.type.includes('jpg') && !file.type.includes('png')) {
+    // Valida tipo e extensão de forma abrangente e tolerante
+    const mime = (file.type || '').toLowerCase()
+    const name = (file.name || '').toLowerCase()
+    const isJpegOrPng =
+      mime.includes('jpeg') ||
+      mime.includes('jpg') ||
+      mime.includes('png') ||
+      name.endsWith('.jpg') ||
+      name.endsWith('.jpeg') ||
+      name.endsWith('.png')
+
+    if (!isJpegOrPng) {
       toast({
-        title: 'Formato inválido',
-        description: 'Selecione uma imagem JPEG ou PNG para o perfil do WhatsApp.',
+        title: 'Formato não suportado',
+        description: `O arquivo selecionado (${file.name || 'desconhecido'}) não é JPEG ou PNG. Selecione uma imagem .jpg, .jpeg ou .png.`,
         variant: 'destructive',
       })
       return
@@ -271,7 +281,7 @@ export const Settings: React.FC = () => {
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: 'Imagem muito pesada',
-        description: 'O tamanho máximo permitido para a foto de perfil é 5MB.',
+        description: `O tamanho do arquivo (${(file.size / (1024 * 1024)).toFixed(2)} MB) ultrapassa o limite de 5MB permitido pela Meta.`,
         variant: 'destructive',
       })
       return
@@ -295,15 +305,24 @@ export const Settings: React.FC = () => {
     setUploadingProfilePicture(true)
     try {
       const res = await whatsappService.updateProfilePicture(selectedProfileImage)
-      toast({
-        title: 'Foto Atualizada com Sucesso!',
-        description:
-          res.message ||
-          'Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes.',
-      })
-      setSelectedProfileImage(null)
-      setProfileImagePreview(null)
-      await loadAllWhatsAppInfo()
+      if (res.success) {
+        toast({
+          title: 'Foto Atualizada com Sucesso!',
+          description:
+            res.message ||
+            'Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes no WhatsApp.',
+        })
+        setSelectedProfileImage(null)
+        setProfileImagePreview(null)
+        await loadAllWhatsAppInfo()
+      } else {
+        // Se a resposta retornou success: false com erro da Meta detalhado
+        toast({
+          title: 'A Meta recusou a foto',
+          description: res.error || 'A Meta rejeitou a imagem de perfil enviada.',
+          variant: 'destructive',
+        })
+      }
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : 'Falha ao atualizar foto de perfil do WhatsApp'

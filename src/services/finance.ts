@@ -484,7 +484,7 @@ export const whatsappService = {
 
   async updateProfilePicture(
     file: File,
-  ): Promise<{ success: boolean; message: string; phone_number_id?: string }> {
+  ): Promise<{ success: boolean; message?: string; error?: string; phone_number_id?: string }> {
     const formData = new FormData()
     formData.append('file', file)
 
@@ -500,7 +500,11 @@ export const whatsappService = {
     )
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      throw new Error(data.error || `Erro HTTP ${res.status} ao atualizar foto do perfil`)
+      const msg =
+        data.error ||
+        data.meta_error?.message ||
+        `Erro HTTP ${res.status} ao atualizar foto do perfil na Meta`
+      throw new Error(msg)
     }
     return data
   },

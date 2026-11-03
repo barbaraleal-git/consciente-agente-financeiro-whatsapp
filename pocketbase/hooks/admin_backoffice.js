@@ -207,21 +207,85 @@ routerAdd(
         }
       }
 
+      // Todas as transações do cliente no mês selecionado para calcular o gasto real por caixinha
+      let clientMonthTxForBudgets = []
+      try {
+        clientMonthTxForBudgets = $app.findRecordsByFilter(
+          'transactions',
+          `owner = '${clientId}' && type = 'despesa' && (date ~ '${targetMonthStr}' || created ~ '${targetMonthStr}')`,
+          '-created',
+          2000,
+          0,
+        )
+      } catch (_) {
+        try {
+          clientMonthTxForBudgets = $app.findRecordsByFilter(
+            'transactions',
+            `owner = '${clientId}' && type = 'despesa'`,
+            '-created',
+            1000,
+            0,
+          )
+        } catch (_) {}
+      }
+
+      // Mapeia gasto por categoria no mês de referência
+      const spentByCatMonth = {}
+      for (let i = 0; i < clientMonthTxForBudgets.length; i++) {
+        const tx = clientMonthTxForBudgets[i]
+        const dStr = (tx.getString('date') || tx.getString('created') || '').slice(0, 7)
+        if (dStr === targetMonthStr) {
+          const cId = tx.getString('category')
+          if (cId) {
+            spentByCatMonth[cId] = (spentByCatMonth[cId] || 0) + tx.getInt('amount')
+          }
+        }
+      }
+
       const caixinhas = []
       for (let i = 0; i < budgets.length; i++) {
         const b = budgets[i]
         const catId = b.getString('category')
+        const bMonth = b.getString('month')
+        // Considera budgets do mês selecionado ou gerais se não filtrados por mês
+        if (bMonth && bMonth !== targetMonthStr) {
+          // Se o budget tiver mês específico diferente do mês selecionado, continua
+          continue
+        }
         const cat = catMap[catId] || { name: 'Sem categoria', icon: 'tag', color: '#64748b' }
+        const limitCents = b.getInt('amount')
+        const spentCents = spentByCatMonth[catId] || 0
         caixinhas.push({
           id: b.id,
           category_id: catId,
           category_name: cat.name,
           icon: cat.icon,
           color: cat.color,
-          limit_cents: b.getInt('limit_cents'),
-          spent_cents: b.getInt('spent_cents'),
-          period: b.getString('period'),
+          limit_cents: limitCents,
+          spent_cents: spentCents,
+          period: b.getString('month') || targetMonthStr,
         })
+      }
+
+      // Se nenhum budget deu match exato no mês selecionado, traz todos os budgets daquele cliente como base
+      if (caixinhas.length === 0 && budgets.length > 0) {
+        for (let i = 0; i < budgets.length; i++) {
+          const b = budgets[i]
+          const catId = b.getString('category')
+          const cat = catMap[catId] || { name: 'Sem categoria', icon: 'tag', color: '#64748b' }
+          const limitCents = b.getInt('amount')
+          const spentCents = spentByCatMonth[catId] || 0
+          caixinhas.push({
+            id: b.id,
+            category_id: catId,
+            category_name: cat.name,
+            icon: cat.icon,
+            color: cat.color,
+            limit_cents: limitCents,
+            spent_cents: spentCents,
+            period: b.getString('month') || targetMonthStr,
+          })
+        }
       }
 
       // Últimas 20 transações
@@ -239,13 +303,14 @@ routerAdd(
         const cat = catMap[catId]
         recentTransactions.push({
           id: tx.id,
-          amount_cents: tx.getInt('amount_cents'),
+          amount_cents: tx.getInt('amount'),
           type: tx.getString('type'),
           description: tx.getString('description'),
           category_name: cat ? cat.name : 'Outros',
           date: tx.getString('date'),
           created: tx.getString('created'),
-          is_recurring: tx.getBool('is_recurring'),
+          source: tx.getString('source') || 'manual',
+          is_recurring: false,
         })
       }
 
@@ -291,30 +356,114 @@ routerAdd(
       }
 
       // Histórico de conversa WhatsApp:
-      // O agente financeiro armazena o histórico em $ai.agents threads ou whatsapp_contacts.conversation_id
-      // Se houver coleção whatsapp_messages no futuro, busca defensivamente; caso contrário retorna array vazio
+      // O agente financeiro armazena o histórico em $ai.agents threads vinculadas ao conversation_id do contato WhatsApp ou user_id
       const conversationHistory = []
-      try {
-        const messages = $app.findRecordsByFilter(
-          'whatsapp_messages',
-          `owner = '${clientId}' || from_number ~ '${whatsappDetails.phone.slice(-8)}'`,
-          '-created',
-          30,
-          0,
-        )
-        for (let i = 0; i < messages.length; i++) {
-          const m = messages[i]
-          conversationHistory.push({
-            id: m.id,
-            direction: m.getString('direction'),
-            message_text: m.getString('message_text'),
-            status: m.getString('status'),
-            created: m.getString('created'),
+
+      // 1. Prioridade: busca mensagens da conversa ativa no agente nativo via conversation_id do contato
+      let loadedConvMessages = false
+      const convIdToUse = whatsappDetails.thread_id || ''
+
+      if (convIdToUse) {
+        try {
+          const mList = $ai.agent('financeiro-whatsapp').listMessages({
+            conversation_id: convIdToUse,
+            user_id: clientId,
+            limit: 50,
           })
+          const msgs = mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
+              const msg = msgs[mIdx]
+              // Exibe apenas mensagens com conteúdo de texto do usuário ou do assistente
+              const content = typeof msg.content === 'string' ? msg.content.trim() : ''
+              if (!content && (!msg.text || !String(msg.text).trim())) continue
+
+              const role = msg.role || 'assistant'
+              conversationHistory.push({
+                id: msg.id || 'msg_' + mIdx,
+                direction: role === 'user' ? 'incoming' : 'outgoing',
+                message_text: content || String(msg.text || ''),
+                status: 'delivered',
+                created: msg.created || new Date().toISOString(),
+              })
+            }
+            if (conversationHistory.length > 0) {
+              loadedConvMessages = true
+            }
+          }
+        } catch (agentListErr) {
+          console.log('[admin] listMessages via conversation_id falhou:', agentListErr)
         }
-        conversationHistory.reverse()
-      } catch (_) {
-        // Sem tabela whatsapp_messages; conversationHistory permanece []
+      }
+
+      // 2. Se não encontrou mensagens via conversation_id do contato, busca por listConversations do clientId
+      if (!loadedConvMessages) {
+        try {
+          const clientConvs = $ai.agent('financeiro-whatsapp').listConversations({
+            user_id: clientId,
+            limit: 5,
+          })
+          const convList =
+            clientConvs && clientConvs.conversations
+              ? clientConvs.conversations
+              : Array.isArray(clientConvs)
+                ? clientConvs
+                : []
+
+          for (let cIdx = 0; cIdx < convList.length; cIdx++) {
+            const conv = convList[cIdx]
+            try {
+              const mList = $ai.agent('financeiro-whatsapp').listMessages({
+                conversation_id: conv.id,
+                user_id: clientId,
+                limit: 50,
+              })
+              const msgs =
+                mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+              for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
+                const msg = msgs[mIdx]
+                const content = typeof msg.content === 'string' ? msg.content.trim() : ''
+                if (!content && (!msg.text || !String(msg.text).trim())) continue
+
+                const role = msg.role || 'assistant'
+                conversationHistory.push({
+                  id: msg.id || 'msg_' + cIdx + '_' + mIdx,
+                  direction: role === 'user' ? 'incoming' : 'outgoing',
+                  message_text: content || String(msg.text || ''),
+                  status: 'delivered',
+                  created: msg.created || new Date().toISOString(),
+                })
+              }
+              if (conversationHistory.length > 0) break
+            } catch (_) {}
+          }
+        } catch (convListErr) {
+          console.log('[admin] listConversations para clientId falhou:', convListErr)
+        }
+      }
+
+      // 3. Fallback defensivo: se houver tabela whatsapp_messages (se criada futuramente)
+      if (conversationHistory.length === 0) {
+        try {
+          const messages = $app.findRecordsByFilter(
+            'whatsapp_messages',
+            `owner = '${clientId}' || from_number ~ '${whatsappDetails.phone.slice(-8)}'`,
+            '-created',
+            30,
+            0,
+          )
+          for (let i = 0; i < messages.length; i++) {
+            const m = messages[i]
+            conversationHistory.push({
+              id: m.id,
+              direction: m.getString('direction'),
+              message_text: m.getString('message_text'),
+              status: m.getString('status'),
+              created: m.getString('created'),
+            })
+          }
+          conversationHistory.reverse()
+        } catch (_) {}
       }
 
       // ----------------------------------------------------

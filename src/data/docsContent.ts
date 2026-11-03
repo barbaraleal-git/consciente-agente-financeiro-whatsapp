@@ -94,11 +94,18 @@ Implementado no hook \`pocketbase/hooks/admin_backoffice.js\` com endpoints prot
 - **Mensagem Ativa / Utility Template**: R$ 0,04
 - **Mensagens de Serviço (24h, blue ticks, typing)**: R$ 0,00
 - **Rota Dedicada de Custos**: \`GET /backend/v1/admin/costs?month=YYYY-MM\` com totais acumulados, histórico e lista ordenada pelo maior custo.
+
+---
+
+## 6. Correções e Robustez Sistêmica (v0.0.39)
+
+- **Item 31 (Backoffice - Detalhes do Cliente)**: Mapeamento corrigido para utilizar \`amount\` nos tetos de caixinhas e nas transações, com cálculo real de gastos no mês selecionado e recuperação do histórico da conversa via \`$ai.agent('financeiro-whatsapp')\`.
+- **Item 36 (Upload de Imagem de Perfil)**: Validação ampliada e tolerante no frontend/backend para imagens JPEG/PNG (aceitando variações de MIME e extensões) e propagação do erro real da Meta sem mascarar com mensagem genérica de formato ou 5MB.
 `
 
 export const BACKLOG_MARKDOWN = `# Backlog / Pendências — Consciente (Seu parceiro nas finanças)
 
-Documento oficial de controle de pendências e prioridades do produto. Este documento serve como guia estratégico para os próximos passos de evolução, mantido e reavaliado a cada ciclo de desenvolvimento.
+Documento oficial de controle de pendências e prioridades do produto (itens 1 a 36). Este documento serve como guia estratégico para os próximos passos de evolução, mantido e reavaliado a cada ciclo de desenvolvimento.
 
 **Regra Permanente**: Zero regressão. Tudo o que já foi validado e entregue deve obrigatoriamente se manter estável a cada nova iteração.
 
@@ -106,9 +113,9 @@ Documento oficial de controle de pendências e prioridades do produto. Este docu
 
 ## Legenda de Status
 
-- **Concluído**: Funcionalidade entregue, testada e validada em produção.
-- **Respondido/Aguardando decisão**: Dúvida ou definição já esclarecida tecnicamente; aguarda direcionamento ou decisão estratégica de negócio.
-- **Backlog**: Item pendente de desenvolvimento e priorizado para as próximas versões.
+- **Concluído**: Funcionalidade ou correção entregue, testada e validada em produção.
+- **Respondido / Aguardando Decisão**: Dúvida ou definição já esclarecida tecnicamente; não há pendência de código imediata ou aguarda direcionamento estratégico de negócio.
+- **Backlog**: Item pendente de desenvolvimento, reclassificado por esforço/velocidade de entrega.
 
 ---
 
@@ -116,10 +123,10 @@ Documento oficial de controle de pendências e prioridades do produto. Este docu
 
 | Item / Funcionalidade | Descrição / Detalhes | Status |
 | :--- | :--- | :--- |
-| **Áudio no WhatsApp** | Transcrição de mensagens de voz (STT) com pipeline multi-estratégia (Groq Whisper large-v3-turbo / large-v3 com chave dinâmica lida do banco e fallback OpenAI Whisper), conversor Base64 puro em JS, tratamento empático de inaudível e registro em centavos na caixinha correta. Validado pela usuária. | **Concluído** |
+| **Áudio no WhatsApp** | Transcrição de mensagens de voz (STT) com pipeline multi-estratégia (Groq Whisper large-v3-turbo / large-v3 com chave dinâmica lida do banco e fallback OpenAI Whisper), conversor Base64 puro em JS, tratamento empático de inaudível e registro em centavos na caixinha correta. | **Concluído** |
 | **Rastreabilidade de origem dos lançamentos** | Identificação precisa da origem da despesa (\`whatsapp_text\`, \`whatsapp_audio\`, \`manual\`, \`import\`) com preservação em \`message_timestamp\` da data/hora exata do envio original na Meta e badges visuais dedicados no extrato e dashboard. | **Concluído** |
 | **Separação de visões cliente × admin** | Isolamento estrito de permissões: cliente comum não vê dados técnicos (Meta token, Phone ID, WABA ID, Webhook) e tem acesso barrado no backoffice. Administradora (\`barbara.ferreira.leal@gmail.com\`) com privilégios completos. | **Concluído** |
-| **Backoffice /admin** | Painel operacional completo com métricas globais da base, clientes ativos (7d/30d), total de transações, conversas no WhatsApp, lista paginada com busca em tempo real, ordenação dinâmica, modal de detalhe por cliente e ações de suporte (zerar fio de conversa e vincular/desvincular WhatsApp). | **Concluído** |
+| **Backoffice /admin** | Painel operacional completo com métricas globais da base, clientes ativos (7d/30d), total de transações, conversas no WhatsApp, lista paginada com busca em tempo real, ordenação dinâmica, modal de detalhe por cliente e ações de suporte. | **Concluído** |
 | **Item 5: Documentos visíveis no /admin/docs** | Disponibilização da especificação de Arquitetura Técnica (\`docs/ARQUITETURA.md\`), Roteiro de Testes Regressivos (\`docs/TESTES_REGRESSIVOS.md\`) e Backlog de Pendências diretamente na tela de documentação para administradores. | **Concluído** |
 | **Item 9: Custo mensal acumulado por cliente no backoffice** | Painel de custos operacionais detalhado no \`/admin\` com modelagem em R$ (R$ 0,001 áudio Groq, R$ 0,02 IA, R$ 0,04 utility), seletor de histórico de meses, cartões de consolidação mensal e exibição no detalhe individual do cliente. | **Concluído** |
 | **Item 12: Figurinhas de bichinhos nas caixinhas** | Aba dedicada com figurinhas de animais (Gatinho 🐱, Cachorrinho 🐶, Patinhas 🐾, Ursinho 🐻, Panda 🐼, Coala 🐨, Leão 🦁, Coelhinho 🐰, Raposa 🦊, Pinguim 🐧, etc.) disponíveis na criação de caixinhas, refletidas em Caixinhas, Dashboard, Extrato e Modais. | **Concluído** |
@@ -127,6 +134,8 @@ Documento oficial de controle de pendências e prioridades do produto. Este docu
 | **Item 16: Correção do bug do backoffice (erro 500)** | Resolução definitiva da falha no endpoint \`/backend/v1/admin/overview\` com consultas seguras em \`whatsapp_contacts\` sem dependência de tabelas inexistentes. | **Concluído** |
 | **Item 19: Resumo visual das caixinhas no WhatsApp** | Resumo padronizado com barras em caracteres de bloco proporcionais (\`▓▓▓▓░░░░░░\`), percentual de consumo, cabeçalho ("📊 *Suas Caixinhas — Mês de [Mês]*"), rodapé com saldo/estouro consolidado e marcadores automáticos (\`⚠️\` para ≥80% e \`🚨\` para estouro). | **Concluído** |
 | **Item 20: Foto de perfil do WhatsApp via API (admin)** | Capacidade de atualizar o avatar oficial do número de atendimento diretamente pela tela de Configurações (\`/settings\`) via Resumable Upload da Meta API e \`whatsapp_business_profile\`, com nota explicativa sobre o nome de exibição. | **Concluído** |
+| **Item 31: Bug do Backoffice — Detalhes por cliente zerados/em branco** | **BUG CORRIGIDO**: O endpoint \`/backend/v1/admin/clients/:id\` calculava caixinhas a partir de campos inexistentes (\`limit_cents\` em vez de \`amount\`) e não calculava o gasto real do mês. Além disso, as transações buscavam \`amount_cents\` e o histórico de mensagens buscava apenas em tabela não utilizada. Corrigido com agregação real de transações do mês vs teto, mapeamento de \`amount\` e leitura do histórico ativo de mensagens do agente via \`$ai.agent('financeiro-whatsapp')\`. | **Concluído** |
+| **Item 36: Bug do Upload de Foto de Perfil — Rejeição de JPEG pequeno com mensagem enganosa** | **BUG CORRIGIDO**: Ajustada a validação no frontend (\`Settings.tsx\`) e backend (\`whatsapp_bridge.js\`) para aceitar JPEGs/PNGs com variações de MIME e extensões; corrigido o tratamento de resposta para exibir o erro **real da Meta** em caso de rejeição, sem mascarar com a mensagem genérica de 'jpeg ou png de no máximo 5MB'. | **Concluído** |
 
 ---
 
@@ -139,34 +148,48 @@ Documento oficial de controle de pendências e prioridades do produto. Este docu
 | **Item 6** | Regras de investimento | **Explicadas**: Regras conceituais e diferenciação entre reserva de emergência, aportes e metas foram explicadas. **Pendente decisão** sobre formato da caixinha de investimento (se terá teto reverso ou meta de acúmulo). | **Respondido/Aguardando decisão** |
 | **Item 21** | Cyber security | **Processo contínuo**: Aplicação das melhores práticas (mascaramento estrito de tokens, endpoints protegidos por papéis, validação de payload da Meta, SSL forçado e políticas de acesso). Continua como rotina permanente de segurança. | **Respondido/Aguardando decisão** |
 | **Item 29** | Teste de carga | **Definido como será feito**: Arquitetura do teste de carga formulada (simulação concorrente no webhook e no pipeline do agente) para validação de volume antes do lançamento comercial aberto. | **Respondido/Aguardando decisão** |
+| **Item 35** | Campo de nome social no cadastro | **Respondido**: Não é obrigatório (LGPD minimiza coleta de dados). O agente utiliza o nome informado no cadastro e usa o nome de perfil do WhatsApp (\`Profile.Name\` enviado pela Meta) como fallback automático empático. Caso desejado futuramente, um campo opcional "Como prefere ser chamada(o)?" pode ser adicionado no perfil sem bloqueio de código. **Sem pendência de código no momento**. | **Respondido/Aguardando decisão** |
 
 ---
 
-## 3. Backlog (Pendentes)
+## 3. Backlog (Pendentes — Reclassificados por Velocidade e Complexidade)
 
-| Item | Funcionalidade | Descrição / Dependências | Status |
-| :--- | :--- | :--- | :--- |
-| **Item 1** | E-mail de confirmação obrigatório | Exigir verificação estrita de e-mail antes da liberação total de acessos críticos na plataforma web. | **Backlog** |
-| **Item 3** | Mensagem da manhã via WhatsApp | Envio pró-ativo matinal com status financeiro e lembrete de gastos. **Dependência**: Requer modelo de mensagem (utility template) submetido e aprovado pela Meta no WhatsApp Manager. | **Backlog** |
-| **Item 7** | Observabilidade | Painel de monitoramento em tempo real com alertas imediatos para a administradora em caso de oscilação do webhook, Meta API ou provedores de IA. | **Backlog** |
-| **Item 8** | GitHub e controle de versão | Sincronização externa de repositório e esteira de CI/CD (ação da usuária para provisionamento de credenciais). | **Backlog** |
-| **Item 10+11** | Lançamento sem caixinha | Tratamento conversacional de despesas que não se enquadram nas caixinhas existentes: agente pergunta se deseja criar nova caixinha ou alocar em visão "fora de caixinha" no painel. | **Backlog** |
-| **Item 14** | Portal de Planejadores Financeiros | Painel dedicado para planejadores credenciados acompanharem clientes mediante termo de consentimento explícito e seguro. | **Backlog** |
-| **Item 15** | Backup da base em produção | Rotina automatizada e versionada de snapshot e exportação periódica do banco de dados em produção. | **Backlog** |
-| **Item 17** | PWA instalável no celular | Manifesto web, service worker e suporte a instalação como Progressive Web App em iOS e Android com ícone Consciente. | **Backlog** |
-| **Item 18** | Captcha no cadastro | Proteção contra cadastros automatizados (bots) na tela de registro com hCaptcha/Turnstile. | **Backlog** |
-| **Item 22** | Guardrail de temas do agente | Regras estritas de moderação para que o agente recuse educadamente conversas fora do escopo financeiro do Consciente. | **Backlog** |
-| **Item 23** | Cancelar/substituir lançamento | Permitir que o cliente cancele ou retifique um lançamento recente via WhatsApp ou painel. **Dependência**: Requer item 27 (deleção lógica). | **Backlog** |
-| **Item 24** | Billing + dashboard de assinaturas | Módulo financeiro de cobrança e controle de planos pagos/recorrentes. **Dependência**: Aguarda definição final da precificação e gateways de pagamento (ex: Stripe/Asaas). | **Backlog** |
-| **Item 25** | Módulo de suporte | Central de tickets e atendimento integrado para clientes solicitarem ajuda à equipe humana do Consciente. | **Backlog** |
-| **Item 26** | Feedbacks via WhatsApp + alerta imediato | Canal conversacional para o cliente enviar sugestões e elogios, gerando alerta em tempo real para a administradora. | **Backlog** |
-| **Item 27** | Deleção lógica com status | Implementar status de exclusão (\`active\`, \`cancelled\`, \`deleted\`) em lançamentos para auditoria e histórico de segurança. | **Backlog** |
-| **Item 28** | Gasto retroativo | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 50", "terça-feira gastei 30"). Carimbos estruturais já existem no banco; falta ajuste no prompt/parser do agente. | **Backlog** |
+### 3.1. Rápida Execução / Alto Impacto Imediato
+| Item | Funcionalidade | Descrição / Sinergias |
+| :--- | :--- | :--- |
+| **Item 1** | E-mail de confirmação obrigatório | Exigir verificação estrita de e-mail antes da liberação total de acessos críticos na plataforma web. |
+| **Item 27** | Deleção lógica com status | Implementar status de exclusão (\`active\`, \`cancelled\`, \`deleted\`) em lançamentos para auditoria e histórico de segurança. |
+| **Item 28** | Gasto retroativo | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 50", "terça gastei 30"). Campo \`date\` já existe na base. |
+| **Item 22** | Guardrail de temas do agente | Regras estritas de moderação no system prompt para o agente declinar educadamente assuntos fora de finanças pessoais. |
+| **Item 30** | Alerta ao admin a cada abertura de pedido de suporte | Notificação automática (email/alerta) para a administradora ao abrir ticket. **Sinergia**: Complementa o Item 25 (suporte) e compartilha a infraestrutura de alerta imediato do Item 26. |
+
+### 3.2. Média Complexidade
+| Item | Funcionalidade | Descrição / Sinergias |
+| :--- | :--- | :--- |
+| **Item 3** | Mensagem da manhã via WhatsApp | Envio pró-ativo matinal com status financeiro e lembrete de gastos. **Dependência**: Requer modelo de mensagem (utility template) aprovado pela Meta no WhatsApp Manager. |
+| **Item 10+11** | Lançamento sem caixinha | Tratamento conversacional de despesas que não se enquadram nas caixinhas existentes: agente sugere alocar em "Outros" ou criar nova caixinha. |
+| **Item 23** | Cancelar/substituir lançamento | Permitir que o cliente cancele ou retifique um lançamento recente via WhatsApp ou painel. **Dependência**: Requer Item 27. |
+| **Item 25** | Módulo de suporte | Central de tickets e atendimento integrado para clientes solicitarem ajuda à equipe humana do Consciente. Complementado pelo Item 30. |
+| **Item 26** | Feedbacks via WhatsApp + alerta imediato | Canal conversacional para o cliente enviar sugestões e elogios, gerando alerta imediato para a administradora. |
+| **Item 32** | Rotina de fechamento de mês via WhatsApp | Visão geral do fechamento mensal das caixinhas, parabenizando o empenho ou incentivando caso tenha estourado, com oferta de ajuda para planejar o mês seguinte. **Sinergia**: Mesma infraestrutura de job agendado e aprovação de template Meta do Item 3, aproveitando a formatação visual do Item 19. |
+| **Item 33** | Controle de vigência de caixinhas por mês | Permitir que o cliente tenha conjuntos distintos de caixinhas a cada mês (ex.: Mês 1 com Alimentação/Transporte/Moradia; Mês 2 sem Moradia, com Pets). **Novo item de modelo de dados**: requer campo de vigência/validade mensal (\`valid_from\` / \`valid_until\` ou budgets isolados por mês). **Sinergia**: Itens 6 (investimento) e 10/11 (sem caixinha). Esforço médio-alto. |
+
+### 3.3. Complexidade Maior / Infraestrutura / Comercial
+| Item | Funcionalidade | Descrição / Sinergias |
+| :--- | :--- | :--- |
+| **Item 7** | Observabilidade | Painel de telemetria em tempo real com alertas de indisponibilidade do webhook, Meta API ou provedores de IA. |
+| **Item 8** | GitHub e controle de versão | Sincronização externa de repositório e esteira de CI/CD (ação da usuária para provisionamento de chaves/repositório). |
+| **Item 14** | Portal de Planejadores Financeiros | Painel dedicado para planejadores credenciados acompanharem clientes mediante termo de consentimento LGPD explícito. |
+| **Item 15** | Backup automatizado da base | Rotina automatizada e versionada de snapshots do banco em produção. |
+| **Item 17** | PWA instalável no celular | Manifesto web, service worker e suporte a instalação como Progressive Web App em iOS e Android com ícone Consciente. |
+| **Item 18** | Captcha no cadastro | Proteção contra cadastros automatizados (bots) na tela de registro com hCaptcha/Turnstile. |
+| **Item 24** | Billing + dashboard de assinaturas | Módulo financeiro de cobrança e controle de planos pagos/recorrentes. **Dependência**: Aguarda definição final da precificação e gateways de pagamento (ex: Stripe/Asaas). |
+| **Item 34** | Billing: visão acumulada de custos vs faturamento bruto | No módulo de billing, exibir a visão comparativa acumulada de custos operacionais da infraestrutura (Meta + Groq + IA) versus faturamento bruto (receita líquida até o momento). **Sinergia**: Complementa diretamente o Item 24 e se alimenta da modelagem de custos do Item 9. |
 `
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
-Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento.
+Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a P intactos e adiciona os novos cenários Q e R para as correções desta rodada.
 
 ---
 
@@ -330,4 +353,52 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - Permite selecionar uma imagem JPEG/PNG de até 5MB com pré-visualização.
      - Ao clicar em "Atualizar Foto via API", o backend processa o Resumable Upload da Meta e aplica no perfil comercial, exibindo mensagem de sucesso ("Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes").
      - O token permanente da Meta permanece 100% restrito ao backend sem qualquer vazamento na tela.
+
+---
+
+## Q) Detalhes por Cliente no Backoffice com Dados Reais (Correção do Item 31)
+
+1. **Acesso ao Detalhe do Cliente no /admin**:
+   - Faça login como Administradora (\`barbara.ferreira.leal@gmail.com\`).
+   - Acesse o Backoffice (\`/admin\`).
+   - Localize um cliente com caixinhas configuradas e movimentações.
+   - Clique no botão **"Detalhes"**.
+
+2. **Verificação da Aba Caixinhas (Gasto Real vs Teto)**:
+   - Abra a aba **"Caixinhas"**:
+     - **Verificação**: Os valores de **Teto** e **Gasto no Mês** NÃO estão zerados nem em branco.
+     - As caixinhas configuradas do cliente são listadas com seus nomes, ícones e cores oficiais.
+     - O valor do Teto corresponde ao campo \`amount\` cadastrado para a caixinha.
+     - O valor do Gasto reflete a soma real das despesas (\`type = 'despesa'\`) daquela categoria no mês de referência.
+     - A barra de progresso reflete visualmente a proporção gasta em relação ao teto.
+
+3. **Verificação da Aba Transações (Últimas Transações com Valores Reais)**:
+   - Abra a aba **"Transações"**:
+     - **Verificação**: As últimas transações do cliente são exibidas com valores preenchidos em Real (ex.: \`R$ 35,00\`, \`R$ 120,00\`), tipo (despesa/receita), caixinha correspondente, origem (\`whatsapp_text\`, \`whatsapp_audio\`, \`manual\`) e data/hora.
+     - Nada aparece zerado ou como \`R$ 0,00\` indevido quando há transações com valor real.
+
+4. **Verificação da Aba Histórico WhatsApp (Conversas do Agente)**:
+   - Abra a aba **"Histórico WhatsApp"**:
+     - **Verificação**: O painel exibe as mensagens trocadas entre o cliente e o agente financeiro no WhatsApp (mensagens recebidas \`incoming\` e enviadas \`outgoing\` pelo agente), com texto completo e carimbo de data/hora.
+     - As mensagens são carregadas e renderizadas a partir das conversas ativas do agente nativo (\`financeiro-whatsapp\`).
+
+---
+
+## R) Upload de Foto de Perfil JPEG Pequeno e Tratamento de Erros da Meta (Correção do Item 36)
+
+1. **Aceitação de Arquivo JPEG Válido Pequeno (ex.: 37.1 KB)**:
+   - Acesse \`/settings\` como Administradora.
+   - No card "Foto de Perfil do WhatsApp via API", clique em "Escolher Imagem...".
+   - Selecione um arquivo JPEG válido de tamanho reduzido (ex.: 37 KB ou arquivo .jpg/.jpeg padrão).
+   - **Verificação**:
+     - O arquivo NÃO é rejeitado com mensagem genérica enganosa de formato ou tamanho.
+     - A pré-visualização carrega normalmente e exibe o tamanho real em KB.
+     - Ao clicar em "Atualizar Foto via API", o upload é submetido à Meta Graph API.
+     - Em caso de sucesso, toast verde confirma a atualização do perfil.
+
+2. **Exibição do Erro Real da Meta Sem Mensagem Enganosa**:
+   - Se o token da Meta estiver inválido, expirado ou a Meta recusar por qualquer motivo:
+     - **Verificação**: O alerta vermelho exibe o erro REAL retornado pela Meta (ex.: "Meta recusou a criação da sessão de upload: (...)", "Token inválido ou expirado" ou mensagem específica da Graph API).
+     - **NUNCA** é exibida a mensagem enganosa "preciso utilizar uma imagem jpeg ou png de no máximo 5MB" quando o arquivo já cumpria esses requisitos.
+   - O token da Meta permanece protegido e nunca é exposto na mensagem nem no console do cliente.
 `

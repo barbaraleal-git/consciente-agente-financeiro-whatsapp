@@ -481,6 +481,29 @@ export const whatsappService = {
     }
     return res.json()
   },
+
+  async updateProfilePicture(
+    file: File,
+  ): Promise<{ success: boolean; message: string; phone_number_id?: string }> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/profile-picture`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: pb.authStore.token,
+        },
+        body: formData,
+      },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.error || `Erro HTTP ${res.status} ao atualizar foto do perfil`)
+    }
+    return data
+  },
 }
 
 export interface AdminMetrics {

@@ -25,11 +25,34 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.38',
+    date: '03/11/2026',
+    title:
+      'Resumo Visual Padronizado das Caixinhas no WhatsApp e Atualização da Foto de Perfil via Meta API — Itens 19 e 20 da Lista do MVP',
+    tag: 'Atual',
+    highlights: [
+      'Item 19 — Resumo Visual Padronizado das Caixinhas no WhatsApp: Sempre que o cliente solicita visão geral de suas caixinhas ("quais são minhas caixinhas?", "resumo das caixinhas", etc.), a resposta segue estritamente um layout visual em texto com barras em caracteres de bloco proporcionais (▓▓▓▓░░░░░░), percentual de consumo e tetos.',
+      'Cabeçalho e Rodapé Padronizados: Topo com mês corrente ("📊 Suas Caixinhas — Mês de X") e rodapé com consolidado do mês (total gasto, total dos tetos e saldo restante ou estouro geral).',
+      'Alertas Visuais Embutidos: Caixinhas com ≥80% do teto ganham marcador de atenção (⚠️) com saldo restante em evidência; caixinhas estouradas (≥100%) recebem marcação crítica imediata (🚨 Estourada por R$ X).',
+      'Item 20 — Foto de Perfil do WhatsApp via API no Painel Admin: No painel exclusivo de administradores (Configurações > Canal Oficial WhatsApp Business), a administradora pode selecionar uma foto (JPEG/PNG) e atualizar o avatar oficial do número via Resumable Upload da Meta e whatsapp_business_profile.',
+      'Nota Explicativa sobre Nome de Exibição: Aviso claro informando que o nome de exibição do WhatsApp exige revisão humana pela Meta no WhatsApp Manager e não pode ser trocado por API, enquanto a foto pode ser atualizada diretamente pelo painel.',
+      'Segurança e Zero Regressão: Token da Meta e chaves permanecem estritamente mascarados; fluxos de áudio, despesas retroativas, webhook da Meta e Cenários A–N permanecem 100% íntegros.',
+    ],
+    details: [
+      'Helper pocketbase/hooks/caixinhas_summary_helper.js criado com detecção de intenção e montagem formatada do resumo com emojis de bichinhos e categorias.',
+      'Hook pocketbase/hooks/whatsapp_bridge.js integrado ao helper no webhook e no endpoint de simulação.',
+      'Migração 0024_update_finance_agent_caixinhas_summary.js aplicada reforçando as diretrizes visuais no prompt do agente.',
+      'Endpoint POST /backend/v1/whatsapp/profile-picture implementado com suporte a Resumable Upload da Meta e vínculo via profile_picture_handle.',
+      'Interface em src/pages/Settings.tsx e método whatsappService.updateProfilePicture em finance.ts.',
+      'Documentos docs/ARQUITETURA.md e docs/TESTES_REGRESSIVOS.md atualizados com os novos Cenários O e P.',
+    ],
+  },
+  {
     version: '0.0.37',
     date: '03/11/2026',
     title:
       'Custo Mensal Acumulado por Cliente no Backoffice Admin (/admin) — Item 9 da Lista de Prioridades',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Visão de Custos no Backoffice Admin (/admin): novo card dedicado com cálculo automático do custo operacional mensal acumulado estimado de cada cliente e totais consolidados no topo.',
       'Modelagem unitária de custos em R$: Transações por áudio no WhatsApp a R$ 0,001 (Groq Whisper); Mensagens de IA geradas pelo agente a R$ 0,02; Mensagens ativas/utility fora de 24h a R$ 0,04; Mensagens de serviço (checks azuis e typing) a R$ 0.',

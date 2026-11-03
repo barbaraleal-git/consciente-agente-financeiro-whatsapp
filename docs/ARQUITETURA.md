@@ -179,3 +179,40 @@ Implementado no hook `pocketbase/hooks/admin_backoffice.js` com rotas protegidas
 ### Proteção de Papel
 
 - Visível **exclusivamente para a conta da dona do produto** (`barbara.ferreira.leal@gmail.com`) ou usuários com `role: 'admin'`. Requisições não autenticadas ou de clientes comuns retornam `403 Forbidden`.
+
+---
+
+## 11. Resumo Visual Padronizado das Caixinhas no WhatsApp (Item 19)
+
+Implementado no helper `pocketbase/hooks/caixinhas_summary_helper.js` e integrado ao `pocketbase/hooks/whatsapp_bridge.js` (webhook de entrada e rota de simulação):
+
+### Padrão de Formatação Visual em Texto
+
+- **Cabeçalho:** `📊 *Suas Caixinhas — Mês de [Mês por extenso]*`
+- **Itens:** Para cada caixinha ativa do tipo `despesa`, exibe:
+  - Emoji da caixinha (ícone de bichinho ou categoria) + `*[Nome da Caixinha]*` + marcador de alerta
+  - Barra de progresso proporcional com 10 caracteres de bloco: `▓▓▓▓░░░░░░ XX%`
+  - Valores monetários formatados em Real brasileiro: `Gasto: R$ XX,XX / Teto: R$ YY,YY`
+  - Linha de status: `Restam R$ ZZ,ZZ` ou `🚨 *Estourada por R$ WW,WW*`
+- **Alertas de Destaque:**
+  - Consumo `>= 80%` e `< 100%`: Marcador de alerta `⚠️` e aviso de atenção.
+  - Consumo `>= 100%`: Marcador crítico `🚨` com valor do estouro em destaque.
+- **Rodapé:** Linha divisória com totais consolidados:
+  - `💰 *Total Gasto no Mês:* R$ XX,XX`
+  - `🎯 *Total dos Tetos:* R$ YY,YY`
+  - `✨ *Saldo Restante no Mês:* R$ ZZ,ZZ` (ou `🚨 *Estouro Geral no Mês:* R$ WW,WW`)
+
+---
+
+## 12. Atualização da Foto de Perfil do WhatsApp via API da Meta (Item 20)
+
+Implementado no endpoint restrito à administração `POST /backend/v1/whatsapp/profile-picture`:
+
+### Fluxo de Comunicação com a Meta Graph API
+
+1. **Autenticação:** Exige papel `admin` ou conta da dona (`barbara.ferreira.leal@gmail.com`). O token permanente é lido de forma segura do banco (`whatsapp_status.access_token`) e **nunca é exposto** ao frontend.
+2. **Descoberta do App ID:** Consulta `/app` ou `/debug_token` na Graph API para obter o identificador da aplicação Meta.
+3. **Resumable Upload (Passo 1):** Inicia sessão de upload via `POST https://graph.facebook.com/v21.0/{APP_ID}/uploads` informando `file_length`, `file_type` (JPEG/PNG) e `file_name`, retornando o `upload_session_id`.
+4. **Envio de Bytes (Passo 2):** Transmite os bytes brutos da imagem via `POST https://graph.facebook.com/v21.0/{upload_session_id}` com header `file_offset: 0`, recebendo o `profile_picture_handle` (`uploadBytesJson.h`).
+5. **Atualização do Perfil (Passo 3):** Aplica a imagem no número de atendimento via `POST https://graph.facebook.com/v21.0/{phone_number_id}/whatsapp_business_profile` com payload `{ messaging_product: 'whatsapp', profile_picture_handle }`.
+6. **Restrição Oficial sobre Nome de Exibição:** Conforme documentação e política da Meta, o **nome de exibição** não pode ser alterado via API (exige revisão humana e aprovação no WhatsApp Manager). O painel administrativo exibe nota explicativa clara com link para o WhatsApp Manager.

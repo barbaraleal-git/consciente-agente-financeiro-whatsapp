@@ -237,4 +237,29 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - Tabela ordenada pelo maior custo primeiro, com alternância de colunas e seletor histórico de meses.
      - No detalhe individual de cada cliente (botão "Detalhes"), o custo estimado mensal e decomposição são exibidos junto com o seletor de mês.
      - A rota \`GET /backend/v1/admin/costs\` retorna 403 Forbidden para clientes comuns e visitantes.
+
+---
+
+## O) Resumo Visual Padronizado das Caixinhas no WhatsApp (Item 19)
+1. **Passo a passo**:
+   - Abra o WhatsApp do cliente cadastrado ou acione o modal "Testar Mensagem" em Configurações.
+   - Envie uma mensagem como *"quais são minhas caixinhas?"* ou *"resumo das minhas caixinhas"*.
+   - **Comportamento Esperado**:
+     - A resposta inicia com o cabeçalho padronizado: \`📊 *Suas Caixinhas — Mês de [Mês]*\`.
+     - Cada caixinha ativa é exibida com seu emoji, nome em negrito, barra de 10 blocos proporcionais (\`▓▓▓▓░░░░░░\`), percentual de consumo e valores (\`Gasto: R$ X / Teto: R$ Y\`).
+     - Caixinhas com consumo >= 80% recebem marcador \`⚠️\` e caixinhas estouradas recebem \`🚨\` com valor excedente.
+     - Linha divisória e rodapé com total gasto, total dos tetos e saldo restante no mês.
+     - Lançamentos normais de despesa (ex: "almoço 35") continuam sendo registrados sem regressão.
+
+---
+
+## P) Atualização da Foto de Perfil do WhatsApp via API no Painel Admin (Item 20)
+1. **Passo a passo**:
+   - Acesse \`/settings\` como Administradora (\`barbara.ferreira.leal@gmail.com\`).
+   - Na seção Canal Oficial WhatsApp Business, localize o card "Foto de Perfil do WhatsApp via API".
+   - **Comportamento Esperado**:
+     - Exibe aviso claro explicando que o nome de exibição exige revisão humana no WhatsApp Manager, mas a foto pode ser alterada diretamente via API.
+     - Permite selecionar uma imagem JPEG/PNG de até 5MB com pré-visualização.
+     - Ao clicar em "Atualizar Foto via API", o backend processa o Resumable Upload da Meta e aplica no perfil comercial, exibindo mensagem de sucesso ("Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes").
+     - O token permanente da Meta permanece 100% restrito ao backend sem qualquer vazamento na tela.
 `

@@ -810,6 +810,48 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             let agentReply = ''
             let newConvId = existingConvId
 
+            // Verificação de intenção padronizada: Resumo Visual das Caixinhas
+            // Se o usuário está cadastrado e pede a visão geral de suas caixinhas,
+            // geramos diretamente o resumo visual padronizado com barras em blocos ▓░,
+            // percentuais, alertas e linha de resumo no rodapé.
+            let caixinhasHelper = null
+            try {
+              caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
+            } catch (hErr) {
+              console.log('[whatsapp_bridge] Falha ao carregar caixinhas_summary_helper:', hErr)
+            }
+
+            const isCaixinhasOverview =
+              isRegistered &&
+              textContent &&
+              caixinhasHelper &&
+              typeof caixinhasHelper.isCaixinhasOverviewIntent === 'function' &&
+              caixinhasHelper.isCaixinhasOverviewIntent(textContent)
+
+            if (isCaixinhasOverview) {
+              console.log(
+                `[whatsapp_bridge] Intenção de visão geral de caixinhas detectada para usuário ${activeUserId}. Montando resumo visual padronizado...`,
+              )
+              try {
+                const summary = caixinhasHelper.buildCaixinhasSummaryForUser(
+                  $app,
+                  activeUserId,
+                  todayStr.slice(0, 7),
+                )
+                if (summary) {
+                  agentReply = summary
+                  console.log(
+                    `[whatsapp_bridge] Resumo visual das caixinhas montado com sucesso (tamanho=${agentReply.length}).`,
+                  )
+                }
+              } catch (sumErr) {
+                console.log(
+                  '[whatsapp_bridge] Falha ao construir resumo visual das caixinhas (fallback para agente):',
+                  sumErr,
+                )
+              }
+            }
+
             const isConvNotFoundError = function (err) {
               if (!err) return false
               const errStr = String(err).toLowerCase()
@@ -820,8 +862,8 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               )
             }
 
-            // Executa o agente se tivermos activeUserId válido
-            if (activeUserId) {
+            // Executa o agente se tivermos activeUserId válido e ainda não temos resposta pronta
+            if (activeUserId && !agentReply) {
               // Suporte a reemissão periódica de typing a cada ~12s caso a resposta demore,
               // com limite estrito de no máximo 3 reemissões para não martelar a Meta.
               let typingIntervalId = null
@@ -1598,6 +1640,48 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       let agentReply = ''
       let newConvId = existingConvId
 
+      // Verificação de intenção padronizada: Resumo Visual das Caixinhas no simulate
+      let caixinhasHelperSim = null
+      try {
+        caixinhasHelperSim = require(`${__hooks}/caixinhas_summary_helper.js`)
+      } catch (hErr) {
+        console.log(
+          '[whatsapp_bridge] [simulate] Falha ao carregar caixinhas_summary_helper:',
+          hErr,
+        )
+      }
+
+      const isCaixinhasOverview =
+        isRegistered &&
+        message &&
+        caixinhasHelperSim &&
+        typeof caixinhasHelperSim.isCaixinhasOverviewIntent === 'function' &&
+        caixinhasHelperSim.isCaixinhasOverviewIntent(message)
+
+      if (isCaixinhasOverview) {
+        console.log(
+          `[whatsapp_bridge] [simulate] Intenção de visão geral de caixinhas detectada para usuário ${activeUserId}. Montando resumo visual padronizado...`,
+        )
+        try {
+          const summary = caixinhasHelperSim.buildCaixinhasSummaryForUser(
+            $app,
+            activeUserId,
+            todayStr.slice(0, 7),
+          )
+          if (summary) {
+            agentReply = summary
+            console.log(
+              `[whatsapp_bridge] [simulate] Resumo visual das caixinhas montado com sucesso (tamanho=${agentReply.length}).`,
+            )
+          }
+        } catch (sumErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Falha ao construir resumo visual das caixinhas (fallback para agente):',
+            sumErr,
+          )
+        }
+      }
+
       const isConvNotFoundError = function (err) {
         if (!err) return false
         const errStr = String(err).toLowerCase()
@@ -1608,7 +1692,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
         )
       }
 
-      if (activeUserId) {
+      if (activeUserId && !agentReply) {
         try {
           const agentResult = $ai.agent('financeiro-whatsapp').chat({
             user_id: activeUserId,
@@ -1869,6 +1953,360 @@ routerAdd(
 // ----------------------------------------------------
 // 8. Rota para vincular contato a um usuário
 // ----------------------------------------------------
+
+// ----------------------------------------------------
+// 9. Rota para Atualizar Foto do Perfil do WhatsApp via API da Meta (ITEM 20) - RESTRITA A ADMIN
+// Utiliza o Resumable Upload da Meta para obter o upload handle e
+// em seguida atualiza o perfil via POST /{phone_number_id}/whatsapp_business_profile com profile_picture_handle.
+// O token NUNCA é exposto ao frontend.
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/profile-picture',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      // Lê arquivo ou base64 enviado no corpo
+      const req = e.requestInfo()
+      const body = req.body || {}
+
+      let fileBytes = null
+      let fileType = 'image/jpeg'
+      let fileName = 'profile_picture.jpg'
+
+      // Suporte a multipart/form-data
+      try {
+        const uploadedFile = e.findUploadedFile('file') || e.findUploadedFile('image')
+        if (uploadedFile) {
+          fileBytes = uploadedFile.bytes()
+          fileType = uploadedFile.header?.get('Content-Type') || fileType
+          fileName = uploadedFile.filename || fileName
+        }
+      } catch (_) {}
+
+      // Suporte a JSON com base64
+      if (!fileBytes && body.image_base64) {
+        let rawB64 = String(body.image_base64)
+        if (rawB64.includes(',')) {
+          const match = rawB64.match(/^data:([^;]+);base64,/)
+          if (match && match[1]) {
+            fileType = match[1]
+          }
+          rawB64 = rawB64.split(',')[1]
+        }
+        if (body.file_type) fileType = String(body.file_type)
+        if (body.file_name) fileName = String(body.file_name)
+
+        try {
+          fileBytes = $security.base64Decode(rawB64)
+        } catch (b64Err) {
+          return e.json(400, {
+            success: false,
+            error: 'Formato de imagem inválido (base64 inválido): ' + String(b64Err),
+          })
+        }
+      }
+
+      if (!fileBytes || fileBytes.length === 0) {
+        return e.json(400, {
+          success: false,
+          error: 'Nenhuma imagem foi enviada. Envie um arquivo de imagem (JPEG ou PNG) de até 5MB.',
+        })
+      }
+
+      const fileLength = fileBytes.length
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Recebida imagem: ${fileName}, tipo=${fileType}, tamanho=${fileLength} bytes`,
+      )
+
+      // Validação de tipo suportado pela Meta
+      const cleanMime = fileType.toLowerCase()
+      if (!cleanMime.includes('jpeg') && !cleanMime.includes('jpg') && !cleanMime.includes('png')) {
+        return e.json(400, {
+          success: false,
+          error: 'Formato de imagem não suportado. A Meta aceita apenas imagens JPEG ou PNG.',
+        })
+      }
+
+      // 1. Obtém credenciais oficiais salvas em whatsapp_status (o token NUNCA é exposto)
+      let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+      let wabaId = '1888947369148112'
+
+      try {
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+        for (let idx = 0; idx < wsList.length; idx++) {
+          const rec = wsList[idx]
+          if (rec.getString('phone_number_id')) {
+            activePhoneId = rec.getString('phone_number_id')
+          }
+          if (rec.getString('waba_id')) {
+            wabaId = rec.getString('waba_id')
+          }
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+            break
+          }
+        }
+      } catch (_) {}
+
+      if (!token) {
+        return e.json(400, {
+          success: false,
+          error:
+            'Token Permanente da Meta não configurado. Salve seu Token em Configurações > Canal Oficial WhatsApp Business antes de alterar a foto.',
+        })
+      }
+
+      // 2. Descobre o APP_ID da Meta para o Resumable Upload
+      // Tentativa (a): $os.getenv('META_APP_ID')
+      let metaAppId = $os.getenv('META_APP_ID') || ''
+
+      // Tentativa (b): Consulta /app com o access_token na Graph API
+      if (!metaAppId) {
+        try {
+          console.log('[whatsapp_bridge] [profile-picture] Consultando App ID via /app...')
+          const appRes = $http.send({
+            url: 'https://graph.facebook.com/v21.0/app',
+            method: 'GET',
+            headers: {
+              Authorization: 'Bearer ' + token,
+            },
+            timeout: 15,
+          })
+          if (appRes.statusCode >= 200 && appRes.statusCode < 300) {
+            const appJson = appRes.json || (appRes.rawText ? JSON.parse(appRes.rawText) : {})
+            if (appJson.id) {
+              metaAppId = String(appJson.id)
+              console.log('[whatsapp_bridge] [profile-picture] App ID obtido via /app:', metaAppId)
+            }
+          }
+        } catch (appErr) {
+          console.log('[whatsapp_bridge] [profile-picture] Falha ao consultar /app:', appErr)
+        }
+      }
+
+      // Tentativa (c): Fallback para debug_token
+      if (!metaAppId) {
+        try {
+          const dbgRes = $http.send({
+            url: `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`,
+            method: 'GET',
+            timeout: 15,
+          })
+          if (dbgRes.statusCode >= 200 && dbgRes.statusCode < 300) {
+            const dbgJson = dbgRes.json || (dbgRes.rawText ? JSON.parse(dbgRes.rawText) : {})
+            if (dbgJson.data && dbgJson.data.app_id) {
+              metaAppId = String(dbgJson.data.app_id)
+              console.log(
+                '[whatsapp_bridge] [profile-picture] App ID obtido via /debug_token:',
+                metaAppId,
+              )
+            }
+          }
+        } catch (dbgErr) {
+          console.log('[whatsapp_bridge] [profile-picture] Falha em debug_token:', dbgErr)
+        }
+      }
+
+      // Se ainda não identificou App ID, usa o phone_number_id ou wabaId como alvo de uploads
+      const uploadTargetId = metaAppId || activePhoneId
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Iniciando Resumable Upload no alvo ${uploadTargetId}...`,
+      )
+
+      // 3. PASSO 1 DO RESUMABLE UPLOAD: Criar Sessão de Upload
+      // POST https://graph.facebook.com/v21.0/{APP_ID}/uploads?file_length={len}&file_type={type}&file_name={name}
+      const sessionUrl = `https://graph.facebook.com/v21.0/${uploadTargetId}/uploads?file_length=${fileLength}&file_type=${encodeURIComponent(fileType)}&file_name=${encodeURIComponent(fileName)}`
+
+      let sessionRes = null
+      try {
+        sessionRes = $http.send({
+          url: sessionUrl,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+          },
+          timeout: 25,
+        })
+      } catch (sessNetErr) {
+        return e.json(500, {
+          success: false,
+          error:
+            'Erro de conexão com Meta Graph API ao iniciar upload: ' +
+            (sessNetErr ? sessNetErr.message || String(sessNetErr) : ''),
+        })
+      }
+
+      const sessionStatus = sessionRes.statusCode
+      const sessionJson =
+        sessionRes.json || (sessionRes.rawText ? JSON.parse(sessionRes.rawText) : {})
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Passo 1 (Criar Sessão): HTTP ${sessionStatus}, retorno=`,
+        sessionRes.rawText?.slice(0, 300),
+      )
+
+      if (sessionStatus < 200 || sessionStatus >= 300 || !sessionJson.id) {
+        const metaErrMsg =
+          sessionJson.error?.message ||
+          sessionRes.rawText ||
+          `Erro HTTP ${sessionStatus} ao iniciar sessão de upload`
+        return e.json(400, {
+          success: false,
+          error: `Meta recusou a criação da sessão de upload: ${metaErrMsg}`,
+          meta_error: sessionJson.error || null,
+        })
+      }
+
+      const uploadSessionId = sessionJson.id // Ex: "upload:1234567890?sig=abcdef"
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Sessão criada com sucesso: ${uploadSessionId}`,
+      )
+
+      // 4. PASSO 2 DO RESUMABLE UPLOAD: Enviar os bytes da imagem
+      // POST https://graph.facebook.com/v21.0/{uploadSessionId}
+      // Header: file_offset: 0
+      // Body: bytes da imagem (raw binary)
+      const uploadBytesUrl = `https://graph.facebook.com/v21.0/${uploadSessionId}`
+
+      let uploadBytesRes = null
+      try {
+        uploadBytesRes = $http.send({
+          url: uploadBytesUrl,
+          method: 'POST',
+          headers: {
+            Authorization: 'OAuth ' + token,
+            file_offset: '0',
+            'Content-Type': 'application/octet-stream',
+          },
+          body: fileBytes,
+          timeout: 40,
+        })
+      } catch (upNetErr) {
+        return e.json(500, {
+          success: false,
+          error:
+            'Erro de conexão ao enviar bytes da imagem para a Meta: ' +
+            (upNetErr ? upNetErr.message || String(upNetErr) : ''),
+        })
+      }
+
+      const uploadBytesStatus = uploadBytesRes.statusCode
+      const uploadBytesJson =
+        uploadBytesRes.json || (uploadBytesRes.rawText ? JSON.parse(uploadBytesRes.rawText) : {})
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Passo 2 (Enviar bytes): HTTP ${uploadBytesStatus}, retorno=`,
+        uploadBytesRes.rawText?.slice(0, 300),
+      )
+
+      if (uploadBytesStatus < 200 || uploadBytesStatus >= 300 || !uploadBytesJson.h) {
+        const metaUpErr =
+          uploadBytesJson.error?.message ||
+          uploadBytesRes.rawText ||
+          `Erro HTTP ${uploadBytesStatus} no envio de bytes`
+        return e.json(400, {
+          success: false,
+          error: `Falha ao transmitir imagem para a Meta: ${metaUpErr}`,
+          meta_error: uploadBytesJson.error || null,
+        })
+      }
+
+      const profilePictureHandle = uploadBytesJson.h // Handle do upload concluído
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Handle da foto gerado com sucesso: ${profilePictureHandle}`,
+      )
+
+      // 5. PASSO 3: Atualizar o Perfil Comercial do WhatsApp com a foto
+      // POST https://graph.facebook.com/v21.0/{phone_number_id}/whatsapp_business_profile
+      // Body: { messaging_product: 'whatsapp', profile_picture_handle: profilePictureHandle }
+      const profileEndpoint = `https://graph.facebook.com/v21.0/${activePhoneId}/whatsapp_business_profile`
+      const profilePayload = {
+        messaging_product: 'whatsapp',
+        profile_picture_handle: profilePictureHandle,
+      }
+
+      let profileRes = null
+      try {
+        profileRes = $http.send({
+          url: profileEndpoint,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(profilePayload),
+          timeout: 25,
+        })
+      } catch (profNetErr) {
+        return e.json(500, {
+          success: false,
+          error:
+            'Erro ao vincular foto ao perfil do WhatsApp na Meta: ' +
+            (profNetErr ? profNetErr.message || String(profNetErr) : ''),
+        })
+      }
+
+      const profileStatus = profileRes.statusCode
+      const profileJson =
+        profileRes.json || (profileRes.rawText ? JSON.parse(profileRes.rawText) : {})
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Passo 3 (Atualizar Perfil): HTTP ${profileStatus}, retorno=`,
+        profileRes.rawText?.slice(0, 300),
+      )
+
+      if (profileStatus >= 200 && profileStatus < 300) {
+        // Atualiza carimbo no whatsapp_status
+        try {
+          const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+          if (wsList.length > 0) {
+            const rec = wsList[0]
+            rec.set('last_send_error', '')
+            $app.save(rec)
+          }
+        } catch (_) {}
+
+        return e.json(200, {
+          success: true,
+          message:
+            'Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes.',
+          phone_number_id: activePhoneId,
+        })
+      }
+
+      const metaProfErr =
+        profileJson.error?.message ||
+        profileRes.rawText ||
+        `Erro HTTP ${profileStatus} ao atualizar perfil`
+
+      return e.json(profileStatus || 400, {
+        success: false,
+        error: `Meta recusou a alteração da foto: ${metaProfErr}`,
+        meta_error: profileJson.error || null,
+      })
+    } catch (err) {
+      console.log('[whatsapp_bridge] [profile-picture] Exceção inesperada:', err)
+      return e.json(500, {
+        success: false,
+        error: 'Erro interno ao processar atualização da foto: ' + String(err),
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/link-contact',

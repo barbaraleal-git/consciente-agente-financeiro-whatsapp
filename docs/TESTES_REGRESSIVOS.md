@@ -350,3 +350,68 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - Tente requisitar a rota `GET /backend/v1/admin/costs`:
      - **Verificação**: Resposta HTTP `403 Forbidden` com mensagem de acesso restrito.
    - Nenhuma informação de custo ou consumo de clientes é visível para clientes comuns na aplicação.
+
+---
+
+## O) Resumo Visual Padronizado das Caixinhas no WhatsApp (Item 19)
+
+1. **Solicitação de Visão Geral / Resumo das Caixinhas**:
+   - Abra o WhatsApp do cliente cadastrado (ou utilize a modal "Testar Mensagem" em Configurações informando o número cadastrado).
+   - Envie uma mensagem solicitando o resumo, por exemplo:
+     - _"quais são minhas caixinhas?"_
+     - _"resumo das minhas caixinhas"_
+     - _"como estão minhas caixinhas?"_
+     - _"visão geral das caixinhas"_
+   - **Verificação de Cabeçalho**:
+     - A resposta inicia com: `📊 *Suas Caixinhas — Mês de [Nome do Mês]*`
+   - **Verificação de Itens e Barras Visuais**:
+     - Cada caixinha do tipo despesa é listada com seu emoji correspondente (ex: 🍽️, 🚗, 🐱, 🏠).
+     - Nome da caixinha formatado em negrito (`*Nome*`).
+     - Barra de progresso proporcional com 10 caracteres de bloco (`▓▓▓▓░░░░░░`) e percentual de consumo (`XX%`).
+     - Linha de valores monetários em formato Real: `Gasto: R$ XX,XX / Teto: R$ YY,YY`.
+     - Status amigável de saldo restante: `(Restam R$ ZZ,ZZ)`.
+   - **Verificação de Alertas em Destaque**:
+     - Caixinha com consumo `>= 80%` e `< 100%`: exibe marcador de atenção `⚠️` no título e aviso `⚠️ *Atenção:* restam R$ ZZ,ZZ`.
+     - Caixinha com consumo `>= 100%` (estourada): exibe marcador crítico `🚨` no título e aviso `🚨 *Estourada por R$ WW,WW*`.
+   - **Verificação de Rodapé**:
+     - Linha divisória `───────────────────────`.
+     - `💰 *Total Gasto no Mês:* R$ XX,XX`.
+     - `🎯 *Total dos Tetos:* R$ YY,YY`.
+     - `✨ *Saldo Restante no Mês:* R$ ZZ,ZZ` ou `🚨 *Estouro Geral no Mês:* R$ WW,WW`.
+   - **Verificação de Não-Regressão**:
+     - Mensagens de lançamento normal (ex: "almoço 35", "uber 22") continuam sendo registradas normalmente como transações sem ativar a tela inteira de resumo.
+
+---
+
+## P) Atualização da Foto de Perfil do WhatsApp via API no Painel Admin (Item 20)
+
+1. **Acesso Exclusivo à Administração**:
+   - Faça login como Administradora (`barbara.ferreira.leal@gmail.com`).
+   - Acesse **Configurações** (`/settings`).
+   - Role até a seção **"Canal Oficial WhatsApp Business (Meta Cloud API)"**.
+   - **Verificação de Visibilidade**:
+     - O card **"Foto de Perfil do WhatsApp via API"** é exibido exclusivamente para o perfil de administrador com badge "Meta Resumable Upload".
+     - Um cliente comum não tem acesso a essa seção nem visualiza campos técnicos ou botões de upload da Meta.
+
+2. **Nota Explicativa sobre o Nome de Exibição**:
+   - Verifique o alerta em destaque amarelo/âmbar:
+     - Explica com clareza: _"O nome de exibição que aparece para os clientes não pode ser alterado via API por restrição oficial da Meta — ele exige análise e aprovação humana no WhatsApp Manager... Já a foto de perfil pode ser trocada e atualizada diretamente aqui pelo botão abaixo!"_.
+     - Contém link direto para o WhatsApp Manager (`business.facebook.com`).
+
+3. **Seleção e Validação de Imagem**:
+   - Clique em **"Escolher Imagem..."**.
+   - Selecione um arquivo JPEG ou PNG (até 5MB).
+   - **Verificação**:
+     - A foto pré-visualizada é exibida no círculo de avatar.
+     - Aparece o nome do arquivo, tamanho em KB e os botões **"Atualizar Foto via API"** e **"Cancelar"**.
+   - Tente selecionar um arquivo não suportado (ex: .pdf ou .txt): o sistema avisa com toast vermelho de formato inválido.
+
+4. **Envio via Resumable Upload e Resposta Amigável**:
+   - Clique no botão verde **"Atualizar Foto via API"**.
+   - O botão entra em estado de carregamento com spinner (_"Enviando para a Meta..."_).
+   - O backend realiza a autenticação com o token salvo em `whatsapp_status`, cria a sessão de Resumable Upload na Meta, envia os bytes da imagem e aplica no perfil comercial (`whatsapp_business_profile`).
+   - **Resultado Esperado**:
+     - Em caso de sucesso: Toast verde com mensagem _"Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes."_.
+     - Em caso de token não configurado ou rejeição da Meta: Toast vermelho com a mensagem descritiva do erro retornado pela Graph API.
+   - **Segurança de Segredos**:
+     - O token permanente da Meta permanece 100% restrito ao backend PocketBase e nunca é retornado nem inspecionável na resposta HTTP do navegador.

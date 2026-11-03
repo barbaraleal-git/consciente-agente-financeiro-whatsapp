@@ -42,6 +42,9 @@ import {
   Send,
   HelpCircle,
   Mic,
+  Camera,
+  Upload,
+  Info,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -74,6 +77,11 @@ export const Settings: React.FC = () => {
   const [sttKeyInput, setSttKeyInput] = useState('')
   const [showSttKey, setShowSttKey] = useState(false)
   const [savingSttKey, setSavingSttKey] = useState(false)
+
+  // WhatsApp Profile Picture state (ITEM 20)
+  const [selectedProfileImage, setSelectedProfileImage] = useState<File | null>(null)
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null)
+  const [uploadingProfilePicture, setUploadingProfilePicture] = useState(false)
 
   // Test simulation & Direct message test
   const [testModalOpen, setTestModalOpen] = useState(false)
@@ -242,6 +250,70 @@ export const Settings: React.FC = () => {
       })
     } finally {
       setSavingMetaToken(false)
+    }
+  }
+
+  const handleProfileImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Valida tipo
+    if (!file.type.includes('jpeg') && !file.type.includes('jpg') && !file.type.includes('png')) {
+      toast({
+        title: 'Formato inválido',
+        description: 'Selecione uma imagem JPEG ou PNG para o perfil do WhatsApp.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Valida tamanho (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Imagem muito pesada',
+        description: 'O tamanho máximo permitido para a foto de perfil é 5MB.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSelectedProfileImage(file)
+    const previewUrl = URL.createObjectURL(file)
+    setProfileImagePreview(previewUrl)
+  }
+
+  const handleUploadProfilePicture = async () => {
+    if (!selectedProfileImage) {
+      toast({
+        title: 'Nenhuma foto selecionada',
+        description: 'Escolha uma imagem antes de clicar em atualizar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setUploadingProfilePicture(true)
+    try {
+      const res = await whatsappService.updateProfilePicture(selectedProfileImage)
+      toast({
+        title: 'Foto Atualizada com Sucesso!',
+        description:
+          res.message ||
+          'Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes.',
+      })
+      setSelectedProfileImage(null)
+      setProfileImagePreview(null)
+      await loadAllWhatsAppInfo()
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Falha ao atualizar foto de perfil do WhatsApp'
+      toast({
+        title: 'Erro ao atualizar foto',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setUploadingProfilePicture(false)
     }
   }
 
@@ -911,6 +983,146 @@ export const Settings: React.FC = () => {
                     </span>
                   </div>
                 </form>
+              </div>
+            </div>
+            {/* Foto do Perfil do WhatsApp via API Oficial da Meta (ITEM 20) */}
+            <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs space-y-3.5 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                      Foto de Perfil do WhatsApp via API
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300 font-medium"
+                      >
+                        Meta Resumable Upload
+                      </Badge>
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Atualize a imagem exibida para os clientes no WhatsApp diretamente pela API da
+                      Meta
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nota Explicativa Crítica: Nome de exibição vs Foto de perfil */}
+              <div className="p-3 rounded-lg bg-amber-50/80 border border-amber-200 text-[11px] text-amber-900 flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-950">
+                    Aviso sobre o Nome de Exibição do WhatsApp:
+                  </p>
+                  <p className="text-amber-800 leading-relaxed">
+                    O <strong>nome de exibição</strong> que aparece para os clientes{' '}
+                    <strong>não pode ser alterado via API</strong> por restrição oficial da Meta —
+                    ele exige análise e aprovação humana no{' '}
+                    <a
+                      href="https://business.facebook.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-semibold hover:text-amber-950 inline-flex items-center"
+                    >
+                      WhatsApp Manager
+                    </a>{' '}
+                    (Gerenciador de Negócios → Contas do WhatsApp → Números de telefone → Perfil).
+                    Já a <strong>foto de perfil</strong> pode ser trocada e atualizada diretamente
+                    aqui pelo botão abaixo!
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] items-center gap-4 pt-1">
+                {/* Preview da foto */}
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="w-20 h-20 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 shadow-inner relative group">
+                    {profileImagePreview ? (
+                      <img
+                        src={profileImagePreview}
+                        alt="Pré-visualização da foto"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2 text-slate-400">
+                        <Camera className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                        <span className="text-[9px] block">Sem foto</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400">JPEG ou PNG (máx. 5MB)</span>
+                </div>
+
+                {/* Ações de seleção e envio */}
+                <div className="space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg"
+                        onChange={handleProfileImageChange}
+                        disabled={uploadingProfilePicture}
+                        className="hidden"
+                      />
+                      <span className="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg shadow-sm hover:bg-slate-50 transition-colors">
+                        <Upload className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                        {selectedProfileImage ? 'Trocar Imagem...' : 'Escolher Imagem...'}
+                      </span>
+                    </label>
+
+                    {selectedProfileImage && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={uploadingProfilePicture}
+                        onClick={handleUploadProfilePicture}
+                        className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium"
+                      >
+                        {uploadingProfilePicture ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                            Enviando para a Meta...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
+                            Atualizar Foto via API
+                          </>
+                        )}
+                      </Button>
+                    )}
+
+                    {selectedProfileImage && !uploadingProfilePicture && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedProfileImage(null)
+                          setProfileImagePreview(null)
+                        }}
+                        className="h-8 text-xs text-slate-500 hover:text-slate-700"
+                      >
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+
+                  {selectedProfileImage && (
+                    <p className="text-[11px] text-slate-600 font-mono truncate max-w-md">
+                      Arquivo: <strong>{selectedProfileImage.name}</strong> (
+                      {(selectedProfileImage.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
+
+                  <p className="text-[11px] text-slate-400">
+                    O envio utiliza a sessão Resumable Upload da Meta e aplica a foto no número de
+                    WhatsApp oficial com autenticação protegida.
+                  </p>
+                </div>
               </div>
             </div>
             {/* Webhook URLs prontas para o painel da Meta */}

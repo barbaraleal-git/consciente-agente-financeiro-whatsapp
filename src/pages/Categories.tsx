@@ -149,12 +149,14 @@ export const Categories: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteCat) return
 
-    // Check if category has transactions
-    const txCount = transactions.filter((t) => t.category === deleteCat.id).length
+    // Check if category has active transactions
+    const txCount = transactions.filter(
+      (t) => (t.status || 'active') === 'active' && t.category === deleteCat.id,
+    ).length
     if (txCount > 0) {
       toast({
         title: 'Exclusão impedida',
-        description: `Existem ${txCount} transações associadas a esta categoria. Reclassifique-as primeiro.`,
+        description: `Existem ${txCount} transações ativas associadas a esta categoria. Reclassifique-as primeiro.`,
         variant: 'destructive',
       })
       setDeleteCat(null)

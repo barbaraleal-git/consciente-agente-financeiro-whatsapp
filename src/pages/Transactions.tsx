@@ -274,6 +274,26 @@ export const Transactions: React.FC = () => {
             </Select>
           </div>
 
+          {/* Status dropdown */}
+          <div className="w-full sm:w-36">
+            <Select
+              value={statusFilter}
+              onValueChange={(val: 'active' | 'all' | 'cancelled') => {
+                setStatusFilter(val)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="h-10 bg-slate-50 border-slate-200">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Somente Ativos</SelectItem>
+                <SelectItem value="cancelled">Cancelados</SelectItem>
+                <SelectItem value="all">Todos os Status</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Sort button */}
           <Button
             variant="outline"
@@ -321,14 +341,54 @@ export const Transactions: React.FC = () => {
                       const cat = categories.find((c) => c.id === tx.category)
                       const isExp = tx.type === 'despesa'
                       const isInc = tx.type === 'receita'
+                      const isCancelled = tx.status === 'cancelled'
+                      const isDeleted = tx.status === 'deleted'
 
                       return (
-                        <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr
+                          key={tx.id}
+                          className={`hover:bg-slate-50/70 transition-colors ${
+                            isCancelled || isDeleted ? 'opacity-60 bg-slate-50/40' : ''
+                          }`}
+                        >
                           <td className="py-3.5 px-4 font-medium text-slate-900">
                             <div>
-                              <span>{tx.description}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={
+                                    isCancelled || isDeleted ? 'line-through text-slate-500' : ''
+                                  }
+                                >
+                                  {tx.description}
+                                </span>
+                                {isCancelled && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                                  >
+                                    Cancelado
+                                  </Badge>
+                                )}
+                                {isDeleted && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] bg-slate-100 text-slate-700 border-slate-300 font-semibold"
+                                  >
+                                    Excluído
+                                  </Badge>
+                                )}
+                                {tx.is_retroactive && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-medium"
+                                    title={`Lançamento retroativo com data original: ${formatDate(tx.date)}`}
+                                  >
+                                    Retroativo
+                                  </Badge>
+                                )}
+                              </div>
                               {tx.note && (
-                                <p className="text-[11px] text-slate-400 font-normal truncate max-w-xs">
+                                <p className="text-[11px] text-slate-400 font-normal truncate max-w-xs mt-0.5">
                                   {tx.note}
                                 </p>
                               )}
@@ -347,7 +407,16 @@ export const Transactions: React.FC = () => {
                               </span>
                             </div>
                           </td>
-                          <td className="py-3.5 px-4 text-slate-500">{formatDate(tx.date)}</td>
+                          <td className="py-3.5 px-4 text-slate-500">
+                            <div>
+                              <span>{formatDate(tx.date)}</span>
+                              {tx.is_retroactive && (
+                                <span className="block text-[10px] text-amber-600 font-medium">
+                                  Data original
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="py-3.5 px-4">
                             <Badge
                               variant="outline"
@@ -389,38 +458,44 @@ export const Transactions: React.FC = () => {
                           </td>
                           <td
                             className={`py-3.5 px-4 text-right font-bold tabular-nums ${
-                              isInc
-                                ? 'text-emerald-600'
-                                : isExp
-                                  ? 'text-red-600'
-                                  : 'text-indigo-600'
+                              isCancelled || isDeleted
+                                ? 'line-through text-slate-400'
+                                : isInc
+                                  ? 'text-emerald-600'
+                                  : isExp
+                                    ? 'text-red-600'
+                                    : 'text-indigo-600'
                             }`}
                           >
                             {isInc ? '+' : isExp ? '-' : ''} {formatCurrency(tx.amount)}
                           </td>
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  setSelectedTx(tx)
-                                  setModalOpen(true)
-                                }}
-                                className="h-8 w-8 text-slate-500 hover:text-indigo-600"
-                                title="Editar"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setDeleteId(tx.id)}
-                                className="h-8 w-8 text-slate-500 hover:text-red-600"
-                                title="Excluir"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                              {!isCancelled && !isDeleted && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedTx(tx)
+                                    setModalOpen(true)
+                                  }}
+                                  className="h-8 w-8 text-slate-500 hover:text-indigo-600"
+                                  title="Editar"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                              {!isCancelled && !isDeleted && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteId(tx.id)}
+                                  className="h-8 w-8 text-slate-500 hover:text-red-600"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -436,12 +511,52 @@ export const Transactions: React.FC = () => {
                   const cat = categories.find((c) => c.id === tx.category)
                   const isExp = tx.type === 'despesa'
                   const isInc = tx.type === 'receita'
+                  const isCancelled = tx.status === 'cancelled'
+                  const isDeleted = tx.status === 'deleted'
 
                   return (
-                    <div key={tx.id} className="p-4 space-y-2">
+                    <div
+                      key={tx.id}
+                      className={`p-4 space-y-2 ${
+                        isCancelled || isDeleted ? 'opacity-60 bg-slate-50/40' : ''
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-slate-900">{tx.description}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p
+                              className={`text-sm font-semibold text-slate-900 ${
+                                isCancelled || isDeleted ? 'line-through text-slate-500' : ''
+                              }`}
+                            >
+                              {tx.description}
+                            </p>
+                            {isCancelled && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                              >
+                                Cancelado
+                              </Badge>
+                            )}
+                            {isDeleted && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-slate-100 text-slate-700 border-slate-300 font-semibold"
+                              >
+                                Excluído
+                              </Badge>
+                            )}
+                            {tx.is_retroactive && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-medium"
+                                title={`Lançamento retroativo com data original: ${formatDate(tx.date)}`}
+                              >
+                                Retroativo
+                              </Badge>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
                             <span
                               className="w-4 h-4 rounded-md flex items-center justify-center text-white text-[10px] shrink-0"
@@ -452,11 +567,22 @@ export const Transactions: React.FC = () => {
                             <span>{cat?.name || 'Geral'}</span>
                             <span>•</span>
                             <span>{formatDate(tx.date)}</span>
+                            {tx.is_retroactive && (
+                              <span className="text-[10px] text-amber-600 font-medium">
+                                (original)
+                              </span>
+                            )}
                           </div>
                         </div>
                         <p
                           className={`text-sm font-bold tabular-nums ${
-                            isInc ? 'text-emerald-600' : isExp ? 'text-red-600' : 'text-indigo-600'
+                            isCancelled || isDeleted
+                              ? 'line-through text-slate-400'
+                              : isInc
+                                ? 'text-emerald-600'
+                                : isExp
+                                  ? 'text-red-600'
+                                  : 'text-indigo-600'
                           }`}
                         >
                           {isInc ? '+' : isExp ? '-' : ''} {formatCurrency(tx.amount)}
@@ -488,25 +614,29 @@ export const Transactions: React.FC = () => {
                           )}
                         </div>
                         <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedTx(tx)
-                              setModalOpen(true)
-                            }}
-                            className="h-7 text-xs text-slate-600"
-                          >
-                            <Edit2 className="w-3 h-3 mr-1" /> Editar
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteId(tx.id)}
-                            className="h-7 text-xs text-red-600"
-                          >
-                            <Trash2 className="w-3 h-3 mr-1" /> Excluir
-                          </Button>
+                          {!isCancelled && !isDeleted && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedTx(tx)
+                                  setModalOpen(true)
+                                }}
+                                className="h-7 text-xs text-slate-600"
+                              >
+                                <Edit2 className="w-3 h-3 mr-1" /> Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeleteId(tx.id)}
+                                className="h-7 text-xs text-red-600"
+                              >
+                                <Trash2 className="w-3 h-3 mr-1" /> Excluir
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>

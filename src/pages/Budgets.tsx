@@ -117,13 +117,17 @@ export const Budgets: React.FC = () => {
   useRealtime<Budget>('budgets', () => loadData())
   useRealtime<Transaction>('transactions', () => loadData())
 
-  // Calculate budget statistics for the selected month
+  // Calculate budget statistics for the selected month (somente transações ativas)
   const budgetStats = useMemo(() => {
     return budgets.map((b) => {
       const cat = categories.find((c) => c.id === b.category)
       const spent = transactions
         .filter(
-          (t) => t.category === b.category && t.date.startsWith(b.month) && t.type === 'despesa',
+          (t) =>
+            (t.status || 'active') === 'active' &&
+            t.category === b.category &&
+            t.date.startsWith(b.month) &&
+            t.type === 'despesa',
         )
         .reduce((sum, t) => sum + t.amount, 0)
 

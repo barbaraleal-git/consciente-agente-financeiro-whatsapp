@@ -136,6 +136,10 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Item 20: Foto de perfil do WhatsApp via API (admin)** | Capacidade de atualizar o avatar oficial do número de atendimento diretamente pela tela de Configurações (\`/settings\`) via Resumable Upload da Meta API e \`whatsapp_business_profile\`, com nota explicativa sobre o nome de exibição. | **Concluído** |
 | **Item 31: Bug do Backoffice — Detalhes por cliente zerados/em branco** | **BUG CORRIGIDO**: O endpoint \`/backend/v1/admin/clients/:id\` calculava caixinhas a partir de campos inexistentes (\`limit_cents\` em vez de \`amount\`) e não calculava o gasto real do mês. Além disso, as transações buscavam \`amount_cents\` e o histórico de mensagens buscava apenas em tabela não utilizada. Corrigido com agregação real de transações do mês vs teto, mapeamento de \`amount\` e leitura do histórico ativo de mensagens do agente via \`$ai.agent('financeiro-whatsapp')\`. | **Concluído** |
 | **Item 36: Bug do Upload de Foto de Perfil — Rejeição de JPEG pequeno com mensagem enganosa** | **BUG CORRIGIDO**: Causa raiz identificada e resolvida: o runtime JSVM (Goja) do PocketBase não populava \`findUploadedFile\` em chamadas multipart do browser, deixando \`fileBytes\` vazio e disparando a mensagem 400 antes de chegar à Meta. O frontend (\`finance.ts\`) agora converte a imagem para Base64/JSON antes do envio e o backend decodifica de forma segura via \`$security.base64Decode\`, com descoberta dinâmica de App ID e upload direto na Meta Graph API. A mensagem genérica foi removida e qualquer retorno da Meta é exibido com seu motivo real. | **Concluído** |
+| **Item 22: Guardrail de temas do agente** | Regras estritas de moderação no system prompt do agente (\`financeiro-whatsapp\`) para declinar educadamente assuntos fora de finanças pessoais (ex.: "Quem descobriu o Brasil?") e conduzir o cliente de volta com foco e empatia. | **Concluído** |
+| **Item 23: Cancelar/substituir lançamento** | Fluxo conversacional seguro de cancelamento via WhatsApp: cliente pede para cancelar ("cancela o último", "apaga esse lançamento"), o agente solicita confirmação simples ("Tem certeza que deseja cancelar o lançamento de R$ X? Responda SIM para confirmar"), e após "SIM" atualiza o status para \`cancelled\`. Transação cancelada é excluída dos totais e do saldo. | **Concluído** |
+| **Item 27: Deleção lógica com status** | Implementado campo \`status\` (\`active\`, \`cancelled\`, \`deleted\`) na coleção de transações com backfill retrocompatível idempotente. Deleções no painel e cancelamentos no WhatsApp são puramente lógicos para auditoria e histórico de segurança. Na listagem de Transações e no Backoffice os registros mantêm badges claros (\`Cancelado\`, \`Excluído\`), e totais consideram estritamente \`active\`. | **Concluído** |
+| **Item 28: Gasto retroativo (lado do agente)** | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 35", "terça gastei 50"), registrar com o campo \`date\` correspondente e \`is_retroactive = true\`. A confirmação do agente menciona explicitamente a data original e a interface exibe o badge "Retroativo". | **Concluído** |
 
 ---
 
@@ -158,9 +162,6 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | Item | Funcionalidade | Descrição / Sinergias |
 | :--- | :--- | :--- |
 | **Item 1** | E-mail de confirmação obrigatório | Exigir verificação estrita de e-mail antes da liberação total de acessos críticos na plataforma web. |
-| **Item 27** | Deleção lógica com status | Implementar status de exclusão (\`active\`, \`cancelled\`, \`deleted\`) em lançamentos para auditoria e histórico de segurança. |
-| **Item 28** | Gasto retroativo | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 50", "terça gastei 30"). Campo \`date\` já existe na base. |
-| **Item 22** | Guardrail de temas do agente | Regras estritas de moderação no system prompt para o agente declinar educadamente assuntos fora de finanças pessoais. |
 | **Item 30** | Alerta ao admin a cada abertura de pedido de suporte | Notificação automática (email/alerta) para a administradora ao abrir ticket. **Sinergia**: Complementa o Item 25 (suporte) e compartilha a infraestrutura de alerta imediato do Item 26. |
 
 ### 3.2. Média Complexidade
@@ -168,7 +169,6 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | :--- | :--- | :--- |
 | **Item 3** | Mensagem da manhã via WhatsApp | Envio pró-ativo matinal com status financeiro e lembrete de gastos. **Dependência**: Requer modelo de mensagem (utility template) aprovado pela Meta no WhatsApp Manager. |
 | **Item 10+11** | Lançamento sem caixinha | Tratamento conversacional de despesas que não se enquadram nas caixinhas existentes: agente sugere alocar em "Outros" ou criar nova caixinha. |
-| **Item 23** | Cancelar/substituir lançamento | Permitir que o cliente cancele ou retifique um lançamento recente via WhatsApp ou painel. **Dependência**: Requer Item 27. |
 | **Item 25** | Módulo de suporte | Central de tickets e atendimento integrado para clientes solicitarem ajuda à equipe humana do Consciente. Complementado pelo Item 30. |
 | **Item 26** | Feedbacks via WhatsApp + alerta imediato | Canal conversacional para o cliente enviar sugestões e elogios, gerando alerta imediato para a administradora. |
 | **Item 32** | Rotina de fechamento de mês via WhatsApp | Visão geral do fechamento mensal das caixinhas, parabenizando o empenho ou incentivando caso tenha estourado, com oferta de ajuda para planejar o mês seguinte. **Sinergia**: Mesma infraestrutura de job agendado e aprovação de template Meta do Item 3, aproveitando a formatação visual do Item 19. |
@@ -189,7 +189,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
-Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a P intactos e adiciona os novos cenários Q e R para as correções desta rodada.
+Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a R intactos e adiciona os novos cenários S, T, U e V para a confiabilidade de lançamentos (deleção lógica, guardrails, gasto retroativo e cancelamento).
 
 ---
 
@@ -401,4 +401,67 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - **Verificação**: O alerta vermelho exibe o erro REAL retornado pela Meta (ex.: "Meta recusou a criação da sessão de upload: (...)", "Token inválido ou expirado" ou mensagem específica da Graph API).
      - **NUNCA** é exibida a mensagem enganosa "preciso utilizar uma imagem jpeg ou png de no máximo 5MB" quando o arquivo já cumpria esses requisitos.
    - O token da Meta permanece protegido e nunca é exposto na mensagem nem no console do cliente.
+
+---
+
+## S) Guardrail de Temas do Agente (Item 22)
+
+1. **Tentativa de Conversa Fora do Escopo Financeiro**:
+   - Abra o WhatsApp com o agente Consciente ou envie mensagem pelo simulador admin.
+   - Envie uma pergunta completamente fora do escopo, por exemplo:
+     - *"Quem descobriu o Brasil?"*
+     - *"Qual a previsão do tempo para amanhã?"*
+     - *"Me conte uma piada sobre futebol."*
+   - **Comportamento Esperado**:
+     - O agente responde com gentileza, brevidade e empatia, explicando que seu foco exclusivo é cuidar das finanças pessoais e das caixinhas do cliente.
+     - **NUNCA** responde com fatos históricos gerais, previsões climáticas ou piadas abertas.
+     - Encerra convidando o cliente a registrar algum gasto, tirar dúvidas sobre o saldo das caixinhas ou ver o resumo do mês.
+
+---
+
+## T) Gasto Retroativo via WhatsApp e Interface (Item 28)
+
+1. **Envio de Lançamento com Data Passada**:
+   - Pelo WhatsApp do cliente, envie mensagens com menção explícita de tempo passado:
+     - *"Ontem gastei 35 no almoço"*
+     - *"Terça feira gastei 120 no mercado"*
+     - *"Dia 10 gastei 50 na farmácia"*
+   - **Comportamento Esperado**:
+     - O agente reconhece a data correta no passado e registra a transação com o campo \`date\` referente ao dia mencionado (e não o dia de hoje).
+     - O campo \`is_retroactive\` é gravado como \`true\` na base.
+     - A resposta empática do agente cita expressamente a data original considerada (ex: *"Lançamento de R$ 35,00 em Alimentação registrado com a data de ontem (...)"*).
+     - No extrato de Transações (\`/transactions\`) e no Backoffice (\`/admin\`), o lançamento exibe o badge discreto **"Retroativo"** e a data original informada.
+
+---
+
+## U) Cancelar Último Lançamento via WhatsApp (Item 23)
+
+1. **Solicitação de Cancelamento pelo Cliente**:
+   - No WhatsApp, envie um gasto: *"Gastei 45 no uber"*.
+   - Aguarde a confirmação de lançamento do agente.
+   - Logo em seguida, envie: *"Cancela o último lançamento"* ou *"Apaga esse gasto de 45"*.
+   - **Comportamento Esperado — Confirmação Segura**:
+     - O agente NÃO cancela no susto; ele identifica o último lançamento do cliente e responde pedindo confirmação explícita:
+       \`Tem certeza que deseja cancelar o lançamento de R$ 45,00 (Transporte) feito hoje? Responda SIM para confirmar.\`
+   - **Confirmação Efetiva**:
+     - O cliente responde: *"SIM"*.
+     - O agente confirma com empatia: \`Lançamento de R$ 45,00 cancelado com sucesso. O valor foi estornado do total da caixinha.\`
+     - O campo \`status\` da transação é atualizado para \`'cancelled'\` (deleção lógica auditável).
+     - Se o cliente responder *"NÃO"* ou outra coisa, o cancelamento é descartado com aviso de segurança.
+
+---
+
+## V) Totais e Caixinhas Apenas com Transações Ativas (Item 27)
+
+1. **Exclusão Lógica e Recálculo Automático**:
+   - Acesse o Dashboard (\`/\`), Caixinhas (\`/budgets\`) e Relatórios (\`/reports\`). Observe os totais de despesas e barras de consumo das caixinhas.
+   - Acesse Transações (\`/transactions\`):
+     - Localize um lançamento ativo e clique em "Excluir" (ou cancele um gasto pelo WhatsApp conforme o cenário U).
+     - Verifique que na lista com o filtro "Somente Ativos" (padrão) a transação não é mais exibida.
+     - Ao alterar o filtro para "Cancelados" ou "Todos os Status", a transação aparece identificada com o badge **"Cancelado"** ou **"Excluído"**, texto tachado e sem botões de re-edição.
+   - **Verificação nos Totais**:
+     - No **Dashboard**: os cartões de "Total de Despesas", "Saldo do Mês" e as barras de progresso das caixinhas deduzem imediatamente o valor cancelado/excluído.
+     - Em **Caixinhas**: o teto consumido e a porcentagem gasta da categoria ignoram transações canceladas/excluídas.
+     - Em **Relatórios**: o resumo executivo, total de despesas e gráficos excluem registros inativos.
+     - No **Backoffice Admin**: o histórico de transações do cliente mantém o registro visível com o badge de status para fins de auditoria, mas sem inflar totais ativos.
 `

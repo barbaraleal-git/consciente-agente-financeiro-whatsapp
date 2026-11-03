@@ -1012,6 +1012,7 @@ export const AdminBackoffice: React.FC = () => {
                           <TableRow className="bg-slate-50">
                             <TableHead className="text-xs font-semibold">Data</TableHead>
                             <TableHead className="text-xs font-semibold">Descrição</TableHead>
+                            <TableHead className="text-xs font-semibold">Status</TableHead>
                             <TableHead className="text-xs font-semibold">Caixinha</TableHead>
                             <TableHead className="text-xs font-semibold text-right">
                               Valor
@@ -1019,23 +1020,87 @@ export const AdminBackoffice: React.FC = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {clientDetail.recent_transactions.map((t) => (
-                            <TableRow key={t.id} className="text-xs">
-                              <TableCell className="text-slate-500">
-                                {formatDate(t.date || t.created)}
-                              </TableCell>
-                              <TableCell className="font-medium text-slate-800">
-                                {t.description}
-                              </TableCell>
-                              <TableCell>{t.category_name}</TableCell>
-                              <TableCell
-                                className={`text-right font-semibold ${t.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'}`}
+                          {clientDetail.recent_transactions.map((t) => {
+                            const isCancelled = t.status === 'cancelled'
+                            const isDeleted = t.status === 'deleted'
+                            return (
+                              <TableRow
+                                key={t.id}
+                                className={`text-xs ${
+                                  isCancelled || isDeleted ? 'opacity-60 bg-slate-50/50' : ''
+                                }`}
                               >
-                                {t.type === 'expense' ? '-' : '+'}
-                                {formatCurrency(t.amount_cents)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                <TableCell className="text-slate-500 whitespace-nowrap">
+                                  <div>
+                                    <span>{formatDate(t.date || t.created)}</span>
+                                    {t.is_retroactive && (
+                                      <span className="block text-[10px] text-amber-600 font-medium">
+                                        Data original
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-medium text-slate-800">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span
+                                      className={
+                                        isCancelled || isDeleted
+                                          ? 'line-through text-slate-400'
+                                          : ''
+                                      }
+                                    >
+                                      {t.description}
+                                    </span>
+                                    {t.is_retroactive && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-medium"
+                                      >
+                                        Retroativo
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  {isCancelled ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                                    >
+                                      Cancelado
+                                    </Badge>
+                                  ) : isDeleted ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] bg-slate-100 text-slate-700 border-slate-300 font-semibold"
+                                    >
+                                      Excluído
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold"
+                                    >
+                                      Ativo
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>{t.category_name}</TableCell>
+                                <TableCell
+                                  className={`text-right font-semibold tabular-nums ${
+                                    isCancelled || isDeleted
+                                      ? 'line-through text-slate-400'
+                                      : t.type === 'expense'
+                                        ? 'text-rose-600'
+                                        : 'text-emerald-600'
+                                  }`}
+                                >
+                                  {t.type === 'expense' ? '-' : '+'}
+                                  {formatCurrency(t.amount_cents)}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
                         </TableBody>
                       </Table>
                     </div>

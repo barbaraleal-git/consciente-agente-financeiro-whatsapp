@@ -78,10 +78,14 @@ export const Dashboard: React.FC = () => {
   useRealtime<Transaction>('transactions', () => loadData())
   useRealtime<Budget>('budgets', () => loadData())
 
-  // Calculate monthly metrics
+  // Calculate monthly metrics (apenas transações com status 'active'; retrocompatível se status for vazio)
+  const activeTransactions = useMemo(() => {
+    return transactions.filter((t) => (t.status || 'active') === 'active')
+  }, [transactions])
+
   const monthlyMetrics = useMemo(() => {
-    // Current month transactions
-    const thisMonthTxs = transactions.filter((t) => t.date.startsWith(currentMonth))
+    // Current month transactions (somente ativas)
+    const thisMonthTxs = activeTransactions.filter((t) => t.date.startsWith(currentMonth))
 
     let income = 0
     let expense = 0
@@ -99,7 +103,7 @@ export const Dashboard: React.FC = () => {
     const d = new Date()
     d.setMonth(d.getMonth() - 1)
     const prevMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const prevMonthTxs = transactions.filter((t) => t.date.startsWith(prevMonthStr))
+    const prevMonthTxs = activeTransactions.filter((t) => t.date.startsWith(prevMonthStr))
 
     let prevIncome = 0
     let prevExpense = 0
@@ -128,7 +132,7 @@ export const Dashboard: React.FC = () => {
       budgetRemaining,
       thisMonthTxs,
     }
-  }, [transactions, budgets, currentMonth])
+  }, [activeTransactions, budgets, currentMonth])
 
   // Category distribution for current month
   const categoryExpenses = useMemo(() => {
@@ -156,7 +160,7 @@ export const Dashboard: React.FC = () => {
     }))
   }, [monthlyMetrics, categories])
 
-  // Last 6 months evolution data
+  // Last 6 months evolution data (somente transações ativas)
   const evolutionData = useMemo(() => {
     const months: Array<{ label: string; monthStr: string; income: number; expense: number }> = []
     const now = new Date()
@@ -169,7 +173,7 @@ export const Dashboard: React.FC = () => {
       let inc = 0
       let exp = 0
 
-      transactions
+      activeTransactions
         .filter((t) => t.date.startsWith(monthStr))
         .forEach((t) => {
           if (t.type === 'receita') inc += t.amount
@@ -184,14 +188,14 @@ export const Dashboard: React.FC = () => {
       })
     }
     return months
-  }, [transactions])
+  }, [activeTransactions])
 
-  // Recent transactions (latest 6)
+  // Recent transactions (latest 6 ativas para o extrato rápido)
   const recentTransactions = useMemo(() => {
-    return [...transactions]
+    return [...activeTransactions]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 6)
-  }, [transactions])
+  }, [activeTransactions])
 
   const maxEvolutionValue = useMemo(() => {
     const max = Math.max(...evolutionData.map((d) => Math.max(d.income, d.expense)), 10000)

@@ -53,11 +53,13 @@ export const Reports: React.FC = () => {
     loadData()
   }, [])
 
-  // Filter transactions according to selected period
+  // Filter transactions according to selected period (somente transações ativas nos totais/relatórios)
   const filteredTxs = useMemo(() => {
     const now = new Date()
 
     return transactions.filter((t) => {
+      if ((t.status || 'active') !== 'active') return false
+
       const txDate = new Date(t.date)
       const diffDays = (now.getTime() - txDate.getTime()) / (1000 * 3600 * 24)
 

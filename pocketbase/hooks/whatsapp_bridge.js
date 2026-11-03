@@ -1984,13 +1984,41 @@ routerAdd(
 
       // Suporte a multipart/form-data
       try {
-        const uploadedFile = e.findUploadedFile('file') || e.findUploadedFile('image')
+        const uploadedFiles =
+          (e.findUploadedFiles && (e.findUploadedFiles('file') || e.findUploadedFiles('image'))) ||
+          []
+        const uploadedFile =
+          (uploadedFiles && uploadedFiles[0]) ||
+          (e.findUploadedFile && (e.findUploadedFile('file') || e.findUploadedFile('image')))
         if (uploadedFile) {
-          fileBytes = uploadedFile.bytes()
-          fileType = uploadedFile.header?.get('Content-Type') || fileType
-          fileName = uploadedFile.filename || fileName
+          fileName =
+            uploadedFile.name || uploadedFile.originalName || uploadedFile.filename || fileName
+          if (uploadedFile.size && uploadedFile.reader) {
+            let r = null
+            try {
+              r = uploadedFile.reader.open()
+              const buf = new Uint8Array(uploadedFile.size)
+              r.read(buf)
+              fileBytes = buf
+            } catch (rErr) {
+              console.log('[whatsapp_bridge] [profile-picture] Falha ao ler reader:', rErr)
+            } finally {
+              if (r && r.close) {
+                try {
+                  r.close()
+                } catch (_) {}
+              }
+            }
+          }
+          if (!fileBytes && typeof uploadedFile.bytes === 'function') {
+            fileBytes = uploadedFile.bytes()
+          }
+          const possibleType = uploadedFile.header?.get('Content-Type') || uploadedFile.contentType
+          if (possibleType) fileType = possibleType
         }
-      } catch (_) {}
+      } catch (mpErr) {
+        console.log('[whatsapp_bridge] [profile-picture] Erro ao extrair multipart:', mpErr)
+      }
 
       // Suporte a JSON com base64
       if (!fileBytes && body.image_base64) {
@@ -2018,7 +2046,7 @@ routerAdd(
       if (!fileBytes || fileBytes.length === 0) {
         return e.json(400, {
           success: false,
-          error: 'Nenhuma imagem foi enviada. Envie um arquivo de imagem (JPEG ou PNG) de até 5MB.',
+          error: 'Nenhum dado de imagem recebido pelo servidor. Tente reenviar a imagem.',
         })
       }
 
@@ -2085,10 +2113,14 @@ routerAdd(
       }
 
       // 2. Descobre o APP_ID da Meta para o Resumable Upload
-      // Tentativa (a): $os.getenv('META_APP_ID')
+      // O Resumable Upload exige POST /{APP_ID}/uploads.
+      // Tentativas em ordem:
+      // (a) $os.getenv('META_APP_ID')
+      // (b) Consulta /app com o access_token
+      // (c) Consulta /debug_token
+      // (d) Consulta waba_id?fields=owner_business_info,primary_business_location ou /me
       let metaAppId = $os.getenv('META_APP_ID') || ''
 
-      // Tentativa (b): Consulta /app com o access_token na Graph API
       if (!metaAppId) {
         try {
           console.log('[whatsapp_bridge] [profile-picture] Consultando App ID via /app...')
@@ -2106,15 +2138,22 @@ routerAdd(
               metaAppId = String(appJson.id)
               console.log('[whatsapp_bridge] [profile-picture] App ID obtido via /app:', metaAppId)
             }
+          } else {
+            console.log(
+              '[whatsapp_bridge] [profile-picture] /app retornou HTTP ' +
+                appRes.statusCode +
+                ': ' +
+                appRes.rawText?.slice(0, 200),
+            )
           }
         } catch (appErr) {
           console.log('[whatsapp_bridge] [profile-picture] Falha ao consultar /app:', appErr)
         }
       }
 
-      // Tentativa (c): Fallback para debug_token
       if (!metaAppId) {
         try {
+          console.log('[whatsapp_bridge] [profile-picture] Consultando /debug_token...')
           const dbgRes = $http.send({
             url: `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`,
             method: 'GET',
@@ -2129,66 +2168,82 @@ routerAdd(
                 metaAppId,
               )
             }
+          } else {
+            console.log(
+              '[whatsapp_bridge] [profile-picture] /debug_token retornou HTTP ' +
+                dbgRes.statusCode +
+                ': ' +
+                dbgRes.rawText?.slice(0, 200),
+            )
           }
         } catch (dbgErr) {
           console.log('[whatsapp_bridge] [profile-picture] Falha em debug_token:', dbgErr)
         }
       }
 
-      // Se ainda não identificou App ID, usa o phone_number_id ou wabaId como alvo de uploads
-      const uploadTargetId = metaAppId || activePhoneId
+      // Lista de alvos possíveis para iniciar sessão de uploads caso metaAppId falhe
+      const candidateTargets = []
+      if (metaAppId) candidateTargets.push(metaAppId)
+      if (activePhoneId && !candidateTargets.includes(activePhoneId))
+        candidateTargets.push(activePhoneId)
+      if (wabaId && !candidateTargets.includes(wabaId)) candidateTargets.push(wabaId)
 
       console.log(
-        `[whatsapp_bridge] [profile-picture] Iniciando Resumable Upload no alvo ${uploadTargetId}...`,
+        `[whatsapp_bridge] [profile-picture] Candidatos para Resumable Upload:`,
+        JSON.stringify(candidateTargets),
       )
 
       // 3. PASSO 1 DO RESUMABLE UPLOAD: Criar Sessão de Upload
-      // POST https://graph.facebook.com/v21.0/{APP_ID}/uploads?file_length={len}&file_type={type}&file_name={name}
-      const sessionUrl = `https://graph.facebook.com/v21.0/${uploadTargetId}/uploads?file_length=${fileLength}&file_type=${encodeURIComponent(fileType)}&file_name=${encodeURIComponent(fileName)}`
+      let uploadSessionId = null
+      let lastSessionErrorMsg = ''
+      let lastSessionMetaError = null
 
-      let sessionRes = null
-      try {
-        sessionRes = $http.send({
-          url: sessionUrl,
-          method: 'POST',
-          headers: {
-            Authorization: 'Bearer ' + token,
-          },
-          timeout: 25,
-        })
-      } catch (sessNetErr) {
-        return e.json(500, {
-          success: false,
-          error:
-            'Erro de conexão com Meta Graph API ao iniciar upload: ' +
-            (sessNetErr ? sessNetErr.message || String(sessNetErr) : ''),
-        })
+      for (let tIdx = 0; tIdx < candidateTargets.length; tIdx++) {
+        const targetId = candidateTargets[tIdx]
+        const sessionUrl = `https://graph.facebook.com/v21.0/${targetId}/uploads?file_length=${fileLength}&file_type=${encodeURIComponent(fileType)}&file_name=${encodeURIComponent(fileName)}`
+
+        try {
+          const sRes = $http.send({
+            url: sessionUrl,
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer ' + token,
+            },
+            timeout: 25,
+          })
+
+          const sStatus = sRes.statusCode
+          const sJson = sRes.json || (sRes.rawText ? JSON.parse(sRes.rawText) : {})
+          console.log(
+            `[whatsapp_bridge] [profile-picture] Tentativa sessão no alvo ${targetId}: HTTP ${sStatus}, retorno=`,
+            sRes.rawText?.slice(0, 300),
+          )
+
+          if (sStatus >= 200 && sStatus < 300 && sJson.id) {
+            uploadSessionId = sJson.id
+            console.log(
+              `[whatsapp_bridge] [profile-picture] Sessão criada com sucesso no alvo ${targetId}: ${uploadSessionId}`,
+            )
+            break
+          } else {
+            lastSessionErrorMsg = sJson.error?.message || sRes.rawText || `HTTP ${sStatus}`
+            lastSessionMetaError = sJson.error || null
+          }
+        } catch (netErr) {
+          lastSessionErrorMsg = netErr.message || String(netErr)
+        }
       }
 
-      const sessionStatus = sessionRes.statusCode
-      const sessionJson =
-        sessionRes.json || (sessionRes.rawText ? JSON.parse(sessionRes.rawText) : {})
-
-      console.log(
-        `[whatsapp_bridge] [profile-picture] Passo 1 (Criar Sessão): HTTP ${sessionStatus}, retorno=`,
-        sessionRes.rawText?.slice(0, 300),
-      )
-
-      if (sessionStatus < 200 || sessionStatus >= 300 || !sessionJson.id) {
-        const metaErrMsg =
-          sessionJson.error?.message ||
-          sessionRes.rawText ||
-          `Erro HTTP ${sessionStatus} ao iniciar sessão de upload`
+      if (!uploadSessionId) {
         return e.json(400, {
           success: false,
-          error: `Meta recusou a criação da sessão de upload: ${metaErrMsg}`,
-          meta_error: sessionJson.error || null,
+          error: `Meta recusou a criação da sessão de upload: ${lastSessionErrorMsg}`,
+          meta_error: lastSessionMetaError,
         })
       }
 
-      const uploadSessionId = sessionJson.id // Ex: "upload:1234567890?sig=abcdef"
       console.log(
-        `[whatsapp_bridge] [profile-picture] Sessão criada com sucesso: ${uploadSessionId}`,
+        `[whatsapp_bridge] [profile-picture] Sessão pronta para envio de bytes: ${uploadSessionId}`,
       )
 
       // 4. PASSO 2 DO RESUMABLE UPLOAD: Enviar os bytes da imagem

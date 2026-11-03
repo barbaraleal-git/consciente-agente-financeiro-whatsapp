@@ -485,8 +485,19 @@ export const whatsappService = {
   async updateProfilePicture(
     file: File,
   ): Promise<{ success: boolean; message?: string; error?: string; phone_number_id?: string }> {
-    const formData = new FormData()
-    formData.append('file', file)
+    // Converte o arquivo para Base64 para garantir compatibilidade total de transporte
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = (e) => reject(e)
+      reader.readAsDataURL(file)
+    })
+
+    const payload = {
+      image_base64: base64Data,
+      file_name: file.name || 'profile_picture.jpg',
+      file_type: file.type || 'image/jpeg',
+    }
 
     const res = await fetch(
       `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/profile-picture`,
@@ -494,8 +505,9 @@ export const whatsappService = {
         method: 'POST',
         headers: {
           Authorization: pb.authStore.token,
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify(payload),
       },
     )
     const data = await res.json().catch(() => ({}))

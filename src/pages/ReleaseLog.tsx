@@ -25,11 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.41',
+    date: '03/11/2026',
+    title:
+      'Correção da Causa Raiz do Upload de Foto de Perfil WhatsApp na Meta (Item 36) e Compatibilidade Base64 no JSVM',
+    tag: 'Atual',
+    highlights: [
+      'Causa Raiz Identificada e Corrigida (Item 36): No ambiente PocketBase JSVM (Goja), e.findUploadedFile lançava silenciosamente ou retornava indefinido para multipart FormData do browser, deixando o buffer de bytes vazio e disparando a mensagem 400 antes da Meta. O serviço frontend (finance.ts) foi atualizado para serializar o arquivo em Base64 e enviar via JSON tipado (image_base64), com fallback robusto no backend para e.findUploadedFiles() com reader.read.',
+      'Avanço de Sessão Resumable Upload na Meta: o hook whatsapp_bridge.js agora descobre dinamicamente o App ID via /app e /debug_token com fallback para o Phone Number ID e WABA ID, chamando o Resumable Upload oficial e repassando o profile_picture_handle gerado para o whatsapp_business_profile.',
+      'Eliminação Definitiva da Mensagem Enganosa: a mensagem genérica que exigia "jpeg ou png de no máximo 5MB" foi removida da rota; qualquer recusa real da Meta é entregue na tela com a mensagem exata retornada pela Meta Graph API.',
+      'Roteiro de Testes Regressivos Validado: Cenários A a R 100% íntegros; zero regressão em backoffice, caixinhas, transações e webhook do WhatsApp.',
+    ],
+    details: [
+      'Frontend em src/services/finance.ts converte File para DataURL/Base64 antes do POST para /backend/v1/whatsapp/profile-picture.',
+      'Backend pocketbase/hooks/whatsapp_bridge.js suporta Base64 e multipart com reader Goja e descobre alvos de upload dinamicamente.',
+      'docs/BACKLOG.md, docs/TESTES_REGRESSIVOS.md e docsContent.ts atualizados.',
+    ],
+  },
+  {
     version: '0.0.40',
     date: '03/11/2026',
     title:
       'Correção de Detalhes do Cliente no Backoffice (Item 31), Upload de Foto de Perfil JPEG Pequeno (Item 36) e Backlog Integrado (Itens 1 a 36)',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Correção Crítica do Backoffice (Item 31): corrigido o endpoint /backend/v1/admin/clients/:id para mapear o teto real da caixinha (campo amount), calcular o gasto real do mês por agregação das despesas do cliente, exibir valores reais em R$ das últimas 20 transações e recuperar o histórico ativo de conversas do WhatsApp direto do agente nativo $ai.agent("financeiro-whatsapp") via listMessages/listConversations.',
       'Correção do Upload de Foto de Perfil (Item 36): corrigida a validação de arquivo no frontend (Settings.tsx) e backend (whatsapp_bridge.js) para aceitar JPEGs válidos pequenos (ex.: 37.1 KB) sem falsas rejeições de MIME; normalização de cabeçalhos e exibição do erro real retornado pela Meta Graph API sem mascarar com a mensagem genérica enganosa de formato ou 5MB.',

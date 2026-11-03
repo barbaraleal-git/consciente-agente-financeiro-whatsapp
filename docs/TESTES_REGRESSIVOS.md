@@ -187,8 +187,9 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - **Comportamento Esperado**:
      - O webhook detecta automaticamente a mensagem do tipo `audio` ou `voice`.
      - Dispara imediatamente confirmação de leitura (checks azuis) e ativa o status "digitando..." (três pontinhos) via Meta Status API com custo zero.
-     - Baixa o binário de áudio da Meta via Graph API preservando bytes intactos e codifica em base64.
-     - O hook lê `stt_api_key` de `whatsapp_status` no banco de dados e aciona Groq Whisper Large v3 (`https://api.groq.com/openai/v1/audio/transcriptions` ou OpenAI direta).
+     - Baixa o binário de áudio da Meta via Graph API autenticada com o access_token e obtém a URL da mídia via `res.json` do PocketBase JSVM.
+     - O hook lê `stt_api_key` de `whatsapp_status` no banco de dados em tempo real e aciona a API de transcrição da Groq (`https://api.groq.com/openai/v1/audio/transcriptions`) com modelo `whisper-large-v3-turbo` (fallback `whisper-large-v3`), multipart/form-data via `$filesystem.fileFromBytes` e `FormData`, `language=pt`, `response_format=json`.
+     - Logs estruturados registram cada etapa: URL da mídia obtida (bool), download (bytes), chave presente (bool), tentativa Groq (endpoint, status HTTP) e resultado (primeiros 60 caracteres).
      - Aciona o agente `$ai.agent('financeiro-whatsapp')` com o texto transcrito (ex.: _"gastei 35 reais no almoço"_).
      - Registra a despesa na caixinha correspondente (ex.: Alimentação) com:
        - `amount` em centavos (ex.: R$ 35,00 = `3500` centavos).

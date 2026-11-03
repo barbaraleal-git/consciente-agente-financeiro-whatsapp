@@ -474,21 +474,26 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 
                 let mediaUrl = ''
                 if (mediaMetaRes.statusCode >= 200 && mediaMetaRes.statusCode < 300) {
-                  try {
-                    const parsed = JSON.parse(mediaMetaRes.rawText || '{}')
-                    mediaUrl = parsed.url || ''
-                  } catch (_) {}
+                  // No PocketBase JSVM, respostas JSON são disponibilizadas diretamente em res.json
+                  const metaJson =
+                    mediaMetaRes.json ||
+                    (mediaMetaRes.rawText ? JSON.parse(mediaMetaRes.rawText) : {})
+                  mediaUrl = metaJson.url || ''
+                  console.log(
+                    '[whatsapp_bridge] [AUDIO] URL da mídia obtida com sucesso: ' +
+                      (mediaUrl ? 'SIM' : 'NÃO'),
+                  )
                 } else {
                   console.log(
                     '[whatsapp_bridge] [AUDIO] Meta retornou status ' +
                       mediaMetaRes.statusCode +
                       ' ao consultar mediaId: ' +
-                      mediaMetaRes.rawText,
+                      (mediaMetaRes.rawText || JSON.stringify(mediaMetaRes.json || {})),
                   )
                 }
 
                 if (mediaUrl) {
-                  console.log('[whatsapp_bridge] [AUDIO] URL obtida. Baixando binário do áudio...')
+                  console.log('[whatsapp_bridge] [AUDIO] Download iniciado...')
                   const downloadRes = $http.send({
                     url: mediaUrl,
                     method: 'GET',
@@ -500,77 +505,14 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                   })
 
                   if (downloadRes.statusCode >= 200 && downloadRes.statusCode < 300) {
+                    // Obtém os bytes do áudio baixado (downloadRes.body é slice de bytes []byte)
+                    const audioBytes = downloadRes.body || []
+                    const bytesLength = Array.isArray(audioBytes) ? audioBytes.length : 0
                     console.log(
-                      '[whatsapp_bridge] [AUDIO] Download concluído com sucesso. Transcrevendo áudio via IA...',
+                      `[whatsapp_bridge] [AUDIO] Download concluído: ${bytesLength} bytes recebidos. Preparando transcrição via IA...`,
                     )
 
-                    // Transcrição do áudio usando os serviços de IA integrados
-                    let transcribedText = ''
-                    let transcriptionFailureReason = ''
-
-                    // Obtém os bytes do áudio baixado (downloadRes.body é slice de números/bytes ou fallback para raw)
-                    const audioBytes = downloadRes.body || downloadRes.raw || []
-                    const bytesLength = Array.isArray(audioBytes)
-                      ? audioBytes.length
-                      : audioBytes.length || 0
-                    console.log(
-                      `[whatsapp_bridge] [AUDIO] Áudio baixado: ${bytesLength} bytes recebidos. Preparando transcrição via Whisper...`,
-                    )
-
-                    // Converte os bytes do áudio para Base64 usando encoder puro compatível com Goja JSVM
-                    const bytesToBase64 = function (rawInput) {
-                      if (!rawInput) return ''
-                      try {
-                        const chars =
-                          'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-                        const isArr = Array.isArray(rawInput)
-                        const len = rawInput.length || 0
-                        let output = ''
-
-                        for (let i = 0; i < len; i += 3) {
-                          const c1 = (isArr ? rawInput[i] : rawInput.charCodeAt(i)) & 0xff
-                          const c2 =
-                            i + 1 < len
-                              ? (isArr ? rawInput[i + 1] : rawInput.charCodeAt(i + 1)) & 0xff
-                              : NaN
-                          const c3 =
-                            i + 2 < len
-                              ? (isArr ? rawInput[i + 2] : rawInput.charCodeAt(i + 2)) & 0xff
-                              : NaN
-
-                          output += chars.charAt(c1 >> 2)
-                          if (isNaN(c2)) {
-                            output += chars.charAt((c1 & 3) << 4) + '=='
-                          } else if (isNaN(c3)) {
-                            output +=
-                              chars.charAt(((c1 & 3) << 4) | (c2 >> 4)) +
-                              chars.charAt((c2 & 15) << 2) +
-                              '='
-                          } else {
-                            output +=
-                              chars.charAt(((c1 & 3) << 4) | (c2 >> 4)) +
-                              chars.charAt(((c2 & 15) << 2) | (c3 >> 6)) +
-                              chars.charAt(c3 & 63)
-                          }
-                        }
-                        return output
-                      } catch (b64Err) {
-                        console.log(
-                          '[whatsapp_bridge] [AUDIO] Falha ao codificar áudio em base64:',
-                          b64Err,
-                        )
-                        return ''
-                      }
-                    }
-
-                    // Tenta obter string binária direta de downloadRes.raw ou o array downloadRes.body
-                    const rawBinaryData = downloadRes.raw || downloadRes.body || []
-                    const audioBase64 = bytesToBase64(rawBinaryData)
-                    console.log(
-                      `[whatsapp_bridge] [AUDIO] Áudio convertido em base64: length=${audioBase64 ? audioBase64.length : 0}`,
-                    )
-
-                    // Obtenção de chaves STT: primeiro tenta na coleção whatsapp_status (salva via painel admin)
+                    // Obtenção da chave STT OBRIGATORIAMENTE da coleção whatsapp_status lida na hora
                     let dbSttKey = ''
                     try {
                       const wsListForStt = $app.findRecordsByFilter(
@@ -582,7 +524,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                       )
                       for (let wsIdx = 0; wsIdx < wsListForStt.length; wsIdx++) {
                         const sk = wsListForStt[wsIdx].getString('stt_api_key')
-                        if (sk) {
+                        if (sk && sk.trim()) {
                           dbSttKey = sk.trim()
                           break
                         }
@@ -594,177 +536,143 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                       )
                     }
 
-                    // Se a chave configurada no banco começar com gsk_ ou não for sk-, assume Groq por padrão (ou OpenAI se sk-)
+                    // Fallback opcional por variável de ambiente se whatsapp_status não tiver configurado
                     const envGroqKey = $os.getenv('GROQ_API_KEY') || ''
                     const envOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
-                    const envOpenRouterKey =
-                      $os.getenv('OPENROUTER_API_KEY') || $os.getenv('OPENROUTER_KEY') || ''
+                    const activeKey = dbSttKey || envGroqKey || envOpenAiKey || ''
 
-                    // Determina provedor e chave primária
-                    let dedicatedSttKey = dbSttKey || envGroqKey || envOpenAiKey || ''
-                    let isGroqFormat = true
-                    if (dedicatedSttKey.startsWith('sk-') && !dedicatedSttKey.startsWith('gsk_')) {
-                      isGroqFormat = false
-                    }
-
+                    // Registra apenas a presença (true/false) — NUNCA o valor da chave
                     console.log(
-                      `[whatsapp_bridge] [AUDIO] Chaves STT disponíveis: dbSttKey=${dbSttKey ? 'SIM (' + dbSttKey.slice(0, 7) + '...)' : 'NÃO'}, envGroqKey=${envGroqKey ? 'SIM' : 'NÃO'}, envOpenAiKey=${envOpenAiKey ? 'SIM' : 'NÃO'}, isGroqFormat=${isGroqFormat}`,
+                      `[whatsapp_bridge] [AUDIO] Chave STT presente: ${!!activeKey} (origem: ${dbSttKey ? 'whatsapp_status' : envGroqKey ? 'env_groq' : envOpenAiKey ? 'env_openai' : 'nenhuma'})`,
                     )
 
-                    // Estratégia 1: Groq Whisper API (whisper-large-v3) se tiver chave dedicada Groq (ou configurada no banco)
-                    const activeGroqKey = isGroqFormat ? dedicatedSttKey : envGroqKey
-                    if (!transcribedText && activeGroqKey) {
-                      try {
-                        console.log(
-                          '[whatsapp_bridge] [AUDIO] [Estratégia 1] Tentando Groq Whisper API (whisper-large-v3)...',
-                        )
-                        const audioFileObj = $filesystem.fileFromBytes(audioBytes, 'audio.ogg')
-                        const form = new FormData()
-                        form.append('file', audioFileObj)
-                        form.append('model', 'whisper-large-v3')
-                        form.append('language', 'pt')
+                    let transcribedText = ''
+                    let transcriptionFailureReason = ''
 
-                        const gRes = $http.send({
-                          url: 'https://api.groq.com/openai/v1/audio/transcriptions',
-                          method: 'POST',
-                          headers: {
-                            Authorization: 'Bearer ' + activeGroqKey,
-                          },
-                          body: form,
-                          timeout: 25,
-                        })
-
-                        const gCode = gRes.statusCode
-                        const gRaw = gRes.raw || ''
-                        console.log(`[whatsapp_bridge] [AUDIO] [Estratégia 1] Groq status=${gCode}`)
-                        if (gCode >= 200 && gCode < 300) {
-                          const jsonB = JSON.parse(gRaw || '{}')
-                          if (jsonB.text) {
-                            transcribedText = jsonB.text.trim()
-                            console.log(
-                              `[whatsapp_bridge] [AUDIO] [Estratégia 1] Sucesso Groq: "${transcribedText}"`,
-                            )
-                          }
-                        } else {
-                          transcriptionFailureReason = `Groq HTTP ${gCode}: ${gRaw.slice(0, 150)}`
-                        }
-                      } catch (gErr) {
-                        console.log('[whatsapp_bridge] [AUDIO] [Estratégia 1] Exceção Groq:', gErr)
-                        transcriptionFailureReason = String(gErr)
-                      }
-                    }
-
-                    // Estratégia 2: OpenRouter STT dedicado (/api/v1/audio/transcriptions) se OPENROUTER_API_KEY estiver configurada
-                    if (!transcribedText && envOpenRouterKey && audioBase64) {
-                      const orModels = ['openai/whisper-large-v3', 'openai/whisper-1']
-                      for (let om = 0; om < orModels.length; om++) {
-                        const mSlug = orModels[om]
+                    // Tentativa 1: Groq Whisper API (whisper-large-v3-turbo) com fallback para whisper-large-v3
+                    // O modelo whisper-large-v3-turbo é o mais rápido e econômico da Groq
+                    if (activeKey && bytesLength > 0) {
+                      const groqModels = ['whisper-large-v3-turbo', 'whisper-large-v3']
+                      for (let gm = 0; gm < groqModels.length; gm++) {
+                        const currentModel = groqModels[gm]
                         try {
                           console.log(
-                            `[whatsapp_bridge] [AUDIO] [Estratégia 2] Tentando OpenRouter STT model=${mSlug}...`,
+                            `[whatsapp_bridge] [AUDIO] [Tentativa 1 - Groq] Chamando https://api.groq.com/openai/v1/audio/transcriptions model=${currentModel}...`,
                           )
-                          const orRes = $http.send({
-                            url: 'https://openrouter.ai/api/v1/audio/transcriptions',
+                          const audioFileObj = $filesystem.fileFromBytes(audioBytes, 'audio.ogg')
+                          const form = new FormData()
+                          form.append('file', audioFileObj)
+                          form.append('model', currentModel)
+                          form.append('language', 'pt')
+                          form.append('response_format', 'json')
+
+                          const gRes = $http.send({
+                            url: 'https://api.groq.com/openai/v1/audio/transcriptions',
                             method: 'POST',
                             headers: {
-                              Authorization: 'Bearer ' + envOpenRouterKey,
-                              'Content-Type': 'application/json',
-                              'HTTP-Referer': 'https://goskip.app',
-                              'X-Title': 'Consciente Financeiro',
+                              Authorization: 'Bearer ' + activeKey,
                             },
-                            body: JSON.stringify({
-                              model: mSlug,
-                              input_audio: {
-                                data: audioBase64,
-                                format: 'ogg',
-                              },
-                              language: 'pt',
-                            }),
+                            body: form,
                             timeout: 30,
                           })
 
-                          const orCode = orRes.statusCode
-                          const orRaw = orRes.raw || ''
+                          const gCode = gRes.statusCode
+                          const gJson = gRes.json || (gRes.rawText ? JSON.parse(gRes.rawText) : {})
                           console.log(
-                            `[whatsapp_bridge] [AUDIO] [Estratégia 2] OpenRouter ${mSlug} status=${orCode}`,
+                            `[whatsapp_bridge] [AUDIO] [Tentativa 1 - Groq] Endpoint: /audio/transcriptions, HTTP status: ${gCode}`,
                           )
 
-                          if (orCode >= 200 && orCode < 300) {
-                            const orJson = JSON.parse(orRaw || '{}')
-                            if (orJson.text) {
-                              transcribedText = orJson.text.trim()
+                          if (gCode >= 200 && gCode < 300) {
+                            if (gJson && gJson.text) {
+                              transcribedText = String(gJson.text).trim()
                               console.log(
-                                `[whatsapp_bridge] [AUDIO] [Estratégia 2] Sucesso OpenRouter: "${transcribedText}"`,
+                                `[whatsapp_bridge] [AUDIO] [Tentativa 1 - Groq] Sucesso! Transcrição: "${transcribedText.slice(0, 60)}..."`,
                               )
                               break
                             }
                           } else {
-                            transcriptionFailureReason = `OpenRouter ${mSlug} HTTP ${orCode}: ${orRaw.slice(0, 150)}`
+                            const errBody =
+                              gRes.rawText || JSON.stringify(gJson || {}) || 'corpo vazio'
+                            console.log(
+                              `[whatsapp_bridge] [AUDIO] [Tentativa 1 - Groq] Falha HTTP ${gCode}: ${errBody.slice(0, 200)}`,
+                            )
+                            transcriptionFailureReason = `Groq ${currentModel} HTTP ${gCode}: ${errBody.slice(0, 150)}`
                           }
-                        } catch (orErr) {
+                        } catch (gErr) {
                           console.log(
-                            `[whatsapp_bridge] [AUDIO] [Estratégia 2] Exceção em OpenRouter ${mSlug}:`,
-                            orErr,
+                            `[whatsapp_bridge] [AUDIO] [Tentativa 1 - Groq] Exceção com model ${currentModel}:`,
+                            gErr,
                           )
-                          transcriptionFailureReason = String(orErr)
+                          transcriptionFailureReason = String(gErr)
                         }
                       }
                     }
 
-                    // Estratégia 3: OpenAI Audio Transcriptions direta se tiver chave OpenAI (ou configurada no banco com sk-)
-                    const activeOpenAiKey = !isGroqFormat ? dedicatedSttKey : envOpenAiKey
-                    if (!transcribedText && activeOpenAiKey) {
+                    // Tentativa 2: Fallback OpenAI Whisper direto se Groq falhou ou se chave for sk- OpenAI
+                    if (!transcribedText && activeKey && bytesLength > 0) {
                       try {
                         console.log(
-                          '[whatsapp_bridge] [AUDIO] [Estratégia 3] Tentando OpenAI Whisper direto...',
+                          '[whatsapp_bridge] [AUDIO] [Tentativa 2 - Fallback OpenAI] Chamando https://api.openai.com/v1/audio/transcriptions model=whisper-1...',
                         )
                         const audioFileObj = $filesystem.fileFromBytes(audioBytes, 'audio.ogg')
                         const form = new FormData()
                         form.append('file', audioFileObj)
                         form.append('model', 'whisper-1')
                         form.append('language', 'pt')
+                        form.append('response_format', 'json')
 
                         const oRes = $http.send({
                           url: 'https://api.openai.com/v1/audio/transcriptions',
                           method: 'POST',
                           headers: {
-                            Authorization: 'Bearer ' + activeOpenAiKey,
+                            Authorization: 'Bearer ' + activeKey,
                           },
                           body: form,
                           timeout: 25,
                         })
 
                         const oCode = oRes.statusCode
-                        const oRaw = oRes.raw || ''
+                        const oJson = oRes.json || (oRes.rawText ? JSON.parse(oRes.rawText) : {})
                         console.log(
-                          `[whatsapp_bridge] [AUDIO] [Estratégia 3] OpenAI status=${oCode}`,
+                          `[whatsapp_bridge] [AUDIO] [Tentativa 2 - Fallback OpenAI] HTTP status: ${oCode}`,
                         )
 
                         if (oCode >= 200 && oCode < 300) {
-                          const jsonBody = JSON.parse(oRaw || '{}')
-                          if (jsonBody.text) {
-                            transcribedText = jsonBody.text.trim()
+                          if (oJson && oJson.text) {
+                            transcribedText = String(oJson.text).trim()
                             console.log(
-                              `[whatsapp_bridge] [AUDIO] [Estratégia 3] Sucesso via OpenAI Whisper: "${transcribedText}"`,
+                              `[whatsapp_bridge] [AUDIO] [Tentativa 2 - Fallback OpenAI] Sucesso! Transcrição: "${transcribedText.slice(0, 60)}..."`,
                             )
                           }
                         } else {
-                          transcriptionFailureReason = `OpenAI Whisper HTTP ${oCode}: ${oRaw.slice(0, 150)}`
+                          const errBody =
+                            oRes.rawText || JSON.stringify(oJson || {}) || 'corpo vazio'
+                          console.log(
+                            `[whatsapp_bridge] [AUDIO] [Tentativa 2 - Fallback OpenAI] Falha HTTP ${oCode}: ${errBody.slice(0, 200)}`,
+                          )
+                          if (!transcriptionFailureReason) {
+                            transcriptionFailureReason = `OpenAI HTTP ${oCode}: ${errBody.slice(0, 150)}`
+                          }
                         }
                       } catch (oErr) {
-                        console.log('[whatsapp_bridge] [AUDIO] [Estratégia 3] Exceção:', oErr)
-                        transcriptionFailureReason = String(oErr)
+                        console.log(
+                          '[whatsapp_bridge] [AUDIO] [Tentativa 2 - Fallback OpenAI] Exceção:',
+                          oErr,
+                        )
+                        if (!transcriptionFailureReason) {
+                          transcriptionFailureReason = String(oErr)
+                        }
                       }
                     }
 
                     if (transcribedText) {
                       textContent = transcribedText
                       console.log(
-                        `[whatsapp_bridge] [AUDIO] Texto extraído com sucesso do áudio: "${textContent}"`,
+                        `[whatsapp_bridge] [AUDIO] Resultado final: texto extraído com sucesso (${transcribedText.length} caracteres): "${textContent.slice(0, 60)}..."`,
                       )
                     } else {
                       console.log(
-                        `[whatsapp_bridge] [AUDIO] Não foi possível transcrever o áudio. Causa: ${transcriptionFailureReason || 'nenhum provedor respondeu'}`,
+                        `[whatsapp_bridge] [AUDIO] Transcrição não produziu texto. Causa: ${transcriptionFailureReason || 'nenhum provedor respondeu com texto válido'}`,
                       )
                     }
                   } else {
@@ -1953,6 +1861,10 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+// ----------------------------------------------------
+// 7.1 Rota de Diagnóstico de Transcrição de Áudio (Admin)
+// ----------------------------------------------------
 
 // ----------------------------------------------------
 // 8. Rota para vincular contato a um usuário

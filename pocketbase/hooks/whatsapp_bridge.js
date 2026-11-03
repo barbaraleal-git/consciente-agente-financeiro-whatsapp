@@ -441,6 +441,69 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 
     let processedCount = 0
 
+    // Deduplicação em memória (globalThis) para filtrar reenvios ultrarrápidos da Meta
+    if (typeof globalThis !== 'undefined' && !globalThis.__recentWamids) {
+      globalThis.__recentWamids = new Map()
+    }
+
+    const isMessageAlreadyProcessed = function (wamid, phone, msgTimestamp) {
+      if (!wamid) return false
+
+      // 1. Checagem em memória (LRU básico com TTL de 15 minutos)
+      const now = Date.now()
+      if (globalThis && globalThis.__recentWamids) {
+        // Limpeza de entradas mais velhas que 15 min
+        if (globalThis.__recentWamids.size > 200) {
+          for (let [kId, kTime] of globalThis.__recentWamids.entries()) {
+            if (now - kTime > 900000) {
+              globalThis.__recentWamids.delete(kId)
+            }
+          }
+        }
+        if (globalThis.__recentWamids.has(wamid)) {
+          return true
+        }
+      }
+
+      // 2. Checagem persistente na coleção whatsapp_processed_messages
+      try {
+        const found = $app.findFirstRecordByData('whatsapp_processed_messages', 'message_id', wamid)
+        if (found) {
+          if (globalThis && globalThis.__recentWamids) {
+            globalThis.__recentWamids.set(wamid, now)
+          }
+          return true
+        }
+      } catch (_) {
+        // Não encontrado na coleção — continua
+      }
+
+      return false
+    }
+
+    const markMessageAsProcessed = function (wamid, phone, msgType, rawTimestamp) {
+      if (!wamid) return
+      const now = Date.now()
+      if (globalThis && globalThis.__recentWamids) {
+        globalThis.__recentWamids.set(wamid, now)
+      }
+      try {
+        const col = $app.findCollectionByNameOrId('whatsapp_processed_messages')
+        const rec = new Record(col)
+        rec.set('message_id', wamid)
+        rec.set('phone', phone || '')
+        rec.set('msg_type', msgType || '')
+        rec.set('raw_timestamp', rawTimestamp || '')
+        $app.save(rec)
+      } catch (saveErr) {
+        // Se der conflito de chave única, já está salvo
+        console.log(
+          '[whatsapp_bridge] [idempotencia] Registro de wamid ignorado (possível concorrência):',
+          saveErr,
+        )
+      }
+    }
+
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]
       const changes = entry.changes || []
@@ -456,6 +519,21 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
           const fromRaw = msg.from
           const msgType = msg.type
           const incomingMsgId = msg.id
+
+          // CRITÉRIO DE IDEMPOTÊNCIA: Se a Meta reenviar o webhook desta mesma mensagem (retry por tempo >5s),
+          // ignoramos completamente o reprocessamento para evitar respostas em duplicidade ou falsas
+          // rejeições de "gasto já registrado".
+          if (incomingMsgId && isMessageAlreadyProcessed(incomingMsgId, fromRaw, msg.timestamp)) {
+            console.log(
+              `[whatsapp_bridge] [idempotencia] Mensagem repetida detectada (wamid=${incomingMsgId}, from=${fromRaw}). Ignorando reenvio da Meta.`,
+            )
+            continue
+          }
+
+          // Marca imediatamente para evitar que requests concorrentes entrem no mesmo fluxo
+          if (incomingMsgId) {
+            markMessageAsProcessed(incomingMsgId, fromRaw, msgType, msg.timestamp || '')
+          }
 
           // Extrai o timestamp original da mensagem enviado pela Meta
           // msg.timestamp é string de Unix seconds (ex: "1711234567")
@@ -846,7 +924,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               : new Date().toISOString().slice(0, 10)
             const msgSource = isAudioMessage ? 'whatsapp_audio' : 'whatsapp_text'
 
-            let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: ${msgSource}. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser '${msgSource}' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}'. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${textContent}`
+            let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: ${msgSource}. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser '${msgSource}', o campo status deve ser 'active' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}' a menos que o cliente informe data diferente. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${textContent}`
 
             if (!isRegistered) {
               promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
@@ -864,11 +942,22 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             let newConvId = existingConvId
 
             // Carrega helper de confiabilidade (guardrail, cancelamento, datas retroativas)
-            let reliabilityHelper = null
-            try {
-              reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
-            } catch (relErr) {
-              console.log('[whatsapp_bridge] Falha ao carregar reliability_helper:', relErr)
+            let reliabilityHelper =
+              typeof globalThis !== 'undefined' ? globalThis.__reliabilityHelper : null
+            if (!reliabilityHelper) {
+              try {
+                reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
+              } catch (relErr) {
+                console.error(
+                  '[whatsapp_bridge] [CRÍTICO] Falha ao carregar reliability_helper via require:',
+                  relErr,
+                )
+              }
+            }
+            if (!reliabilityHelper) {
+              console.error(
+                '[whatsapp_bridge] [CRÍTICO] reliability_helper indisponível! Guardrail e cancelamento inoperantes.',
+              )
             }
 
             // 1. Guardrail de Temas (Item 22): recusa gentil se fora de finanças/app
@@ -944,11 +1033,22 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             // Se o usuário está cadastrado e pede a visão geral de suas caixinhas,
             // geramos diretamente o resumo visual padronizado com barras em blocos ▓░,
             // percentuais, alertas e linha de resumo no rodapé.
-            let caixinhasHelper = null
-            try {
-              caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
-            } catch (hErr) {
-              console.log('[whatsapp_bridge] Falha ao carregar caixinhas_summary_helper:', hErr)
+            let caixinhasHelper =
+              typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
+            if (!caixinhasHelper) {
+              try {
+                caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
+              } catch (hErr) {
+                console.error(
+                  '[whatsapp_bridge] [CRÍTICO] Falha ao carregar caixinhas_summary_helper via require:',
+                  hErr,
+                )
+              }
+            }
+            if (!caixinhasHelper) {
+              console.error(
+                '[whatsapp_bridge] [CRÍTICO] caixinhas_summary_helper indisponível! Resumo visual automático inoperante.',
+              )
             }
 
             const isCaixinhasOverview =

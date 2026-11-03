@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T17:11:00.120Z",
+  "generatedAt": "2026-11-03T18:28:08.339Z",
   "collections": [
     {
       "name": "users",
@@ -583,6 +583,54 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_whatsapp_contacts_phone ON whatsapp_contacts (phone_number)",
         "CREATE INDEX idx_whatsapp_contacts_user ON whatsapp_contacts (user)"
+      ]
+    },
+    {
+      "name": "whatsapp_processed_messages",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.role = 'admin'",
+        "view": "@request.auth.role = 'admin'",
+        "create": null,
+        "update": null,
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "message_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "msg_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raw_timestamp",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_wamid_unique ON whatsapp_processed_messages (message_id)",
+        "CREATE INDEX idx_wamid_created ON whatsapp_processed_messages (created)"
       ]
     }
   ]

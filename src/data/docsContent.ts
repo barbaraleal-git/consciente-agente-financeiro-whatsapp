@@ -140,6 +140,8 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Item 23: Cancelar/substituir lançamento** | Fluxo conversacional seguro de cancelamento via WhatsApp: cliente pede para cancelar ("cancela o último", "apaga esse lançamento"), o agente solicita confirmação simples ("Tem certeza que deseja cancelar o lançamento de R$ X? Responda SIM para confirmar"), e após "SIM" atualiza o status para \`cancelled\`. Transação cancelada é excluída dos totais e do saldo. | **Concluído** |
 | **Item 27: Deleção lógica com status** | Implementado campo \`status\` (\`active\`, \`cancelled\`, \`deleted\`) na coleção de transações com backfill retrocompatível idempotente. Deleções no painel e cancelamentos no WhatsApp são puramente lógicos para auditoria e histórico de segurança. Na listagem de Transações e no Backoffice os registros mantêm badges claros (\`Cancelado\`, \`Excluído\`), e totais consideram estritamente \`active\`. | **Concluído** |
 | **Item 28: Gasto retroativo (lado do agente)** | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 35", "terça gastei 50"), registrar com o campo \`date\` correspondente e \`is_retroactive = true\`. A confirmação do agente menciona explicitamente a data original e a interface exibe o badge "Retroativo". | **Concluído** |
+| **Idempotência de Webhook WhatsApp (Meta retry)** | Proteção estrita contra retries automáticos da Meta (>5s): deduplicação por \`wamid\` (message_id) em memória rápida com TTL e persistência na coleção \`whatsapp_processed_messages\`. Evita mensagens duplicadas ou falsas rejeições de duplicidade. | **Concluído** |
+| **Garantia de Integridade de Status e Retroativo** | Hook \`transactions_integrity.js\` garante que toda transação nasça com \`status='active'\` e tenha \`is_retroactive=true\` sempre que a data informada diferir do dia da mensagem. Proteção de deleção lógica definitiva. | **Concluído** |
 
 ---
 
@@ -448,6 +450,18 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - O agente confirma com empatia: \`Lançamento de R$ 45,00 cancelado com sucesso. O valor foi estornado do total da caixinha.\`
      - O campo \`status\` da transação é atualizado para \`'cancelled'\` (deleção lógica auditável).
      - Se o cliente responder *"NÃO"* ou outra coisa, o cancelamento é descartado com aviso de segurança.
+
+---
+
+## W) Idempotência do Webhook WhatsApp (Prevenção de Duplicidade por Retry da Meta)
+
+1. **Reenvio de Mensagem de Áudio ou Texto**:
+   - Quando a Meta reenvia um webhook devido à latência de processamento de áudio/IA (>5 segundos):
+     - **Verificação**: O webhook detecta o \`wamid\` já processado na coleção \`whatsapp_processed_messages\` e no cache em memória.
+     - O processamento repetido é descartado silenciosamente com log informativo.
+     - **NUNCA** são geradas duas mensagens de confirmação para o cliente.
+     - **NUNCA** ocorre a falsa resposta de "esse gasto já está registrado e não vou lançar de novo".
+   - O gasto permanece lançado com sucesso uma única vez, com status \`active\` e \`is_retroactive\` devidamente sinalizado caso tenha data anterior.
 
 ---
 

@@ -638,7 +638,8 @@ function handleCancellationFlow(app, userId, text, contactRecord) {
   return { handled: false, reply: '' }
 }
 
-module.exports = {
+// Exporta tanto em module.exports quanto no globalThis (PocketBase JSVM)
+const reliabilityHelperExports = {
   OFF_TOPIC_GUARDRAIL_REPLY,
   isOffTopicQuery,
   parseRetroactiveDate,
@@ -646,4 +647,11 @@ module.exports = {
   isCancellationIntent,
   handleCancellationFlow,
   formatCentsToBrl,
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.__reliabilityHelper = reliabilityHelperExports
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = reliabilityHelperExports
 }

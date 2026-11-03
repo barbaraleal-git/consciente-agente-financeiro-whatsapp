@@ -17,11 +17,13 @@ export type TransactionSource =
   | 'whatsapp_text'
   | 'whatsapp_audio'
 
+export type TransactionStatus = 'active' | 'cancelled' | 'deleted'
+
 export interface Transaction extends RecordModel {
   owner: string
-  description: string
   amount: number // in cents
-  date: string
+  description: string
+  date: string // YYYY-MM-DD
   category: string
   expand?: {
     category?: Category
@@ -30,8 +32,9 @@ export interface Transaction extends RecordModel {
   source: TransactionSource
   message_timestamp?: string // Data/hora da mensagem original ISO
   note?: string
+  status?: TransactionStatus
+  is_retroactive?: boolean
 }
-
 export interface Budget extends RecordModel {
   owner: string
   category: string
@@ -227,7 +230,18 @@ export const transactionsService = {
   },
 
   async delete(id: string): Promise<boolean> {
-    return pb.collection('transactions').delete(id)
+    // Deleção lógica permanente (Item 27): nunca remove o registro fisicamente
+    try {
+      await pb.collection('transactions').update(id, { status: 'deleted' })
+      return true
+    } catch (_) {
+      return false
+    }
+  },
+
+  async cancel(id: string): Promise<Transaction> {
+    // Cancelamento do cliente (Item 23): marca status como 'cancelled'
+    return pb.collection('transactions').update<Transaction>(id, { status: 'cancelled' })
   },
 }
 
@@ -574,6 +588,9 @@ export interface AdminClientDetail {
     category_name: string
     date: string
     created: string
+    source?: string
+    status?: string
+    is_retroactive?: boolean
     is_recurring: boolean
   }>
   whatsapp: {

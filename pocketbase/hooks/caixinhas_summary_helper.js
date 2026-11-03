@@ -266,14 +266,14 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     }
   }
 
-  // 3. Busca transações do mês corrente (tipo 'despesa') do usuário
+  // 3. Busca transações do mês corrente (tipo 'despesa') do usuário — APENAS ATIVAS
   const startOfMonth = `${monthStr}-01`
   const endOfMonth = `${monthStr}-31`
   let transactions = []
   try {
     transactions = app.findRecordsByFilter(
       'transactions',
-      `user = '${userId}' && type = 'despesa' && date >= '${startOfMonth}' && date <= '${endOfMonth}'`,
+      `user = '${userId}' && type = 'despesa' && date >= '${startOfMonth}' && date <= '${endOfMonth}' && (status = 'active' || status = '')`,
       'date',
       1000,
       0,

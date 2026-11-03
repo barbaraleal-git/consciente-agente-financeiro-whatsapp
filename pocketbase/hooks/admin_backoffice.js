@@ -35,9 +35,9 @@ routerAdd(
       const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ')
       const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ')
 
-      // Total de transações
+      // Total de transações (Item 27: apenas ativas entram na soma de transações ativas)
       const allTransactions = $app.findRecordsByFilter('transactions', '', '-created', 1000, 0)
-      const totalTransactions = allTransactions.length
+      let totalTransactions = 0
 
       // Transações recentes para calcular clientes ativos
       const active7Set = {}
@@ -45,10 +45,14 @@ routerAdd(
 
       for (let i = 0; i < allTransactions.length; i++) {
         const tx = allTransactions[i]
-        const txOwner = tx.getString('owner')
-        const created = tx.getString('created')
-        if (created >= d7 && txOwner) active7Set[txOwner] = true
-        if (created >= d30 && txOwner) active30Set[txOwner] = true
+        const st = tx.getString('status') || 'active'
+        if (st === 'active') {
+          totalTransactions++
+          const txOwner = tx.getString('owner')
+          const created = tx.getString('created')
+          if (created >= d7 && txOwner) active7Set[txOwner] = true
+          if (created >= d30 && txOwner) active30Set[txOwner] = true
+        }
       }
 
       // Conversas do WhatsApp (contatos que interagiram)
@@ -100,8 +104,9 @@ routerAdd(
       const txByUser = {}
       for (let i = 0; i < allTransactions.length; i++) {
         const tx = allTransactions[i]
+        const st = tx.getString('status') || 'active'
         const uId = tx.getString('owner')
-        if (uId) {
+        if (uId && st === 'active') {
           txByUser[uId] = (txByUser[uId] || 0) + 1
         }
       }
@@ -207,12 +212,12 @@ routerAdd(
         }
       }
 
-      // Todas as transações do cliente no mês selecionado para calcular o gasto real por caixinha
+      // Todas as transações do cliente no mês selecionado para calcular o gasto real por caixinha (Item 27: apenas status != 'deleted' e status != 'cancelled', tratando vazio/nulo como active)
       let clientMonthTxForBudgets = []
       try {
         clientMonthTxForBudgets = $app.findRecordsByFilter(
           'transactions',
-          `owner = '${clientId}' && type = 'despesa' && (date ~ '${targetMonthStr}' || created ~ '${targetMonthStr}')`,
+          `owner = '${clientId}' && type = 'despesa' && status != 'cancelled' && status != 'deleted' && (date ~ '${targetMonthStr}' || created ~ '${targetMonthStr}')`,
           '-created',
           2000,
           0,
@@ -229,10 +234,13 @@ routerAdd(
         } catch (_) {}
       }
 
-      // Mapeia gasto por categoria no mês de referência
+      // Mapeia gasto por categoria no mês de referência (somente lançamentos ativos)
       const spentByCatMonth = {}
       for (let i = 0; i < clientMonthTxForBudgets.length; i++) {
         const tx = clientMonthTxForBudgets[i]
+        const st = tx.getString('status') || 'active'
+        if (st !== 'active') continue
+
         const dStr = (tx.getString('date') || tx.getString('created') || '').slice(0, 7)
         if (dStr === targetMonthStr) {
           const cId = tx.getString('category')
@@ -301,6 +309,8 @@ routerAdd(
         const tx = transactions[i]
         const catId = tx.getString('category')
         const cat = catMap[catId]
+        const txStatus = tx.getString('status') || 'active'
+        const isRetroactive = tx.getBool('is_retroactive')
         recentTransactions.push({
           id: tx.id,
           amount_cents: tx.getInt('amount'),
@@ -310,6 +320,8 @@ routerAdd(
           date: tx.getString('date'),
           created: tx.getString('created'),
           source: tx.getString('source') || 'manual',
+          status: txStatus,
+          is_retroactive: isRetroactive,
           is_recurring: false,
         })
       }
@@ -873,6 +885,9 @@ routerAdd(
 
       for (let i = 0; i < allTransactions.length; i++) {
         const tx = allTransactions[i]
+        const st = tx.getString('status') || 'active'
+        if (st !== 'active') continue
+
         const ownerId = tx.getString('owner')
         if (!ownerId) continue
 

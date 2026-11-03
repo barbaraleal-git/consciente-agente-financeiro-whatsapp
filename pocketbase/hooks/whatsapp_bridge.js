@@ -863,6 +863,83 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             let agentReply = ''
             let newConvId = existingConvId
 
+            // Carrega helper de confiabilidade (guardrail, cancelamento, datas retroativas)
+            let reliabilityHelper = null
+            try {
+              reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
+            } catch (relErr) {
+              console.log('[whatsapp_bridge] Falha ao carregar reliability_helper:', relErr)
+            }
+
+            // 1. Guardrail de Temas (Item 22): recusa gentil se fora de finanças/app
+            if (
+              textContent &&
+              reliabilityHelper &&
+              typeof reliabilityHelper.isOffTopicQuery === 'function' &&
+              reliabilityHelper.isOffTopicQuery(textContent)
+            ) {
+              console.log(
+                '[whatsapp_bridge] Mensagem fora de escopo detectada pelo guardrail:',
+                textContent,
+              )
+              agentReply = reliabilityHelper.OFF_TOPIC_GUARDRAIL_REPLY
+            }
+
+            // 2. Fluxo Conversacional de Cancelamento / Substituição (Item 23)
+            if (
+              !agentReply &&
+              isRegistered &&
+              textContent &&
+              reliabilityHelper &&
+              typeof reliabilityHelper.handleCancellationFlow === 'function'
+            ) {
+              try {
+                const cancelRes = reliabilityHelper.handleCancellationFlow(
+                  $app,
+                  activeUserId,
+                  contact,
+                  textContent,
+                )
+                if (cancelRes && cancelRes.handled && cancelRes.reply) {
+                  agentReply = cancelRes.reply
+                  console.log(
+                    '[whatsapp_bridge] Fluxo de cancelamento interceptado com resposta:',
+                    agentReply,
+                  )
+                }
+              } catch (cFlowErr) {
+                console.log('[whatsapp_bridge] Erro no fluxo de cancelamento seguro:', cFlowErr)
+              }
+            }
+
+            // 3. Detecção e Ajuste de Data Retroativa (Item 28)
+            let retroactiveInfo = null
+            if (
+              !agentReply &&
+              textContent &&
+              reliabilityHelper &&
+              typeof reliabilityHelper.parseRetroactiveDate === 'function'
+            ) {
+              try {
+                retroactiveInfo = reliabilityHelper.parseRetroactiveDate(textContent, todayStr)
+                if (
+                  retroactiveInfo &&
+                  retroactiveInfo.isRetroactive &&
+                  retroactiveInfo.targetDateStr
+                ) {
+                  console.log(
+                    `[whatsapp_bridge] Data retroativa detectada (${retroactiveInfo.matchedPhrase} -> ${retroactiveInfo.targetDateStr})`,
+                  )
+                  // Atualiza o prompt do agente com instrução inequívoca de data e marcação
+                  promptForAgent =
+                    `[ATENÇÃO: LANÇAMENTO RETROATIVO DETECTADO. O cliente informou expressamente que o gasto ocorreu em: ${retroactiveInfo.targetDateStr} (frase: "${retroactiveInfo.matchedPhrase}"). REGISTRE com campo 'date' = '${retroactiveInfo.targetDateStr}', 'is_retroactive' = true, 'status' = 'active'. Na confirmação, cite expressamente a data retroativa no formato "contabilizado em ${retroactiveInfo.matchedPhrase} (${retroactiveInfo.targetDateStr.slice(8, 10)}/${retroactiveInfo.targetDateStr.slice(5, 7)})"]: ` +
+                    promptForAgent
+                }
+              } catch (retErr) {
+                console.log('[whatsapp_bridge] Erro ao interpretar data retroativa:', retErr)
+              }
+            }
+
             // Verificação de intenção padronizada: Resumo Visual das Caixinhas
             // Se o usuário está cadastrado e pede a visão geral de suas caixinhas,
             // geramos diretamente o resumo visual padronizado com barras em blocos ▓░,
@@ -1692,6 +1769,77 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
       let agentReply = ''
       let newConvId = existingConvId
+
+      // Carrega helper de confiabilidade (guardrail, cancelamento, datas retroativas) no simulate
+      let reliabilityHelperSim = null
+      try {
+        reliabilityHelperSim = require(`${__hooks}/reliability_helper.js`)
+      } catch (relSimErr) {
+        console.log('[whatsapp_bridge] [simulate] Falha ao carregar reliability_helper:', relSimErr)
+      }
+
+      // 1. Guardrail de Temas (Item 22) no simulate
+      if (
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.isOffTopicQuery === 'function' &&
+        reliabilityHelperSim.isOffTopicQuery(message)
+      ) {
+        console.log(
+          '[whatsapp_bridge] [simulate] Mensagem fora de escopo detectada pelo guardrail:',
+          message,
+        )
+        agentReply = reliabilityHelperSim.OFF_TOPIC_GUARDRAIL_REPLY
+      }
+
+      // 2. Fluxo Conversacional de Cancelamento / Substituição (Item 23) no simulate
+      if (
+        !agentReply &&
+        isRegistered &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.handleCancellationFlow === 'function'
+      ) {
+        try {
+          const cancelRes = reliabilityHelperSim.handleCancellationFlow(
+            $app,
+            activeUserId,
+            contact,
+            message,
+          )
+          if (cancelRes && cancelRes.handled && cancelRes.reply) {
+            agentReply = cancelRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de cancelamento interceptado:',
+              agentReply,
+            )
+          }
+        } catch (cFlowErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de cancelamento seguro:',
+            cFlowErr,
+          )
+        }
+      }
+
+      // 3. Detecção e Ajuste de Data Retroativa (Item 28) no simulate
+      if (
+        !agentReply &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.parseRetroactiveDate === 'function'
+      ) {
+        try {
+          const retroactiveInfo = reliabilityHelperSim.parseRetroactiveDate(message, todayStr)
+          if (retroactiveInfo && retroactiveInfo.isRetroactive && retroactiveInfo.targetDateStr) {
+            promptForAgent =
+              `[ATENÇÃO: LANÇAMENTO RETROATIVO DETECTADO. O cliente informou expressamente que o gasto ocorreu em: ${retroactiveInfo.targetDateStr} (frase: "${retroactiveInfo.matchedPhrase}"). REGISTRE com campo 'date' = '${retroactiveInfo.targetDateStr}', 'is_retroactive' = true, 'status' = 'active'. Na confirmação, cite expressamente a data retroativa no formato "contabilizado em ${retroactiveInfo.matchedPhrase} (${retroactiveInfo.targetDateStr.slice(8, 10)}/${retroactiveInfo.targetDateStr.slice(5, 7)})"]: ` +
+              promptForAgent
+          }
+        } catch (retErr) {
+          console.log('[whatsapp_bridge] [simulate] Erro ao interpretar data retroativa:', retErr)
+        }
+      }
 
       // Verificação de intenção padronizada: Resumo Visual das Caixinhas no simulate
       let caixinhasHelperSim = null

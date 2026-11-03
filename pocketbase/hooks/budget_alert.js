@@ -65,10 +65,10 @@ cronAdd('budget-check', '0 * * * *', () => {
       const budgetAmount = budget.getInt('amount')
       if (budgetAmount <= 0) continue
 
-      // Sum transactions for this category, month, and owner
+      // Sum transactions for this category, month, and owner (somente ativas)
       const txs = $app.findRecordsByFilter(
         'transactions',
-        `owner = '${ownerId}' && category = '${catId}' && date >= '${currentMonth}-01' && date <= '${currentMonth}-31' && type = 'despesa'`,
+        `owner = '${ownerId}' && category = '${catId}' && date >= '${currentMonth}-01' && date <= '${currentMonth}-31' && type = 'despesa' && (status = 'active' || status = '')`,
         '',
         1000,
         0,

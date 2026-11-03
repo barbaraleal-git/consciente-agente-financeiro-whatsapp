@@ -31,6 +31,8 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { Plus, Edit2, Trash2 } from 'lucide-react'
 import {
+  BICHINHO_ICONS,
+  GERAL_ICONS,
   CAIXINHA_ICONS,
   CAIXINHA_COLORS,
   renderCaixinhaIcon,
@@ -41,7 +43,7 @@ const ICON_OPTIONS = CAIXINHA_ICONS
 const COLOR_OPTIONS = CAIXINHA_COLORS
 
 function renderCategoryIcon(iconKey: string, className = 'w-5 h-5') {
-  return renderCaixinhaIcon(iconKey, className)
+  return renderCaixinhaIcon(iconKey, `${className} text-base`)
 }
 
 export const Categories: React.FC = () => {
@@ -59,7 +61,8 @@ export const Categories: React.FC = () => {
   // Form Fields
   const [name, setName] = useState('')
   const [type, setType] = useState<'despesa' | 'receita' | 'investimento'>('despesa')
-  const [icon, setIcon] = useState('utensils')
+  const [icon, setIcon] = useState('pet-cat')
+  const [catIconTab, setCatIconTab] = useState<'bichinho' | 'geral'>('bichinho')
   const [color, setColor] = useState('#6366f1')
   const [saving, setSaving] = useState(false)
 
@@ -302,10 +305,36 @@ export const Categories: React.FC = () => {
 
             {/* Icon Picker */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-700">Ícone Representativo</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-slate-700">Figurinha / Ícone</Label>
+                <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setCatIconTab('bichinho')}
+                    className={`px-2 py-0.5 rounded transition-all font-medium ${
+                      catIconTab === 'bichinho'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    🐱 Bichinhos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCatIconTab('geral')}
+                    className={`px-2 py-0.5 rounded transition-all font-medium ${
+                      catIconTab === 'geral'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    ✨ Geral
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-6 sm:grid-cols-7 gap-2 max-h-36 overflow-y-auto p-1.5 border border-slate-200 rounded-xl bg-slate-50/50">
-                {ICON_OPTIONS.map((opt) => {
-                  const Icon = opt.icon
+                {(catIconTab === 'bichinho' ? BICHINHO_ICONS : GERAL_ICONS).map((opt) => {
                   const isSelected = icon === opt.id
                   return (
                     <button
@@ -315,11 +344,15 @@ export const Categories: React.FC = () => {
                       title={opt.label}
                       className={`p-2 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${
                         isSelected
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-600/20'
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-600/20 scale-105'
                           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
+                      {opt.emoji ? (
+                        <span className="text-lg leading-none">{opt.emoji}</span>
+                      ) : opt.icon ? (
+                        <opt.icon className="w-4 h-4" />
+                      ) : null}
                     </button>
                   )
                 })}

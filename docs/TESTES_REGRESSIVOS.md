@@ -274,3 +274,35 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - No modal de detalhes do cliente com WhatsApp vinculado, clique em **"Desvincular WhatsApp"**.
    - Confirme: o telefone é desvinculado e o badge muda para "Não vinculado".
    - Clique em **"Vincular WhatsApp"** e informe/confirme o número com DDD: o telefone é vinculado com sucesso.
+
+---
+
+## K) Filtro Padrão = Mês Corrente (Dashboard, Transações, Relatórios)
+
+1. **Passo a passo**:
+   - Acesse `/transactions`: o filtro de período deve vir por padrão selecionado como "Mês corrente" (do dia 1º até hoje).
+   - Acesse `/reports`: o período deve vir selecionado como "Mês corrente".
+   - No Dashboard (`/`), os cartões de resumo e progresso de caixinhas agregam os lançamentos do mês corrente.
+   - Teste alternar os filtros manualmente para "Últimos 7 dias", "Últimos 30 dias" ou "Todo o histórico": os dados são recalculados conforme a escolha.
+
+---
+
+## L) Figurinhas de Bichinhos nas Caixinhas
+
+1. **Passo a passo**:
+   - Acesse `/budgets` ou `/categories`.
+   - Abra o formulário de criar ou editar caixinha.
+   - Na seleção de ícones, alterne para a aba "🐱 Bichinhos".
+   - Escolha uma figurinha (ex.: Gatinho 🐱 ou Cachorrinho 🐶), defina um nome e salve.
+   - **Comportamento Esperado**: A figurinha aparece no card de Caixinhas, no Dashboard (progresso e lançamentos recentes), no Extrato de Transações e no modal de Novo Lançamento.
+
+---
+
+## M) Documentação Técnica Visível no Backoffice (/admin/docs)
+
+1. **Passo a passo**:
+   - Faça login como Admin (`barbara.ferreira.leal@gmail.com`).
+   - No menu lateral ou no botão de Backoffice, clique em "Documentação" (`/admin/docs`).
+   - Alterne entre as abas "Arquitetura Técnica" e "Testes Regressivos".
+   - Confirme a renderização de títulos, listas, tabelas e blocos de código formatados.
+   - Faça logout e tente acessar `/admin/docs` como cliente comum: a tela de Acesso Restrito bloqueia a visualização.

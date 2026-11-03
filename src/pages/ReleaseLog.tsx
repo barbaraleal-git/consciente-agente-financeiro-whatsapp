@@ -25,11 +25,32 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.35',
+    date: '03/11/2026',
+    title:
+      'Lote 1 de Melhorias do MVP: Correção Crítica do Backoffice /admin, Filtro Padrão Mês Corrente, Figurinhas de Bichinhos nas Caixinhas e Documentação Técnica no Admin',
+    tag: 'Atual',
+    highlights: [
+      'BUG CRÍTICO do Backoffice resolvido: endpoint /backend/v1/admin/overview corrigido com tratamento seguro e compatível com as coleções existentes; rota responde HTTP 200 com métricas reais e lista de clientes.',
+      'Filtro padrão = Mês Corrente (1º dia do mês até hoje): aplicado por padrão em Transações, Dashboard e Relatórios, mantendo a flexibilidade para o usuário alternar para qualquer período manualmente.',
+      'Figurinhas de bichinhos nas caixinhas: adicionada aba com opções amigáveis de bichinhos (Gatinho 🐱, Cachorrinho 🐶, Patinhas 🐾, Ursinho 🐻, Panda 🐼, Coala 🐨, Leão 🦁, Coelhinho 🐰, Raposa 🦊, Pinguim 🐧 e outros), exibidas em Caixinhas, Dashboard, Extrato de Transações e Modal de Lançamento.',
+      'Documentação Técnica visível no Admin (/admin/docs): nova página no menu de Administrador com renderização legível (títulos, listas, tabelas e código) dos documentos docs/ARQUITETURA.md e docs/TESTES_REGRESSIVOS.md.',
+      'Zero regressão estrutural: preservados webhook da Meta, disparos diretos via Meta Cloud API, pipeline de áudio STT Groq com chave dinâmica, valores em centavos, rastreabilidade de origem e papéis admin vs cliente.',
+    ],
+    details: [
+      'Hook pocketbase/hooks/admin_backoffice.js ajustado com queries seguras em whatsapp_contacts (sem dependência de coleção inexistente whatsapp_messages) e suporte a conversation_id.',
+      'src/pages/Transactions.tsx e src/pages/Reports.tsx configurados com default "thisMonth" (Mês corrente).',
+      'src/lib/caixinhaIcons.tsx expandido com BICHINHO_ICONS e utilitários isEmojiIcon / getEmojiFromIconId / renderCaixinhaIcon.',
+      'src/pages/Budgets.tsx e src/pages/Categories.tsx com abas para seleção de bichinhos amigáveis e ícones gerais.',
+      'Nova rota /admin/docs e página src/pages/AdminDocs.tsx criada com tabs para ARQUITETURA.md e TESTES_REGRESSIVOS.md (cenários A a M).',
+    ],
+  },
+  {
     version: '0.0.34',
     date: '03/11/2026',
     title:
       'Campo Admin de Chave de Transcrição de Voz (STT) e Leitura Dinâmica pelo Hook do WhatsApp',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Campo seguro no Painel Admin: em Configurações (exclusivo para administradores), adição de campo para colar a chave de transcrição de voz (Groq/OpenAI) com padrão seguro do token da Meta — o valor é persistido no banco e nunca é reexibido na tela.',
       'Indicador claro stt_configurado: badge dinâmico no painel indicando se a transcrição de voz está ativa ("Chave de transcrição configurada ✓" / "Não configurada").',

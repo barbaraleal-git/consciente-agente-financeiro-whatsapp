@@ -28,7 +28,7 @@ import {
 
 export const Reports: React.FC = () => {
   const [period, setPeriod] = useState<'7days' | '30days' | 'thisMonth' | 'semester' | 'year'>(
-    '30days',
+    'thisMonth',
   )
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -177,9 +177,9 @@ export const Reports: React.FC = () => {
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="thisMonth">Mês corrente</SelectItem>
               <SelectItem value="7days">Últimos 7 dias</SelectItem>
               <SelectItem value="30days">Últimos 30 dias</SelectItem>
-              <SelectItem value="thisMonth">Este mês</SelectItem>
               <SelectItem value="semester">Último semestre</SelectItem>
               <SelectItem value="year">Último ano</SelectItem>
             </SelectContent>

@@ -7,6 +7,7 @@ import {
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatCurrency, formatDate, formatDateTime, getSourceLabel } from '@/lib/formatters'
+import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
 import { TransactionModal } from '@/components/TransactionModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,7 +60,7 @@ export const Transactions: React.FC = () => {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [typeFilter, setTypeFilter] = useState('ALL')
-  const [periodFilter, setPeriodFilter] = useState('30days') // '7days', '30days', 'thisMonth', 'ALL'
+  const [periodFilter, setPeriodFilter] = useState('thisMonth') // Default: mês corrente (1º dia até hoje)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
   // Pagination
@@ -258,9 +259,9 @@ export const Transactions: React.FC = () => {
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="thisMonth">Mês corrente</SelectItem>
                 <SelectItem value="7days">Últimos 7 dias</SelectItem>
                 <SelectItem value="30days">Últimos 30 dias</SelectItem>
-                <SelectItem value="thisMonth">Este mês</SelectItem>
                 <SelectItem value="ALL">Todo o histórico</SelectItem>
               </SelectContent>
             </Select>
@@ -329,9 +330,11 @@ export const Transactions: React.FC = () => {
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2">
                               <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs shrink-0"
                                 style={{ backgroundColor: cat?.color || '#64748b' }}
-                              />
+                              >
+                                {renderCaixinhaIcon(cat?.icon, 'w-3 h-3 text-xs')}
+                              </span>
                               <span className="text-slate-700">
                                 {cat?.name || 'Não categorizado'}
                               </span>
@@ -434,9 +437,11 @@ export const Transactions: React.FC = () => {
                           <p className="text-sm font-semibold text-slate-900">{tx.description}</p>
                           <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
                             <span
-                              className="w-2 h-2 rounded-full"
+                              className="w-4 h-4 rounded-md flex items-center justify-center text-white text-[10px] shrink-0"
                               style={{ backgroundColor: cat?.color || '#64748b' }}
-                            />
+                            >
+                              {renderCaixinhaIcon(cat?.icon, 'w-2.5 h-2.5 text-[10px]')}
+                            </span>
                             <span>{cat?.name || 'Geral'}</span>
                             <span>•</span>
                             <span>{formatDate(tx.date)}</span>

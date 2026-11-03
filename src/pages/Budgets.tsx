@@ -59,6 +59,8 @@ import {
   Layers,
 } from 'lucide-react'
 import {
+  BICHINHO_ICONS,
+  GERAL_ICONS,
   CAIXINHA_ICONS,
   CAIXINHA_COLORS,
   renderCaixinhaIcon,
@@ -84,7 +86,8 @@ export const Budgets: React.FC = () => {
   const [creationMode, setCreationMode] = useState<'existing' | 'custom'>('custom')
   const [catId, setCatId] = useState('')
   const [customName, setCustomName] = useState('')
-  const [customIcon, setCustomIcon] = useState('plane')
+  const [customIcon, setCustomIcon] = useState('pet-cat')
+  const [iconTab, setIconTab] = useState<'bichinho' | 'geral'>('bichinho')
   const [customColor, setCustomColor] = useState('#ec4899')
   const [amountStr, setAmountStr] = useState('')
   const [monthInput, setMonthInput] = useState(currentMonth)
@@ -367,7 +370,6 @@ export const Budgets: React.FC = () => {
           ) : (
             <div className="space-y-5">
               {budgetStats.map((item) => {
-                const IconComp = getCaixinhaIconComponent(item.category?.icon)
                 return (
                   <div
                     key={item.budget.id}
@@ -376,10 +378,10 @@ export const Budgets: React.FC = () => {
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2.5">
                         <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs text-sm"
                           style={{ backgroundColor: item.category?.color || '#64748b' }}
                         >
-                          <IconComp className="w-3.5 h-3.5" />
+                          {renderCaixinhaIcon(item.category?.icon, 'w-4 h-4')}
                         </div>
                         <div>
                           <span className="font-semibold text-slate-900">
@@ -514,12 +516,38 @@ export const Budgets: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Icon picker */}
+                {/* Icon picker com abas: Figurinhas de Bichinhos e Ícones Gerais */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-slate-700">Ícone</Label>
-                  <div className="grid grid-cols-7 gap-1.5 p-1.5 bg-white rounded-lg border border-slate-200 max-h-28 overflow-y-auto">
-                    {CAIXINHA_ICONS.map((opt) => {
-                      const Icon = opt.icon
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-slate-700">Figurinha / Ícone</Label>
+                    <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setIconTab('bichinho')}
+                        className={`px-2 py-0.5 rounded transition-all font-medium ${
+                          iconTab === 'bichinho'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        🐱 Bichinhos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIconTab('geral')}
+                        className={`px-2 py-0.5 rounded transition-all font-medium ${
+                          iconTab === 'geral'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        ✨ Geral
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                    {(iconTab === 'bichinho' ? BICHINHO_ICONS : GERAL_ICONS).map((opt) => {
                       const isSelected = customIcon === opt.id
                       return (
                         <button
@@ -527,13 +555,17 @@ export const Budgets: React.FC = () => {
                           type="button"
                           onClick={() => setCustomIcon(opt.id)}
                           title={opt.label}
-                          className={`p-1.5 rounded-md flex items-center justify-center transition-all ${
+                          className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
                             isSelected
-                              ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30'
-                              : 'text-slate-600 hover:bg-slate-100'
+                              ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
+                              : 'text-slate-700 hover:bg-slate-100'
                           }`}
                         >
-                          <Icon className="w-4 h-4" />
+                          {opt.emoji ? (
+                            <span className="text-lg leading-none">{opt.emoji}</span>
+                          ) : opt.icon ? (
+                            <opt.icon className="w-4 h-4" />
+                          ) : null}
                         </button>
                       )
                     })}
@@ -572,15 +604,14 @@ export const Budgets: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((c) => {
-                      const Icon = getCaixinhaIconComponent(c.icon)
                       return (
                         <SelectItem key={c.id} value={c.id}>
                           <div className="flex items-center gap-2">
                             <span
-                              className="w-4 h-4 rounded-md flex items-center justify-center text-white"
+                              className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
                               style={{ backgroundColor: c.color }}
                             >
-                              <Icon className="w-2.5 h-2.5" />
+                              {renderCaixinhaIcon(c.icon, 'w-3 h-3 text-xs')}
                             </span>
                             <span>{c.name}</span>
                           </div>

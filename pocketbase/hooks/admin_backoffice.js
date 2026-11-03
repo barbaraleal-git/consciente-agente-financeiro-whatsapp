@@ -51,27 +51,29 @@ routerAdd(
         if (created >= d30 && txOwner) active30Set[txOwner] = true
       }
 
-      // Mensagens recentes do WhatsApp para clientes ativos
-      const allWaMsgs = $app.findRecordsByFilter('whatsapp_messages', '', '-created', 1000, 0)
-      for (let i = 0; i < allWaMsgs.length; i++) {
-        const msg = allWaMsgs[i]
-        const msgOwner = msg.getString('owner')
-        const created = msg.getString('created')
-        if (created >= d7 && msgOwner) active7Set[msgOwner] = true
-        if (created >= d30 && msgOwner) active30Set[msgOwner] = true
+      // Conversas do WhatsApp (contatos que interagiram)
+      let waContacts = []
+      try {
+        waContacts = $app.findRecordsByFilter('whatsapp_contacts', '', '-last_message_at', 500, 0)
+      } catch (_) {
+        try {
+          waContacts = $app.findRecordsByFilter('whatsapp_contacts', '', '-created', 500, 0)
+        } catch (_) {}
+      }
+
+      for (let i = 0; i < waContacts.length; i++) {
+        const c = waContacts[i]
+        const uId = c.getString('user')
+        const lastAt =
+          c.getString('last_message_at') || c.getString('updated') || c.getString('created')
+        if (uId && lastAt) {
+          if (lastAt >= d7) active7Set[uId] = true
+          if (lastAt >= d30) active30Set[uId] = true
+        }
       }
 
       const activeClients7d = Object.keys(active7Set).length
       const activeClients30d = Object.keys(active30Set).length
-
-      // Conversas ativas no WhatsApp (contatos que interagiram)
-      const waContacts = $app.findRecordsByFilter(
-        'whatsapp_contacts',
-        '',
-        '-last_interaction',
-        500,
-        0,
-      )
       const activeWhatsappConversations = waContacts.length
 
       // Mapeamento de contatos por user id e por telefone
@@ -140,6 +142,7 @@ routerAdd(
         clients: clientsList,
       })
     } catch (err) {
+      console.log('[admin] Erro em /backend/v1/admin/overview: ' + err)
       return e.json(500, { error: String(err) })
     }
   },
@@ -247,7 +250,7 @@ routerAdd(
         const contacts = $app.findRecordsByFilter(
           'whatsapp_contacts',
           `user = '${clientId}'`,
-          '-last_interaction',
+          '-last_message_at',
           1,
           0,
         )
@@ -262,7 +265,7 @@ routerAdd(
           const contacts = $app.findRecordsByFilter(
             'whatsapp_contacts',
             `phone_number ~ '${cleanPhone.slice(-8)}'`,
-            '-last_interaction',
+            '-last_message_at',
             1,
             0,
           )
@@ -276,31 +279,38 @@ routerAdd(
         contact_id: linkedContact ? linkedContact.id : null,
         contact_name: linkedContact ? linkedContact.getString('name') : null,
         contact_phone: linkedContact ? linkedContact.getString('phone_number') : null,
-        last_interaction: linkedContact ? linkedContact.getString('last_interaction') : null,
-        thread_id: linkedContact ? linkedContact.getString('thread_id') : null,
+        last_interaction: linkedContact
+          ? linkedContact.getString('last_message_at') || linkedContact.getString('updated')
+          : null,
+        thread_id: linkedContact ? linkedContact.getString('conversation_id') || null : null,
       }
 
-      // Histórico recente da conversa WhatsApp (últimas 30 mensagens)
-      const messages = $app.findRecordsByFilter(
-        'whatsapp_messages',
-        `owner = '${clientId}' || from_number ~ '${whatsappDetails.phone.slice(-8)}'`,
-        '-created',
-        30,
-        0,
-      )
+      // Histórico de conversa WhatsApp:
+      // O agente financeiro armazena o histórico em $ai.agents threads ou whatsapp_contacts.conversation_id
+      // Se houver coleção whatsapp_messages no futuro, busca defensivamente; caso contrário retorna array vazio
       const conversationHistory = []
-      for (let i = 0; i < messages.length; i++) {
-        const m = messages[i]
-        conversationHistory.push({
-          id: m.id,
-          direction: m.getString('direction'),
-          message_text: m.getString('message_text'),
-          status: m.getString('status'),
-          created: m.getString('created'),
-        })
+      try {
+        const messages = $app.findRecordsByFilter(
+          'whatsapp_messages',
+          `owner = '${clientId}' || from_number ~ '${whatsappDetails.phone.slice(-8)}'`,
+          '-created',
+          30,
+          0,
+        )
+        for (let i = 0; i < messages.length; i++) {
+          const m = messages[i]
+          conversationHistory.push({
+            id: m.id,
+            direction: m.getString('direction'),
+            message_text: m.getString('message_text'),
+            status: m.getString('status'),
+            created: m.getString('created'),
+          })
+        }
+        conversationHistory.reverse()
+      } catch (_) {
+        // Sem tabela whatsapp_messages; conversationHistory permanece []
       }
-      // Ordena cronológica crescente
-      conversationHistory.reverse()
 
       return e.json(200, {
         client: {
@@ -363,7 +373,7 @@ routerAdd(
         )
         for (let i = 0; i < contacts.length; i++) {
           const c = contacts[i]
-          c.set('thread_id', '')
+          c.set('conversation_id', '')
           $app.save(c)
           resetContactsCount++
         }
@@ -383,7 +393,7 @@ routerAdd(
           )
           for (let i = 0; i < contacts.length; i++) {
             const c = contacts[i]
-            c.set('thread_id', '')
+            c.set('conversation_id', '')
             $app.save(c)
             resetContactsCount++
           }

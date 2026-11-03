@@ -42,6 +42,7 @@ import {
   Trash2,
   ExternalLink,
   ShieldAlert,
+  BookOpen,
   CheckCircle2,
   XCircle,
   ArrowUpDown,
@@ -225,15 +226,28 @@ export const AdminBackoffice: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          onClick={loadData}
-          disabled={loading}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar Dados
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            asChild
+            variant="outline"
+            className="flex items-center gap-2 bg-white text-indigo-700 hover:text-indigo-800 border-indigo-200"
+          >
+            <a href="/admin/docs">
+              <BookOpen className="w-4 h-4 text-indigo-600" />
+              Documentação do Sistema
+            </a>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={loadData}
+            disabled={loading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar Dados
+          </Button>
+        </div>
       </div>
 
       {/* Cartões de Métricas */}

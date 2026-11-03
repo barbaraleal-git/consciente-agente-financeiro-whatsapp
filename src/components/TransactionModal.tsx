@@ -26,7 +26,7 @@ import {
 import { parseCurrencyToCents, maskCurrencyInput } from '@/lib/formatters'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2 } from 'lucide-react'
-import { getCaixinhaIconComponent } from '@/lib/caixinhaIcons'
+import { getCaixinhaIconComponent, renderCaixinhaIcon } from '@/lib/caixinhaIcons'
 
 interface TransactionModalProps {
   open: boolean
@@ -284,15 +284,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               </SelectTrigger>
               <SelectContent>
                 {availableCategories.map((cat) => {
-                  const Icon = getCaixinhaIconComponent(cat.icon)
                   return (
                     <SelectItem key={cat.id} value={cat.id}>
                       <div className="flex items-center gap-2">
                         <span
-                          className="w-4 h-4 rounded flex items-center justify-center text-white shrink-0"
+                          className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
                           style={{ backgroundColor: cat.color }}
                         >
-                          <Icon className="w-2.5 h-2.5" />
+                          {renderCaixinhaIcon(cat.icon, 'w-3 h-3 text-xs')}
                         </span>
                         <span>{cat.name}</span>
                       </div>

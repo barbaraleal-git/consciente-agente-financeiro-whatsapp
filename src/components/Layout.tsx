@@ -17,6 +17,7 @@ import {
   Plus,
   Wallet,
   ShieldCheck,
+  BookOpen,
 } from 'lucide-react'
 
 const baseNavItems = [
@@ -45,7 +46,12 @@ export const Layout: React.FC = () => {
 
   const navItems = [
     ...baseNavItems,
-    ...(isAdmin ? [{ path: '/admin', label: 'Backoffice', icon: ShieldCheck }] : []),
+    ...(isAdmin
+      ? [
+          { path: '/admin', label: 'Backoffice', icon: ShieldCheck },
+          { path: '/admin/docs', label: 'Documentação', icon: BookOpen },
+        ]
+      : []),
   ]
 
   const currentNav = navItems.find((n) => n.path === location.pathname)

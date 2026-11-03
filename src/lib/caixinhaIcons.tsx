@@ -28,33 +28,59 @@ import {
 export interface IconOption {
   id: string
   label: string
-  icon: LucideIcon
+  icon?: LucideIcon
+  emoji?: string
+  category?: 'bichinho' | 'geral'
 }
 
-export const CAIXINHA_ICONS: IconOption[] = [
-  { id: 'plane', label: 'Viagem / Férias', icon: Plane },
-  { id: 'palmtree', label: 'Praia / Férias', icon: Palmtree },
-  { id: 'gift', label: 'Presentes / Festas', icon: Gift },
-  { id: 'gem', label: 'Casamento / Conquista', icon: Gem },
-  { id: 'heart', label: 'Sonho / Família', icon: Heart },
-  { id: 'car', label: 'Carro / Transporte', icon: Car },
-  { id: 'home', label: 'Casa / Reforma', icon: Home },
-  { id: 'utensils', label: 'Alimentação / Restaurantes', icon: Utensils },
-  { id: 'coffee', label: 'Café / Momentos', icon: Coffee },
-  { id: 'shopping-bag', label: 'Compras / Roupas', icon: ShoppingBag },
-  { id: 'gamepad', label: 'Lazer / Games', icon: Gamepad2 },
-  { id: 'film', label: 'Filmes / Streaming', icon: Film },
-  { id: 'heart-pulse', label: 'Saúde / Bem-estar', icon: HeartPulse },
-  { id: 'graduation-cap', label: 'Estudos / Cursos', icon: GraduationCap },
-  { id: 'book', label: 'Educação / Livros', icon: BookOpen },
-  { id: 'banknote', label: 'Salário / Renda Extra', icon: Banknote },
-  { id: 'trending-up', label: 'Investimentos / Futuro', icon: TrendingUp },
-  { id: 'piggy-bank', label: 'Reserva de Emergência', icon: PiggyBank },
-  { id: 'shield-check', label: 'Seguros / Proteção', icon: ShieldCheck },
-  { id: 'sparkles', label: 'Meta Especial', icon: Sparkles },
-  { id: 'smile', label: 'Cuidado Pessoal', icon: Smile },
-  { id: 'ellipsis', label: 'Outros', icon: MoreHorizontal },
+// Lista de figurinhas de bichinhos amigáveis e ícones gerais
+export const BICHINHO_ICONS: IconOption[] = [
+  { id: 'pet-cat', label: 'Gatinho', emoji: '🐱', category: 'bichinho' },
+  { id: 'pet-dog', label: 'Cachorrinho', emoji: '🐶', category: 'bichinho' },
+  { id: 'pet-paw', label: 'Patinhas / Pet', emoji: '🐾', category: 'bichinho' },
+  { id: 'pet-bear', label: 'Ursinho', emoji: '🐻', category: 'bichinho' },
+  { id: 'pet-panda', label: 'Panda', emoji: '🐼', category: 'bichinho' },
+  { id: 'pet-koala', label: 'Coala', emoji: '🐨', category: 'bichinho' },
+  { id: 'pet-lion', label: 'Leãozinho', emoji: '🦁', category: 'bichinho' },
+  { id: 'pet-rabbit', label: 'Coelhinho', emoji: '🐰', category: 'bichinho' },
+  { id: 'pet-fox', label: 'Raposa', emoji: '🦊', category: 'bichinho' },
+  { id: 'pet-hamster', label: 'Hamster', emoji: '🐹', category: 'bichinho' },
+  { id: 'pet-tiger', label: 'Tigrinho', emoji: '🐯', category: 'bichinho' },
+  { id: 'pet-penguin', label: 'Pinguim', emoji: '🐧', category: 'bichinho' },
+  { id: 'pet-duck', label: 'Patinho', emoji: '🦆', category: 'bichinho' },
+  { id: 'pet-owl', label: 'Corujinha', emoji: '🦉', category: 'bichinho' },
+  { id: 'pet-monkey', label: 'Macaco', emoji: '🐵', category: 'bichinho' },
+  { id: 'pet-dolphin', label: 'Golfinho', emoji: '🐬', category: 'bichinho' },
+  { id: 'pet-butterfly', label: 'Borboleta', emoji: '🦋', category: 'bichinho' },
+  { id: 'pet-bee', label: 'Abelhinha', emoji: '🐝', category: 'bichinho' },
 ]
+
+export const GERAL_ICONS: IconOption[] = [
+  { id: 'plane', label: 'Viagem / Férias', icon: Plane, category: 'geral' },
+  { id: 'palmtree', label: 'Praia / Férias', icon: Palmtree, category: 'geral' },
+  { id: 'gift', label: 'Presentes / Festas', icon: Gift, category: 'geral' },
+  { id: 'gem', label: 'Casamento / Conquista', icon: Gem, category: 'geral' },
+  { id: 'heart', label: 'Sonho / Família', icon: Heart, category: 'geral' },
+  { id: 'car', label: 'Carro / Transporte', icon: Car, category: 'geral' },
+  { id: 'home', label: 'Casa / Reforma', icon: Home, category: 'geral' },
+  { id: 'utensils', label: 'Alimentação / Restaurantes', icon: Utensils, category: 'geral' },
+  { id: 'coffee', label: 'Café / Momentos', icon: Coffee, category: 'geral' },
+  { id: 'shopping-bag', label: 'Compras / Roupas', icon: ShoppingBag, category: 'geral' },
+  { id: 'gamepad', label: 'Lazer / Games', icon: Gamepad2, category: 'geral' },
+  { id: 'film', label: 'Filmes / Streaming', icon: Film, category: 'geral' },
+  { id: 'heart-pulse', label: 'Saúde / Bem-estar', icon: HeartPulse, category: 'geral' },
+  { id: 'graduation-cap', label: 'Estudos / Cursos', icon: GraduationCap, category: 'geral' },
+  { id: 'book', label: 'Educação / Livros', icon: BookOpen, category: 'geral' },
+  { id: 'banknote', label: 'Salário / Renda Extra', icon: Banknote, category: 'geral' },
+  { id: 'trending-up', label: 'Investimentos / Futuro', icon: TrendingUp, category: 'geral' },
+  { id: 'piggy-bank', label: 'Reserva de Emergência', icon: PiggyBank, category: 'geral' },
+  { id: 'shield-check', label: 'Seguros / Proteção', icon: ShieldCheck, category: 'geral' },
+  { id: 'sparkles', label: 'Meta Especial', icon: Sparkles, category: 'geral' },
+  { id: 'smile', label: 'Cuidado Pessoal', icon: Smile, category: 'geral' },
+  { id: 'ellipsis', label: 'Outros', icon: MoreHorizontal, category: 'geral' },
+]
+
+export const CAIXINHA_ICONS: IconOption[] = [...BICHINHO_ICONS, ...GERAL_ICONS]
 
 export const CAIXINHA_COLORS = [
   '#f59e0b', // Amber / Ouro
@@ -71,9 +97,25 @@ export const CAIXINHA_COLORS = [
   '#64748b', // Ardósia / Neutro
 ]
 
+export function isEmojiIcon(iconId?: string): boolean {
+  if (!iconId) return false
+  if (iconId.startsWith('emoji:') || iconId.startsWith('pet-')) return true
+  // Se for um caractere emoji direto
+  return /\p{Extended_Pictographic}/u.test(iconId)
+}
+
+export function getEmojiFromIconId(iconId?: string): string {
+  if (!iconId) return '🐾'
+  if (iconId.startsWith('emoji:')) return iconId.slice(6)
+  const match = BICHINHO_ICONS.find((item) => item.id === iconId)
+  if (match && match.emoji) return match.emoji
+  if (/\p{Extended_Pictographic}/u.test(iconId)) return iconId
+  return '🐱'
+}
+
 export function getCaixinhaIconComponent(iconId?: string): LucideIcon {
-  const match = CAIXINHA_ICONS.find((item) => item.id === iconId)
-  if (match) return match.icon
+  const match = GERAL_ICONS.find((item) => item.id === iconId)
+  if (match && match.icon) return match.icon
 
   // Fallbacks for legacy icon ids
   switch (iconId) {
@@ -125,6 +167,19 @@ export function renderCaixinhaIcon(
   className = 'w-4 h-4',
   style?: React.CSSProperties,
 ) {
+  if (isEmojiIcon(iconId)) {
+    const emoji = getEmojiFromIconId(iconId)
+    return (
+      <span
+        className={`inline-flex items-center justify-center select-none leading-none ${className}`}
+        style={style}
+        role="img"
+        aria-label="bichinho"
+      >
+        {emoji}
+      </span>
+    )
+  }
   const Icon = getCaixinhaIconComponent(iconId)
   return <Icon className={className} style={style} />
 }

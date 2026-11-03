@@ -25,11 +25,31 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.39',
+    date: '03/11/2026',
+    title:
+      'Documento Formal de Backlog / Pendências no /admin/docs e Versionamento de Prioridades do Produto',
+    tag: 'Atual',
+    highlights: [
+      'Documento formal "Backlog / Pendências" criado em docs/BACKLOG.md e disponibilizado em /admin/docs como aba dedicada.',
+      'Lista completa com numeração oficial mantida e três status em texto claro: Concluído, Respondido/Aguardando decisão e Backlog.',
+      'Itens Concluídos devidamente registrados e mapeados: Áudio no WhatsApp, Rastreabilidade de origem, Separação cliente × admin, Backoffice /admin, Item 5 (Documentos no /admin/docs), Item 9 (Custo mensal no backoffice), Item 12 (Figurinhas de bichinhos), Item 13 (Filtro mês corrente), Item 16 (Correção erro 500), Item 19 (Resumo visual no WhatsApp) e Item 20 (Foto de perfil via API).',
+      'Itens Respondidos / Aguardando decisão documentados com síntese técnica: Item 2 (Impacto do áudio no custo: desprezível a R$ 0,001), Item 4 (Previsão de custo por cliente/mês), Item 6 (Regras de investimento explicadas; pendente formato de caixinha), Item 21 (Cyber security contínua) e Item 29 (Teste de carga estruturado).',
+      'Itens de Backlog (16 itens) organizados com descrições objetivas e dependências identificadas para os próximos passos.',
+      'Zero regressão: webhook Meta Cloud API, agente IA nativo, regras de centavos, custos por cliente e roteiro de testes mantidos intactos.',
+    ],
+    details: [
+      'docs/BACKLOG.md criado com formatação Markdown estruturada e tabelas de status.',
+      'src/data/docsContent.ts atualizado exportando BACKLOG_MARKDOWN.',
+      'src/pages/AdminDocs.tsx atualizado com aba "Backlog / Pendências" e ícone ListTodo, com renderização Markdown legível.',
+    ],
+  },
+  {
     version: '0.0.38',
     date: '03/11/2026',
     title:
       'Resumo Visual Padronizado das Caixinhas no WhatsApp e Atualização da Foto de Perfil via Meta API — Itens 19 e 20 da Lista do MVP',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Item 19 — Resumo Visual Padronizado das Caixinhas no WhatsApp: Sempre que o cliente solicita visão geral de suas caixinhas ("quais são minhas caixinhas?", "resumo das caixinhas", etc.), a resposta segue estritamente um layout visual em texto com barras em caracteres de bloco proporcionais (▓▓▓▓░░░░░░), percentual de consumo e tetos.',
       'Cabeçalho e Rodapé Padronizados: Topo com mês corrente ("📊 Suas Caixinhas — Mês de X") e rodapé com consolidado do mês (total gasto, total dos tetos e saldo restante ou estouro geral).',

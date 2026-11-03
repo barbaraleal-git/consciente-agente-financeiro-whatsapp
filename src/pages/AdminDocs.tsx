@@ -5,13 +5,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownRenderer } from '@/components/MarkdownRenderer'
-import { ARQUITETURA_MARKDOWN, TESTES_REGRESSIVOS_MARKDOWN } from '@/data/docsContent'
-import { BookOpen, ShieldAlert, FileText, CheckSquare, ArrowLeft } from 'lucide-react'
+import {
+  ARQUITETURA_MARKDOWN,
+  TESTES_REGRESSIVOS_MARKDOWN,
+  BACKLOG_MARKDOWN,
+} from '@/data/docsContent'
+import { BookOpen, ShieldAlert, FileText, CheckSquare, ListTodo, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export const AdminDocs: React.FC = () => {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'arquitetura' | 'testes'>('arquitetura')
+  const [activeTab, setActiveTab] = useState<'arquitetura' | 'testes' | 'backlog'>('backlog')
 
   const isAdmin = user?.role === 'admin' || user?.email === 'barbara.ferreira.leal@gmail.com'
 
@@ -53,7 +57,8 @@ export const AdminDocs: React.FC = () => {
             </Badge>
           </div>
           <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Consulte a especificação arquitetural e o roteiro oficial de testes regressivos.
+            Consulte o backlog de pendências, a especificação arquitetural e o roteiro oficial de
+            testes regressivos.
           </p>
         </div>
       </div>
@@ -61,10 +66,17 @@ export const AdminDocs: React.FC = () => {
       {/* Tabs */}
       <Tabs
         value={activeTab}
-        onValueChange={(val) => setActiveTab(val as 'arquitetura' | 'testes')}
+        onValueChange={(val) => setActiveTab(val as 'arquitetura' | 'testes' | 'backlog')}
         className="w-full space-y-4"
       >
-        <TabsList className="grid grid-cols-2 max-w-md bg-slate-200/80 p-1">
+        <TabsList className="grid grid-cols-3 max-w-lg bg-slate-200/80 p-1">
+          <TabsTrigger
+            value="backlog"
+            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700"
+          >
+            <ListTodo className="w-4 h-4" />
+            Backlog / Pendências
+          </TabsTrigger>
           <TabsTrigger
             value="arquitetura"
             className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700"
@@ -80,6 +92,26 @@ export const AdminDocs: React.FC = () => {
             Testes Regressivos
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="backlog">
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="bg-slate-50/60 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2">
+                <ListTodo className="w-5 h-5 text-indigo-600" />
+                <CardTitle className="text-lg font-bold text-slate-900">
+                  BACKLOG.md — Backlog / Pendências
+                </CardTitle>
+              </div>
+              <CardDescription className="text-xs text-slate-500">
+                Quadro formal de prioridades do produto com status de cada item (Concluído, Backlog
+                e Respondido/Aguardando decisão).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 lg:p-8">
+              <MarkdownRenderer content={BACKLOG_MARKDOWN} />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="arquitetura">
           <Card className="border-slate-200 shadow-sm">

@@ -414,10 +414,18 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   return output.trim()
 }
 
-module.exports = {
+// Exporta tanto em module.exports quanto no globalThis (PocketBase JSVM)
+const caixinhasSummaryExports = {
   isCaixinhasOverviewIntent,
   buildCaixinhasSummaryForUser,
   formatCentsToBrl,
   makeProgressBar,
   resolveCaixinhaEmoji,
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.__caixinhasSummaryHelper = caixinhasSummaryExports
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = caixinhasSummaryExports
 }

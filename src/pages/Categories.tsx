@@ -196,7 +196,10 @@ export const Categories: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map((cat) => {
           const currentMonthTxs = transactions.filter(
-            (t) => t.category === cat.id && t.date.startsWith(new Date().toISOString().slice(0, 7)),
+            (t) =>
+              (t.status || 'active') === 'active' &&
+              t.category === cat.id &&
+              t.date.startsWith(new Date().toISOString().slice(0, 7)),
           )
           const totalMonthlySpent = currentMonthTxs.reduce((sum, t) => sum + t.amount, 0)
 

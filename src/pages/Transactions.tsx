@@ -61,7 +61,7 @@ export const Transactions: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [periodFilter, setPeriodFilter] = useState('thisMonth') // Default: mês corrente (1º dia até hoje)
-  const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'cancelled'>('active') // Default: somente ativas
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'cancelled'>('all') // Default: todos (ativas + canceladas visíveis para conferência)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
   // Pagination
@@ -100,7 +100,7 @@ export const Transactions: React.FC = () => {
 
     return transactions
       .filter((t) => {
-        // Status filter (Item 27: deletadas NUNCA aparecem na visão do cliente; canceladas aparecem se o filtro permitir)
+        // Status filter (Item 27: canceladas aparecem por padrão para transparência; deletadas nunca aparecem na visão cliente)
         const st = t.status || 'active'
         if (st === 'deleted') return false
         if (statusFilter === 'active' && st !== 'active') return false
@@ -287,9 +287,9 @@ export const Transactions: React.FC = () => {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">Todos os Status</SelectItem>
                 <SelectItem value="active">Somente Ativos</SelectItem>
                 <SelectItem value="cancelled">Cancelados</SelectItem>
-                <SelectItem value="all">Todos os Status</SelectItem>
               </SelectContent>
             </Select>
           </div>

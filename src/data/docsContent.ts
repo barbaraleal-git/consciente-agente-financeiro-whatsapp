@@ -138,7 +138,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Item 36: Bug do Upload de Foto de Perfil — Rejeição de JPEG pequeno com mensagem enganosa** | **BUG CORRIGIDO**: Causa raiz identificada e resolvida: o runtime JSVM (Goja) do PocketBase não populava \`findUploadedFile\` em chamadas multipart do browser, deixando \`fileBytes\` vazio e disparando a mensagem 400 antes de chegar à Meta. O frontend (\`finance.ts\`) agora converte a imagem para Base64/JSON antes do envio e o backend decodifica de forma segura via \`$security.base64Decode\`, com descoberta dinâmica de App ID e upload direto na Meta Graph API. A mensagem genérica foi removida e qualquer retorno da Meta é exibido com seu motivo real. | **Concluído** |
 | **Item 22: Guardrail de temas do agente** | Regras estritas de moderação no system prompt do agente (\`financeiro-whatsapp\`) para declinar educadamente assuntos fora de finanças pessoais (ex.: "Quem descobriu o Brasil?") e conduzir o cliente de volta com foco e empatia. | **Concluído** |
 | **Item 23: Cancelar/substituir lançamento** | Fluxo conversacional seguro de cancelamento via WhatsApp: cliente pede para cancelar ("cancela o último", "apaga esse lançamento"), o agente solicita confirmação simples ("Tem certeza que deseja cancelar o lançamento de R$ X? Responda SIM para confirmar"), e após "SIM" atualiza o status para \`cancelled\`. Transação cancelada é excluída dos totais e do saldo. | **Concluído** |
-| **Item 27: Deleção lógica com status** | Implementado campo \`status\` (\`active\`, \`cancelled\`, \`deleted\`) na coleção de transações com backfill retrocompatível idempotente. Deleções no painel e cancelamentos no WhatsApp são puramente lógicos para auditoria e histórico de segurança. Na listagem de Transações e no Backoffice os registros mantêm badges claros (\`Cancelado\`, \`Excluído\`), e totais consideram estritamente \`active\`. | **Concluído** |
+| **Item 27: Deleção lógica com status e histórico visível** | Implementado campo \`status\` (\`active\`, \`cancelled\`, \`deleted\`) na coleção de transações com backfill retrocompatível idempotente. Deleções no painel e cancelamentos no WhatsApp são puramente lógicos para auditoria e histórico de segurança. Na listagem de Transações do cliente (\`/transactions\`), o filtro padrão exibe todos os lançamentos (ativos + cancelados), com canceladas visualmente diferenciadas (badge "Cancelado", texto tachado e opacidade) para dar segurança e transparência imediata ao cliente de que o cancelamento foi atendido. REGRA ABSOLUTA: totais, somatórias, gráficos e métricas de todas as telas (Transações, Dashboard, Caixinhas, Relatórios e Backoffice) consideram estritamente lançamentos \`active\`. | **Concluído** |
 | **Item 28: Gasto retroativo (lado do agente)** | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 35", "terça gastei 50"), registrar com o campo \`date\` correspondente e \`is_retroactive = true\`. A confirmação do agente menciona explicitamente a data original e a interface exibe o badge "Retroativo". | **Concluído** |
 | **Idempotência de Webhook WhatsApp (Meta retry)** | Proteção estrita contra retries automáticos da Meta (>5s): deduplicação por \`wamid\` (message_id) em memória rápida com TTL e persistência na coleção \`whatsapp_processed_messages\`. Evita mensagens duplicadas ou falsas rejeições de duplicidade. | **Concluído** |
 | **Garantia de Integridade de Status e Retroativo** | Hook \`transactions_integrity.js\` garante que toda transação nasça com \`status='active'\` e tenha \`is_retroactive=true\` sempre que a data informada diferir do dia da mensagem. Proteção de deleção lógica definitiva. | **Concluído** |
@@ -191,7 +191,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
-Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a R intactos e adiciona os novos cenários S, T, U e V para a confiabilidade de lançamentos (deleção lógica, guardrails, gasto retroativo e cancelamento).
+Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a W intactos e adiciona o cenário X para a exibição de transações canceladas no extrato com isolamento total dos somatórios.
 
 ---
 
@@ -471,11 +471,40 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Acesse o Dashboard (\`/\`), Caixinhas (\`/budgets\`) e Relatórios (\`/reports\`). Observe os totais de despesas e barras de consumo das caixinhas.
    - Acesse Transações (\`/transactions\`):
      - Localize um lançamento ativo e clique em "Excluir" (ou cancele um gasto pelo WhatsApp conforme o cenário U).
-     - Verifique que na lista com o filtro "Somente Ativos" (padrão) a transação não é mais exibida.
-     - Ao alterar o filtro para "Cancelados" ou "Todos os Status", a transação aparece identificada com o badge **"Cancelado"** ou **"Excluído"**, texto tachado e sem botões de re-edição.
+     - Verifique que na lista com o filtro "Somente Ativos" a transação não é exibida.
+     - No filtro padrão "Todos os Status" ou no filtro "Cancelados", a transação aparece identificada com o badge **"Cancelado"** ou **"Excluído"**, texto tachado e sem botões de re-edição.
    - **Verificação nos Totais**:
      - No **Dashboard**: os cartões de "Total de Despesas", "Saldo do Mês" e as barras de progresso das caixinhas deduzem imediatamente o valor cancelado/excluído.
      - Em **Caixinhas**: o teto consumido e a porcentagem gasta da categoria ignoram transações canceladas/excluídas.
      - Em **Relatórios**: o resumo executivo, total de despesas e gráficos excluem registros inativos.
      - No **Backoffice Admin**: o histórico de transações do cliente mantém o registro visível com o badge de status para fins de auditoria, mas sem inflar totais ativos.
+
+---
+
+## X) Histórico Visível de Transações Canceladas na Visão do Cliente e Isolamento Estrito de Totais
+
+1. **Visibilidade Imediata de Transações Canceladas (Transparência ao Cliente)**:
+   - Acesse a tela de Transações (\`/transactions\`) como cliente comum (sem selecionar nenhum filtro manual).
+   - **Verificação do Filtro Padrão**:
+     - O seletor de "Status" inicia automaticamente selecionado em **"Todos os Status"**.
+     - Todos os lançamentos ativos e cancelados aparecem listados cronologicamente na consulta normal.
+     - Lançamentos cancelados exibem:
+       - Linha com opacidade reduzida (\`opacity-60\`).
+       - Descrição com formatação tachada (\`line-through\`).
+       - Badge destacado vermelho/rosa **"Cancelado"** ao lado da descrição e no card mobile.
+       - Botões de "Editar" e "Excluir" ocultos para transações canceladas ou excluídas.
+     - O cliente vê imediatamente na listagem que seu pedido de cancelamento (feito via WhatsApp ou painel) foi efetivado com sucesso, construindo relação de confiança com o app.
+   - **Refinamento Opcional por Filtro**:
+     - Ao selecionar "Somente Ativos", a lista oculta os cancelados e mostra apenas transações ativas.
+     - Ao selecionar "Cancelados", a lista exibe exclusivamente os lançamentos cancelados.
+     - Ao retornar para "Todos os Status", o histórico completo é restaurado.
+
+2. **Isolamento Absoluto de Totais e Somatórias (REGRA SEM EXCEÇÃO)**:
+   - Em **nenhuma hipótese** um lançamento cancelado (\`status = 'cancelled'\`) ou excluído (\`status = 'deleted'\`) pode compor somas, médias ou totais financeiros em qualquer tela do app:
+     - **Na tela de Transações (\`/transactions\`)**: a listagem serve para conferência e auditoria visual; nenhum valor cancelado é computado em somas ou resumos.
+     - **No Dashboard (\`/\`)**: "Total de Despesas", "Saldo do Mês", "Total de Receitas" e consumo por caixinha consideram estritamente \`status = 'active'\` (com fallback retrocompatível para registros antigos sem campo status).
+     - **Em Caixinhas / Orçamentos (\`/budgets\`)**: o teto consumido (R$ gasto) e as barras de porcentagem consideram unicamente transações ativas. Lançamento cancelado é 100% estornado da caixinha correspondente.
+     - **Em Relatórios (\`/reports\`)**: resumo executivo, total geral, despesas por categoria e evolução mensal filtram rigorosamente \`status = 'active'\`.
+     - **Em Categorias (\`/categories\`)**: a contagem de lançamentos do mês e o total acumulado por categoria ignoram cancelados. A verificação para exclusão de categoria barra apenas se houver transações ATIVAS vinculadas.
+     - **No Backoffice (/admin)**: os cartões de métricas globais e o detalhe do cliente somam exclusivamente despesas ativas.
 `

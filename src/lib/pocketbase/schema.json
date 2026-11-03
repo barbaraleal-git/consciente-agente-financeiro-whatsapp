@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T15:53:32.967Z",
+  "generatedAt": "2026-11-03T16:38:22.071Z",
   "collections": [
     {
       "name": "users",
@@ -210,6 +210,19 @@
         {
           "name": "message_timestamp",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["active", "cancelled", "deleted"]
+        },
+        {
+          "name": "is_retroactive",
+          "type": "bool",
           "required": false,
           "system": false
         }
@@ -559,6 +572,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "pending_cancel",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

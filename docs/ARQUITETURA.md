@@ -157,3 +157,25 @@ node scripts/reset-dev.js --yes
 3. **Trava Pré-Reset**: O script valida a existência de `whatsapp_status` e se o token Meta está ativo antes de apagar qualquer dado. Se o canal estiver ausente ou sem token, o script aborta a operação.
 4. **Trava Pós-Reset Obrigatória**: Imediatamente após a limpeza das coleções de negócio, o script executa uma checagem mandatória de que `whatsapp_status` permanece intacto com `token_configurado: true`, `phone_number_id` e `waba_id` preservados. Caso o canal não passe na validação, o script reporta erro crítico.
 5. **O que é zerado**: `alerts`, `import_jobs`, `transactions`, `budgets`, `categories`, `whatsapp_contacts` e `users` (o visitante de serviço `whatsapp-visitante@agente.internal` é recriado sob demanda no primeiro contato).
+
+---
+
+## 10. Gestão Operacional de Custos por Cliente (Backoffice Admin)
+
+Implementado no hook `pocketbase/hooks/admin_backoffice.js` com rotas protegidas para auditoria e controle de margem financeira:
+
+### Modelagem Unitária de Custos Operacionais
+
+- **Transação via Áudio WhatsApp (`source = 'whatsapp_audio'`)**: `R$ 0,001` (transcrição via Groq Whisper large-v3-turbo / large-v3).
+- **Mensagem de IA do Agente (respostas geradas pelo assistente)**: `R$ 0,02` (estimativa média de resposta de IA pelo modelo nativo `$ai.agent`).
+- **Mensagens Ativas / Utility Templates (fora da janela de 24h)**: `R$ 0,04` (custo por disparo ativo na Meta).
+- **Mensagens de Serviço (dentro de 24h, confirmação de leitura blue ticks, typing/digitando)**: `R$ 0,00` (isento de tarifação pela Meta).
+
+### Endpoints Administrativos
+
+- `GET /backend/v1/admin/costs?month=YYYY-MM`: Agrega o consumo mensal por cliente, calcula totais gerais do mês e disponibiliza o histórico dos últimos 6 meses.
+- `GET /backend/v1/admin/clients/:id?month=YYYY-MM`: Retorna o detalhamento individual do cliente enriquecido com o objeto `estimated_cost` contendo a decomposição de áudio, texto, IA e valor consolidado em R$.
+
+### Proteção de Papel
+
+- Visível **exclusivamente para a conta da dona do produto** (`barbara.ferreira.leal@gmail.com`) ou usuários com `role: 'admin'`. Requisições não autenticadas ou de clientes comuns retornam `403 Forbidden`.

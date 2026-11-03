@@ -553,6 +553,62 @@ export interface AdminClientDetail {
     status: string
     created: string
   }>
+  estimated_cost?: {
+    month: string
+    tx_audio_count: number
+    tx_text_count: number
+    tx_manual_count: number
+    tx_total_count: number
+    ai_messages_count: number
+    utility_messages_count: number
+    cost_audio_brl: number
+    cost_ai_brl: number
+    cost_utility_brl: number
+    total_cost_brl: number
+  }
+}
+
+export interface AdminClientCostItem {
+  client_id: string
+  client_name: string
+  client_email: string
+  client_phone: string
+  has_whatsapp_linked: boolean
+  tx_audio_count: number
+  tx_text_count: number
+  tx_manual_count: number
+  tx_total_count: number
+  ai_messages_count: number
+  utility_messages_count: number
+  cost_audio_brl: number
+  cost_ai_brl: number
+  cost_utility_brl: number
+  estimated_cost_brl: number
+}
+
+export interface AdminCostsResponse {
+  month: string
+  available_months: string[]
+  rates: {
+    audio_tx: number
+    ai_message: number
+    utility_message: number
+    service_message: number
+  }
+  totals: {
+    total_clients: number
+    total_audio_tx: number
+    total_text_tx: number
+    total_manual_tx: number
+    total_tx: number
+    total_ai_messages: number
+    total_utility_messages: number
+    cost_audio_brl: number
+    cost_ai_brl: number
+    cost_utility_brl: number
+    total_estimated_cost_brl: number
+  }
+  clients: AdminClientCostItem[]
 }
 
 export const adminService = {
@@ -562,8 +618,16 @@ export const adminService = {
     })
   },
 
-  getClientDetail: async (clientId: string): Promise<AdminClientDetail> => {
-    return pb.send(`/backend/v1/admin/clients/${clientId}`, {
+  getClientDetail: async (clientId: string, month?: string): Promise<AdminClientDetail> => {
+    const q = month ? `?month=${encodeURIComponent(month)}` : ''
+    return pb.send(`/backend/v1/admin/clients/${clientId}${q}`, {
+      method: 'GET',
+    })
+  },
+
+  getCosts: async (month?: string): Promise<AdminCostsResponse> => {
+    const q = month ? `?month=${encodeURIComponent(month)}` : ''
+    return pb.send(`/backend/v1/admin/costs${q}`, {
       method: 'GET',
     })
   },

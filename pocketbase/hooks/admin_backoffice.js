@@ -175,6 +175,11 @@ routerAdd(
         return e.json(404, { error: 'Cliente não encontrado' })
       }
 
+      // Parâmetro opcional de mês de referência (YYYY-MM), padrão = mês atual
+      const qMonth = e.requestInfo().query?.month || ''
+      const targetMonthStr =
+        qMonth && /^\d{4}-\d{2}$/.test(qMonth) ? qMonth : new Date().toISOString().slice(0, 7)
+
       // Caixinhas (budgets + categoria vinculada)
       const budgets = $app.findRecordsByFilter(
         'budgets',
@@ -312,6 +317,127 @@ routerAdd(
         // Sem tabela whatsapp_messages; conversationHistory permanece []
       }
 
+      // ----------------------------------------------------
+      // Cálculo de Custo Estimado do Cliente no mês de referência
+      // Modelagem de custos (R$):
+      // - Transação via áudio WhatsApp: R$ 0,001 (Groq Whisper)
+      // - Mensagem de IA do agente: R$ 0,02 (resposta gerada)
+      // - Mensagem ativa/utility fora de 24h: R$ 0,04
+      // - Mensagens de serviço (read/typing): R$ 0
+      // ----------------------------------------------------
+      const COST_AUDIO_TX = 0.001
+      const COST_AI_MESSAGE = 0.02
+      const COST_UTILITY_MSG = 0.04
+
+      // 1. Transações do cliente no mês selecionado
+      let clientMonthTx = []
+      try {
+        clientMonthTx = $app.findRecordsByFilter(
+          'transactions',
+          `owner = '${clientId}' && (date ~ '${targetMonthStr}' || created ~ '${targetMonthStr}')`,
+          '-created',
+          1000,
+          0,
+        )
+      } catch (_) {
+        try {
+          clientMonthTx = $app.findRecordsByFilter(
+            'transactions',
+            `owner = '${clientId}'`,
+            '-created',
+            500,
+            0,
+          )
+        } catch (_) {}
+      }
+
+      let txAudioMonth = 0
+      let txTextMonth = 0
+      let txManualMonth = 0
+
+      for (let i = 0; i < clientMonthTx.length; i++) {
+        const tx = clientMonthTx[i]
+        const dStr = (tx.getString('date') || tx.getString('created') || '').slice(0, 7)
+        if (dStr === targetMonthStr) {
+          const s = tx.getString('source')
+          if (s === 'whatsapp_audio') {
+            txAudioMonth++
+          } else if (s === 'whatsapp_text' || s === 'whatsapp') {
+            txTextMonth++
+          } else {
+            txManualMonth++
+          }
+        }
+      }
+
+      // 2. Mensagens do Agente (respostas de IA) no mês selecionado
+      let aiMessagesMonth = 0
+      let utilityMessagesMonth = 0
+
+      // Verifica histórico do agente nativo via conversations/messages
+      let clientConvList = []
+      try {
+        clientConvList = $ai.agent('financeiro-whatsapp').listConversations({
+          user_id: clientId,
+          limit: 50,
+        })
+      } catch (_) {}
+
+      if (Array.isArray(clientConvList) && clientConvList.length > 0) {
+        for (let cIdx = 0; cIdx < clientConvList.length; cIdx++) {
+          const conv = clientConvList[cIdx]
+          try {
+            const mList = $ai.agent('financeiro-whatsapp').listMessages({
+              conversation_id: conv.id,
+              user_id: clientId,
+              limit: 200,
+            })
+            const msgs =
+              mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+            for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
+              const msg = msgs[mIdx]
+              const mDate = (msg.created || '').slice(0, 7)
+              if (mDate === targetMonthStr && msg.role === 'assistant') {
+                aiMessagesMonth++
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Fallback/ajuste com whatsapp_contacts caso listMessages não cubra ou seja novo
+      if (aiMessagesMonth === 0 && linkedContact) {
+        const contactUpdatedMonth = (
+          linkedContact.getString('last_message_at') ||
+          linkedContact.getString('updated') ||
+          ''
+        ).slice(0, 7)
+        if (contactUpdatedMonth === targetMonthStr) {
+          // O total de mensagens gravadas é contato de entrada; cada entrada gera uma resposta de IA
+          const contactMsgCount = linkedContact.getInt('messages_count') || 0
+          aiMessagesMonth = contactMsgCount
+        }
+      }
+
+      const costAudio = txAudioMonth * COST_AUDIO_TX
+      const costAi = aiMessagesMonth * COST_AI_MESSAGE
+      const costUtility = utilityMessagesMonth * COST_UTILITY_MSG
+      const totalEstimatedCost = Math.round((costAudio + costAi + costUtility) * 10000) / 10000
+
+      const estimatedCostData = {
+        month: targetMonthStr,
+        tx_audio_count: txAudioMonth,
+        tx_text_count: txTextMonth,
+        tx_manual_count: txManualMonth,
+        tx_total_count: txAudioMonth + txTextMonth + txManualMonth,
+        ai_messages_count: aiMessagesMonth,
+        utility_messages_count: utilityMessagesMonth,
+        cost_audio_brl: Math.round(costAudio * 10000) / 10000,
+        cost_ai_brl: Math.round(costAi * 10000) / 10000,
+        cost_utility_brl: Math.round(costUtility * 10000) / 10000,
+        total_cost_brl: totalEstimatedCost,
+      }
+
       return e.json(200, {
         client: {
           id: client.id,
@@ -327,6 +453,7 @@ routerAdd(
         recent_transactions: recentTransactions,
         whatsapp: whatsappDetails,
         conversation_history: conversationHistory,
+        estimated_cost: estimatedCostData,
       })
     } catch (err) {
       return e.json(500, { error: String(err) })
@@ -524,6 +651,248 @@ routerAdd(
           : 'Número do WhatsApp desvinculado com sucesso',
       })
     } catch (err) {
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 5. Custos mensais acumulados por cliente (Item 9 das prioridades)
+// Rota dedicada e segura: GET /backend/v1/admin/costs?month=YYYY-MM
+// Modelagem de custos:
+// - Áudio WhatsApp: R$ 0,001 (Groq Whisper)
+// - Mensagens de IA (respostas geradas): R$ 0,02
+// - Mensagens ativas/utility fora de 24h: R$ 0,04
+// - Mensagens de serviço (read/typing): R$ 0
+routerAdd(
+  'GET',
+  '/backend/v1/admin/costs',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const qMonth = e.requestInfo().query?.month || ''
+      const currentMonthStr = new Date().toISOString().slice(0, 7)
+      const targetMonthStr = qMonth && /^\d{4}-\d{2}$/.test(qMonth) ? qMonth : currentMonthStr
+
+      const COST_AUDIO_TX = 0.001
+      const COST_AI_MESSAGE = 0.02
+      const COST_UTILITY_MSG = 0.04
+
+      // Lista de usuários reais (exclui o visitante técnico de serviço)
+      const allUsers = $app.findRecordsByFilter(
+        '_pb_users_auth_',
+        "email != 'whatsapp-visitante@agente.internal'",
+        '-created',
+        500,
+        0,
+      )
+
+      // Todas as transações para agregar por mês
+      let allTransactions = []
+      try {
+        allTransactions = $app.findRecordsByFilter('transactions', '', '-created', 2000, 0)
+      } catch (_) {}
+
+      // Mapeamento de contatos do WhatsApp por user_id
+      let waContacts = []
+      try {
+        waContacts = $app.findRecordsByFilter('whatsapp_contacts', '', '-last_message_at', 500, 0)
+      } catch (_) {}
+
+      const contactByUser = {}
+      for (let i = 0; i < waContacts.length; i++) {
+        const c = waContacts[i]
+        const uId = c.getString('user')
+        if (uId) {
+          contactByUser[uId] = c
+        }
+      }
+
+      // Agrega contagens de transações do mês por usuário
+      const audioTxByUser = {}
+      const textTxByUser = {}
+      const manualTxByUser = {}
+
+      for (let i = 0; i < allTransactions.length; i++) {
+        const tx = allTransactions[i]
+        const ownerId = tx.getString('owner')
+        if (!ownerId) continue
+
+        const dStr = (tx.getString('date') || tx.getString('created') || '').slice(0, 7)
+        if (dStr === targetMonthStr) {
+          const s = tx.getString('source')
+          if (s === 'whatsapp_audio') {
+            audioTxByUser[ownerId] = (audioTxByUser[ownerId] || 0) + 1
+          } else if (s === 'whatsapp_text' || s === 'whatsapp') {
+            textTxByUser[ownerId] = (textTxByUser[ownerId] || 0) + 1
+          } else {
+            manualTxByUser[ownerId] = (manualTxByUser[ownerId] || 0) + 1
+          }
+        }
+      }
+
+      // Agrega mensagens de IA por usuário no mês
+      const aiMessagesByUser = {}
+      const utilityMessagesByUser = {}
+
+      for (let uIdx = 0; uIdx < allUsers.length; uIdx++) {
+        const u = allUsers[uIdx]
+        const uId = u.id
+        let aiCount = 0
+
+        // 1. Tenta listar mensagens do agente nativo
+        let convs = []
+        try {
+          convs = $ai.agent('financeiro-whatsapp').listConversations({
+            user_id: uId,
+            limit: 50,
+          })
+        } catch (_) {}
+
+        if (Array.isArray(convs) && convs.length > 0) {
+          for (let cIdx = 0; cIdx < convs.length; cIdx++) {
+            const conv = convs[cIdx]
+            try {
+              const mList = $ai.agent('financeiro-whatsapp').listMessages({
+                conversation_id: conv.id,
+                user_id: uId,
+                limit: 200,
+              })
+              const msgs =
+                mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+              for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
+                const msg = msgs[mIdx]
+                const mDate = (msg.created || '').slice(0, 7)
+                if (mDate === targetMonthStr && msg.role === 'assistant') {
+                  aiCount++
+                }
+              }
+            } catch (_) {}
+          }
+        }
+
+        // 2. Fallback por contato WhatsApp se não encontrou mensagens pelo histórico do agente
+        if (aiCount === 0 && contactByUser[uId]) {
+          const c = contactByUser[uId]
+          const cMonth = (c.getString('last_message_at') || c.getString('updated') || '').slice(
+            0,
+            7,
+          )
+          if (cMonth === targetMonthStr) {
+            aiCount = c.getInt('messages_count') || 0
+          }
+        }
+
+        aiMessagesByUser[uId] = aiCount
+      }
+
+      // Monta lista detalhada de custos por cliente
+      let totalAudioCount = 0
+      let totalTextCount = 0
+      let totalManualCount = 0
+      let totalAiCount = 0
+      let totalUtilityCount = 0
+      let totalGlobalCost = 0
+
+      const clientsCosts = []
+
+      for (let i = 0; i < allUsers.length; i++) {
+        const u = allUsers[i]
+        const uId = u.id
+        const userPhone = u.getString('phone') || ''
+        const linkedContact = contactByUser[uId]
+
+        const txAudio = audioTxByUser[uId] || 0
+        const txText = textTxByUser[uId] || 0
+        const txManual = manualTxByUser[uId] || 0
+        const txTotal = txAudio + txText + txManual
+
+        const aiMsgs = aiMessagesByUser[uId] || 0
+        const utilityMsgs = utilityMessagesByUser[uId] || 0
+
+        const costAudio = txAudio * COST_AUDIO_TX
+        const costAi = aiMsgs * COST_AI_MESSAGE
+        const costUtility = utilityMsgs * COST_UTILITY_MSG
+        const clientCost = Math.round((costAudio + costAi + costUtility) * 10000) / 10000
+
+        totalAudioCount += txAudio
+        totalTextCount += txText
+        totalManualCount += txManual
+        totalAiCount += aiMsgs
+        totalUtilityCount += utilityMsgs
+        totalGlobalCost += clientCost
+
+        clientsCosts.push({
+          client_id: uId,
+          client_name: u.getString('name') || 'Sem nome',
+          client_email: u.getString('email'),
+          client_phone: userPhone || (linkedContact ? linkedContact.getString('phone_number') : ''),
+          has_whatsapp_linked: !!(linkedContact || userPhone),
+          tx_audio_count: txAudio,
+          tx_text_count: txText,
+          tx_manual_count: txManual,
+          tx_total_count: txTotal,
+          ai_messages_count: aiMsgs,
+          utility_messages_count: utilityMsgs,
+          cost_audio_brl: Math.round(costAudio * 10000) / 10000,
+          cost_ai_brl: Math.round(costAi * 10000) / 10000,
+          cost_utility_brl: Math.round(costUtility * 10000) / 10000,
+          estimated_cost_brl: clientCost,
+        })
+      }
+
+      // Ordena por custo estimado (maior primeiro)
+      clientsCosts.sort((a, b) => {
+        if (b.estimated_cost_brl !== a.estimated_cost_brl) {
+          return b.estimated_cost_brl - a.estimated_cost_brl
+        }
+        return b.tx_total_count - a.tx_total_count
+      })
+
+      // Meses disponíveis para seleção histórica (mês atual + 5 anteriores)
+      const availableMonths = []
+      const refDate = new Date()
+      for (let m = 0; m < 6; m++) {
+        const d = new Date(refDate.getFullYear(), refDate.getMonth() - m, 1)
+        const val = d.toISOString().slice(0, 7)
+        availableMonths.push(val)
+      }
+
+      return e.json(200, {
+        month: targetMonthStr,
+        available_months: availableMonths,
+        rates: {
+          audio_tx: COST_AUDIO_TX,
+          ai_message: COST_AI_MESSAGE,
+          utility_message: COST_UTILITY_MSG,
+          service_message: 0,
+        },
+        totals: {
+          total_clients: allUsers.length,
+          total_audio_tx: totalAudioCount,
+          total_text_tx: totalTextCount,
+          total_manual_tx: totalManualCount,
+          total_tx: totalAudioCount + totalTextCount + totalManualCount,
+          total_ai_messages: totalAiCount,
+          total_utility_messages: totalUtilityCount,
+          cost_audio_brl: Math.round(totalAudioCount * COST_AUDIO_TX * 10000) / 10000,
+          cost_ai_brl: Math.round(totalAiCount * COST_AI_MESSAGE * 10000) / 10000,
+          cost_utility_brl: Math.round(totalUtilityCount * COST_UTILITY_MSG * 10000) / 10000,
+          total_estimated_cost_brl: Math.round(totalGlobalCost * 10000) / 10000,
+        },
+        clients: clientsCosts,
+      })
+    } catch (err) {
+      console.log('[admin] Erro em /backend/v1/admin/costs: ' + err)
       return e.json(500, { error: String(err) })
     }
   },

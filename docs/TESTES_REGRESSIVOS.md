@@ -306,3 +306,47 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - Alterne entre as abas "Arquitetura Técnica" e "Testes Regressivos".
    - Confirme a renderização de títulos, listas, tabelas e blocos de código formatados.
    - Faça logout e tente acessar `/admin/docs` como cliente comum: a tela de Acesso Restrito bloqueia a visualização.
+
+---
+
+## N) Custo Mensal Acumulado por Cliente no Backoffice Admin (/admin) (Item 9 das Prioridades)
+
+1. **Visão Geral e Modelagem de Custos em R$**:
+   - Faça login como Admin (`barbara.ferreira.leal@gmail.com`).
+   - Acesse `/admin`.
+   - **Verificação**: No topo do Backoffice, o card de destaque **"Custo Mensal Acumulado por Cliente"** é exibido com:
+     - Badge "Operacional" e texto explicativo com os valores unitários:
+       - Áudio WhatsApp: R$ 0,001 (Groq Whisper)
+       - Mensagem de IA do agente: R$ 0,02 (resposta gerada)
+       - Mensagem ativa/utility: R$ 0,04
+       - Mensagens de serviço (leitura/typing): R$ 0
+     - 4 cartões de resumo do mês selecionado:
+       - **Custo Total Estimado** em R$ (formato R$ 0,0000)
+       - **Respostas de IA** (quantidade e subtotal em R$)
+       - **Áudios Transcritos** (quantidade e subtotal em R$)
+       - **Lançamentos no Mês** (total e divisão texto/áudio)
+
+2. **Ordenação e Tabela de Clientes**:
+   - Verifique a tabela de custos:
+     - Por padrão, a lista vem **ordenada pelo maior custo estimado primeiro** (decrescente).
+     - As colunas exibem: Cliente (nome e email), WhatsApp, Lançamentos (Texto/Áudio com custo individual), Mensagens de IA (quantidade e custo) e Custo Estimado Mês (R$).
+     - O clique nas colunas permite inverter a ordenação (ex.: por lançamentos, mensagens de IA ou valor em R$).
+
+3. **Seletor Histórico de Mês de Referência**:
+   - No cabeçalho do card de custos, utilize o dropdown "Mês:".
+   - Selecione um mês anterior (ex.: mês anterior ao atual).
+   - **Verificação**: A tabela e os cartões de resumo recalculam imediatamente os custos para o mês selecionado, sem erros e sem recarregar a página.
+   - Alterne de volta para o mês corrente.
+
+4. **Custo Estimado no Detalhe Individual do Cliente**:
+   - Na tabela de custos ou na tabela geral de clientes, clique no botão **"Detalhes"** de qualquer cliente.
+   - **Verificação**: No topo do modal, antes das abas, é exibido o card destacado **"Custo Estimado no Mês"** com:
+     - Valor acumulado em R$ no mês selecionado.
+     - Detalhamento de mensagens de IA e lançamentos de áudio/texto.
+     - Seletor próprio de mês para auditar meses anteriores do cliente individualmente.
+
+5. **Restrição Estrita de Papel e Segurança**:
+   - Faça logout da conta admin e acesse com um usuário comum (ou em aba anônima sem autenticação).
+   - Tente requisitar a rota `GET /backend/v1/admin/costs`:
+     - **Verificação**: Resposta HTTP `403 Forbidden` com mensagem de acesso restrito.
+   - Nenhuma informação de custo ou consumo de clientes é visível para clientes comuns na aplicação.

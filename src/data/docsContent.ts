@@ -82,7 +82,18 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 
 2. **Proteção Estrita de Endpoints no Backend**:
    - Endpoints de infraestrutura do WhatsApp recusam usuários comuns com HTTP \`403 Forbidden\`.
-   - Endpoints do Backoffice (\`/backend/v1/admin/overview\`, \`/backend/v1/admin/clients/{id}\`, etc.) exigem autenticação ativa e validação estrita de \`role === 'admin'\`.
+   - Endpoints do Backoffice (\`/backend/v1/admin/overview\`, \`/backend/v1/admin/clients/{id}\`, \`/backend/v1/admin/costs\`, etc.) exigem autenticação ativa e validação estrita de \`role === 'admin'\`.
+
+---
+
+## 5. Gestão Operacional de Custos por Cliente (Backoffice Admin)
+
+Implementado no hook \`pocketbase/hooks/admin_backoffice.js\` com endpoints protegidos para controle da dona do produto:
+- **Transação via Áudio WhatsApp**: R$ 0,001 (Groq Whisper)
+- **Mensagem de IA do Agente**: R$ 0,02 (resposta gerada)
+- **Mensagem Ativa / Utility Template**: R$ 0,04
+- **Mensagens de Serviço (24h, blue ticks, typing)**: R$ 0,00
+- **Rota Dedicada de Custos**: \`GET /backend/v1/admin/costs?month=YYYY-MM\` com totais acumulados, histórico e lista ordenada pelo maior custo.
 `
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
@@ -213,4 +224,17 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - A página carrega com abas para alternar entre **"Arquitetura Técnica"** e **"Testes Regressivos"**.
      - O conteúdo é renderizado de forma legível com títulos, listas, tabelas e blocos de código formatados.
      - Um cliente comum que tentar acessar \`/admin/docs\` é barrado com a tela de Acesso Restrito.
+
+---
+
+## N) Custo Mensal Acumulado por Cliente no Backoffice Admin (/admin) (Item 9 das Prioridades)
+1. **Passo a passo**:
+   - Faça login como Administrador (\`barbara.ferreira.leal@gmail.com\`).
+   - Acesse \`/admin\`.
+   - **Comportamento Esperado**:
+     - O card **"Custo Mensal Acumulado por Cliente"** é exibido no topo com os valores unitários detalhados.
+     - 4 cartões de métricas do mês: Custo Total Estimado em R$ (formato R$ 0,0000), Respostas de IA, Áudios Transcritos e Lançamentos.
+     - Tabela ordenada pelo maior custo primeiro, com alternância de colunas e seletor histórico de meses.
+     - No detalhe individual de cada cliente (botão "Detalhes"), o custo estimado mensal e decomposição são exibidos junto com o seletor de mês.
+     - A rota \`GET /backend/v1/admin/costs\` retorna 403 Forbidden para clientes comuns e visitantes.
 `

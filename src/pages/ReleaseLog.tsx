@@ -25,11 +25,33 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.37',
+    date: '03/11/2026',
+    title:
+      'Custo Mensal Acumulado por Cliente no Backoffice Admin (/admin) — Item 9 da Lista de Prioridades',
+    tag: 'Atual',
+    highlights: [
+      'Visão de Custos no Backoffice Admin (/admin): novo card dedicado com cálculo automático do custo operacional mensal acumulado estimado de cada cliente e totais consolidados no topo.',
+      'Modelagem unitária de custos em R$: Transações por áudio no WhatsApp a R$ 0,001 (Groq Whisper); Mensagens de IA geradas pelo agente a R$ 0,02; Mensagens ativas/utility fora de 24h a R$ 0,04; Mensagens de serviço (checks azuis e typing) a R$ 0.',
+      'Ordenação inteligente por custo: tabela de clientes ordenada decrescentemente pelo maior custo estimado primeiro, com contagem de lançamentos (texto e áudio), mensagens de IA e sub-valores.',
+      'Seletor histórico de meses: capacidade de alternar entre o mês corrente e meses anteriores (histórico dos últimos 6 meses) sem recarregar a tela.',
+      'Custo no Detalhe Individual do Cliente: modal de suporte exibe o custo mensal estimado do cliente selecionado e decomposição de consumo com seu próprio seletor de mês.',
+      'Rota backend dedicada e segura: GET /backend/v1/admin/costs e GET /backend/v1/admin/clients/:id com suporte a parâmetro ?month=YYYY-MM e proteção estrita contra acesso não-admin (HTTP 403 Forbidden).',
+      'Zero regressão: /backend/v1/admin/overview e rotas existentes operando sem erro 500, webhook da Meta intacto, envio direto preservado e documentação técnica atualizada (Cenário N adicionado aos testes regressivos).',
+    ],
+    details: [
+      'Hook pocketbase/hooks/admin_backoffice.js enriquecido com a rota GET /backend/v1/admin/costs e suporte a month no detalhe do cliente.',
+      'Serviço finance.ts com interfaces AdminCostsResponse, AdminClientCostItem e método adminService.getCosts.',
+      'Interface src/pages/AdminBackoffice.tsx atualizada com card principal de custos, indicadores por tipo de custo, tabela ordenada e card no modal de detalhes.',
+      'Docs docs/ARQUITETURA.md, docs/TESTES_REGRESSIVOS.md (Cenário N) e docsContent.ts atualizados.',
+    ],
+  },
+  {
     version: '0.0.35',
     date: '03/11/2026',
     title:
       'Lote 1 de Melhorias do MVP: Correção Crítica do Backoffice /admin, Filtro Padrão Mês Corrente, Figurinhas de Bichinhos nas Caixinhas e Documentação Técnica no Admin',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'BUG CRÍTICO do Backoffice resolvido: endpoint /backend/v1/admin/overview corrigido com tratamento seguro e compatível com as coleções existentes; rota responde HTTP 200 com métricas reais e lista de clientes.',
       'Filtro padrão = Mês Corrente (1º dia do mês até hoje): aplicado por padrão em Transações, Dashboard e Relatórios, mantendo a flexibilidade para o usuário alternar para qualquer período manualmente.',

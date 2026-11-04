@@ -143,6 +143,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Idempotência de Webhook WhatsApp (Meta retry)** | Proteção estrita contra retries automáticos da Meta (>5s): deduplicação por \`wamid\` (message_id) em memória rápida com TTL e persistência na coleção \`whatsapp_processed_messages\`. Evita mensagens duplicadas ou falsas rejeições de duplicidade. | **Concluído** |
 | **Garantia de Integridade de Status e Retroativo** | Hook \`transactions_integrity.js\` garante que toda transação nasça com \`status='active'\` e tenha \`is_retroactive=true\` sempre que a data informada diferir do dia da mensagem. Proteção de deleção lógica definitiva. | **Concluído** |
 | **Tratamento de Fallback Inteligente e Resiliência de IA/Áudio** | Correção do bug de mensagens não-financeiras ("Oi, deu certo?") recebendo erro de gasto. Diferenciação contextual entre mensagens de gasto, conversas/dúvidas e saudações; timeouts ajustados de áudio (12s) para não acumular fila; e carregamento resiliente de módulos auxiliares (\`reliability_helper\` e \`caixinhas_summary_helper\`) em ambientes isolados do Goja JSVM. | **Concluído** |
+| **Edição Completa de Caixinha (/budgets e /categories)** | Conclusão do modal "Editar Caixinha" em \`/budgets\` e \`/categories\` permitindo que o cliente altere o ícone/figurinha com 3 abas completas (**Ícones**, **Emojis** e **🐱 Bichinhos** com todos os bichinhos oficiais: Gatinho, Cachorrinho, Patinhas, Ursinho, Panda, Coala, Leãozinho, Coelhinho, Raposa, Tigrinho, Pinguim, Corujinha, Borboleta, Abelhinha etc.), o nome e a cor da caixinha, preservando integralmente o teto e o mês de referência. As alterações refletem em tempo real no Dashboard, Caixinhas, Extrato, Modal de Lançamentos e no resumo visual do WhatsApp. | **Concluído** |
 
 ---
 
@@ -192,7 +193,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
-Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a X intactos e adiciona o cenário Y para o tratamento inteligente de fallback e resiliência de mensagens não-financeiras no WhatsApp.
+Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém todos os cenários essenciais A a Y intactos e adiciona o cenário Z para a edição de ícone/figurinha (3 abas), nome e cor de caixinhas existentes pelo modal Editar em \`/budgets\`.
 
 ---
 
@@ -534,4 +535,39 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 4. **Resiliência dos Módulos Auxiliares**:
    - Os hooks \`reliability_helper.js\` e \`caixinhas_summary_helper.js\` devem carregar sem erro em qualquer escopo do runtime Goja JSVM (via \`globalThis\` ou caminhos relativos de \`require\`), garantindo que o guardrail de temas (Cenário S), parser de datas retroativas (Cenário T) e cancelamentos (Cenário U) operem sem falhas silenciosas.
+
+---
+
+## Z) Edição de Caixinha Existente (Ícone com 3 Abas, Nome, Cor e Teto) em /budgets
+
+1. **Abertura do Modal de Edição de Caixinha Existente**:
+   - Acesse a tela de **Caixinhas** (\`/budgets\`).
+   - Em qualquer caixinha existente (exemplo: *"Alimentação - VA"* ou *"Pet"*), clique no botão de **Editar** (ícone de lápis).
+   - O modal **"Editar Caixinha"** deve se abrir exibindo:
+     - **Categoria da Caixinha**: pré-selecionada com a categoria correspondente e exibindo o ícone/cor atual.
+     - **Nome da Caixinha**: campo de texto editável com o nome atual preenchido.
+     - **Seletor de Figurinha / Ícone com 3 Abas**:
+       - Aba **Ícones**: coleção de ícones vetoriais modernos (utensílios, compras, carro, casa, coração, avião, presente, café, etc.).
+       - Aba **Emojis**: seleção de emojis populares (🍔 Hambúrguer, 🛒 Carrinho, 🚗 Carro, 🏠 Casa, ✈️ Avião, 💊 Saúde, 🎓 Estudos, ☕ Café, 🎬 Lazer, etc.).
+       - Aba **🐱 Bichinhos**: biblioteca completa de animais carismáticos (🐱 Gatinho, 🐶 Cachorrinho, 🐾 Patinhas, 🐻 Ursinho, 🐼 Panda, 🐨 Coala, 🦁 Leãozinho, 🐰 Coelhinho, 🦊 Raposa, 🐯 Tigrinho, 🐧 Pinguim, 🦉 Corujinha, 🦋 Borboleta, 🐝 Abelhinha, etc.).
+     - **Pré-visualização do Ícone**: miniatura com a cor selecionada atualizando dinamicamente.
+     - **Cor da Caixinha**: paleta de cores elegantes para personalização do badge e da barra.
+     - **Teto da Caixinha (R$)**: valor numérico formatado em moeda (ex: \`R$ 1.000,00\`).
+     - **Mês de Referência**: mês de vigência da caixinha (ex: \`novembro de 2026\`).
+
+2. **Alteração de Ícone para Bichinho ou Emoji**:
+   - Selecione a aba **🐱 Bichinhos** e clique em uma figurinha diferente (ex: troque para **Panda 🐼** ou **Abelhinha 🐝**).
+   - Opcionalmente ajuste a cor ou o nome (ex: *"Alimentação & Mercado"*).
+   - Mantenha ou ajuste o teto (ex: \`R$ 1.200,00\`).
+   - Clique em **Salvar Caixinha**.
+
+3. **Verificação de Refletância Imediata no App**:
+   - **Na tela de Caixinhas (\`/budgets\`)**: o cartão exibe imediatamente o novo ícone, o novo nome e o teto atualizado.
+   - **No Dashboard (\`/\`)**: o card da caixinha e a lista de consumo mostram o novo ícone e nome.
+   - **No Extrato (\`/transactions\`)**: as transações vinculadas àquela caixinha exibem a nova figurinha e nome.
+   - **No Modal de Novo Lançamento**: ao selecionar a caixinha, o ícone novo aparece no seletor e no preview.
+   - **No Resumo do WhatsApp**: ao solicitar o resumo pelo WhatsApp ("resumo"), o helper utiliza o novo emoji/bichinho correspondente na barra visual de progresso.
+
+4. **Zero Regressão de Tetos e Mês de Referência**:
+   - O teto e o mês continuam gravados com precisão no registro de \`budgets\`, sem duplicar registros para o mesmo mês e sem alterar lançamentos passados.
 `

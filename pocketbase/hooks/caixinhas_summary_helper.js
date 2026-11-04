@@ -60,8 +60,8 @@ function resolveCaixinhaEmoji(iconId, categoryName) {
     return CAIXINHA_EMOJI_FALLBACKS[idStr]
   }
 
-  // Se o próprio iconId for caractere emoji
-  if (/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF]/.test(idStr)) {
+  // Se for caractere emoji direto
+  if (/\p{Extended_Pictographic}/u.test(idStr)) {
     return idStr
   }
 

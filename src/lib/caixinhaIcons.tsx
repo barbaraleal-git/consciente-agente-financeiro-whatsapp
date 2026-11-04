@@ -30,10 +30,10 @@ export interface IconOption {
   label: string
   icon?: LucideIcon
   emoji?: string
-  category?: 'bichinho' | 'geral'
+  category?: 'bichinho' | 'geral' | 'emoji'
 }
 
-// Lista de figurinhas de bichinhos amigáveis e ícones gerais
+// Lista de figurinhas de bichinhos amigáveis
 export const BICHINHO_ICONS: IconOption[] = [
   { id: 'pet-cat', label: 'Gatinho', emoji: '🐱', category: 'bichinho' },
   { id: 'pet-dog', label: 'Cachorrinho', emoji: '🐶', category: 'bichinho' },
@@ -53,6 +53,34 @@ export const BICHINHO_ICONS: IconOption[] = [
   { id: 'pet-dolphin', label: 'Golfinho', emoji: '🐬', category: 'bichinho' },
   { id: 'pet-butterfly', label: 'Borboleta', emoji: '🦋', category: 'bichinho' },
   { id: 'pet-bee', label: 'Abelhinha', emoji: '🐝', category: 'bichinho' },
+]
+
+// Lista de emojis populares para finanças e estilo de vida
+export const EMOJI_ICONS: IconOption[] = [
+  { id: 'emoji:💰', label: 'Saco de Dinheiro', emoji: '💰', category: 'emoji' },
+  { id: 'emoji:💵', label: 'Dinheiro', emoji: '💵', category: 'emoji' },
+  { id: 'emoji:💳', label: 'Cartão de Crédito', emoji: '💳', category: 'emoji' },
+  { id: 'emoji:🎯', label: 'Alvo / Meta', emoji: '🎯', category: 'emoji' },
+  { id: 'emoji:🍕', label: 'Pizza / Delivery', emoji: '🍕', category: 'emoji' },
+  { id: 'emoji:🍔', label: 'Hambúrguer / Lanches', emoji: '🍔', category: 'emoji' },
+  { id: 'emoji:☕', label: 'Café', emoji: '☕', category: 'emoji' },
+  { id: 'emoji:🛒', label: 'Supermercado', emoji: '🛒', category: 'emoji' },
+  { id: 'emoji:🚗', label: 'Carro / Gasolina', emoji: '🚗', category: 'emoji' },
+  { id: 'emoji:✈️', label: 'Viagem / Voo', emoji: '✈️', category: 'emoji' },
+  { id: 'emoji:🏠', label: 'Casa / Moradia', emoji: '🏠', category: 'emoji' },
+  { id: 'emoji:💊', label: 'Farmácia / Remédios', emoji: '💊', category: 'emoji' },
+  { id: 'emoji:🏋️', label: 'Academia / Esporte', emoji: '🏋️', category: 'emoji' },
+  { id: 'emoji:👕', label: 'Roupas / Moda', emoji: '👕', category: 'emoji' },
+  { id: 'emoji:📚', label: 'Livros / Cursos', emoji: '📚', category: 'emoji' },
+  { id: 'emoji:🎮', label: 'Games / Jogos', emoji: '🎮', category: 'emoji' },
+  { id: 'emoji:🍿', label: 'Cinema / Lazer', emoji: '🍿', category: 'emoji' },
+  { id: 'emoji:🎁', label: 'Presentes / Festas', emoji: '🎁', category: 'emoji' },
+  { id: 'emoji:👶', label: 'Filhos / Bebê', emoji: '👶', category: 'emoji' },
+  { id: 'emoji:💇', label: 'Salão / Beleza', emoji: '💇', category: 'emoji' },
+  { id: 'emoji:📱', label: 'Celular / Internet', emoji: '📱', category: 'emoji' },
+  { id: 'emoji:💡', label: 'Contas / Energia', emoji: '💡', category: 'emoji' },
+  { id: 'emoji:🌴', label: 'Férias / Praia', emoji: '🌴', category: 'emoji' },
+  { id: 'emoji:✨', label: 'Sonho / Especial', emoji: '✨', category: 'emoji' },
 ]
 
 export const GERAL_ICONS: IconOption[] = [
@@ -80,7 +108,7 @@ export const GERAL_ICONS: IconOption[] = [
   { id: 'ellipsis', label: 'Outros', icon: MoreHorizontal, category: 'geral' },
 ]
 
-export const CAIXINHA_ICONS: IconOption[] = [...BICHINHO_ICONS, ...GERAL_ICONS]
+export const CAIXINHA_ICONS: IconOption[] = [...BICHINHO_ICONS, ...EMOJI_ICONS, ...GERAL_ICONS]
 
 export const CAIXINHA_COLORS = [
   '#f59e0b', // Amber / Ouro
@@ -107,7 +135,7 @@ export function isEmojiIcon(iconId?: string): boolean {
 export function getEmojiFromIconId(iconId?: string): string {
   if (!iconId) return '🐾'
   if (iconId.startsWith('emoji:')) return iconId.slice(6)
-  const match = BICHINHO_ICONS.find((item) => item.id === iconId)
+  const match = CAIXINHA_ICONS.find((item) => item.id === iconId)
   if (match && match.emoji) return match.emoji
   if (/\p{Extended_Pictographic}/u.test(iconId)) return iconId
   return '🐱'

@@ -32,6 +32,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Plus, Edit2, Trash2 } from 'lucide-react'
 import {
   BICHINHO_ICONS,
+  EMOJI_ICONS,
   GERAL_ICONS,
   CAIXINHA_ICONS,
   CAIXINHA_COLORS,
@@ -62,7 +63,7 @@ export const Categories: React.FC = () => {
   const [name, setName] = useState('')
   const [type, setType] = useState<'despesa' | 'receita' | 'investimento'>('despesa')
   const [icon, setIcon] = useState('pet-cat')
-  const [catIconTab, setCatIconTab] = useState<'bichinho' | 'geral'>('bichinho')
+  const [catIconTab, setCatIconTab] = useState<'geral' | 'emoji' | 'bichinho'>('bichinho')
   const [color, setColor] = useState('#6366f1')
   const [saving, setSaving] = useState(false)
 
@@ -89,7 +90,8 @@ export const Categories: React.FC = () => {
     setEditingCategory(null)
     setName('')
     setType('despesa')
-    setIcon('utensils')
+    setIcon('pet-cat')
+    setCatIconTab('bichinho')
     setColor('#f59e0b')
     setModalOpen(true)
   }
@@ -99,6 +101,13 @@ export const Categories: React.FC = () => {
     setName(cat.name)
     setType(cat.type)
     setIcon(cat.icon)
+    if (cat.icon?.startsWith('pet-') || BICHINHO_ICONS.some((o) => o.id === cat.icon)) {
+      setCatIconTab('bichinho')
+    } else if (cat.icon?.startsWith('emoji:') || EMOJI_ICONS.some((o) => o.id === cat.icon)) {
+      setCatIconTab('emoji')
+    } else {
+      setCatIconTab('geral')
+    }
     setColor(cat.color)
     setModalOpen(true)
   }
@@ -311,8 +320,38 @@ export const Categories: React.FC = () => {
             {/* Icon Picker */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium text-slate-700">Figurinha / Ícone</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs font-medium text-slate-700">Figurinha / Ícone</Label>
+                  <span
+                    className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                    style={{ backgroundColor: color }}
+                  >
+                    {renderCaixinhaIcon(icon, 'w-3 h-3 text-xs')}
+                  </span>
+                </div>
                 <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setCatIconTab('geral')}
+                    className={`px-2 py-0.5 rounded transition-all font-medium ${
+                      catIconTab === 'geral'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Ícones
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCatIconTab('emoji')}
+                    className={`px-2 py-0.5 rounded transition-all font-medium ${
+                      catIconTab === 'emoji'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Emojis
+                  </button>
                   <button
                     type="button"
                     onClick={() => setCatIconTab('bichinho')}
@@ -324,22 +363,16 @@ export const Categories: React.FC = () => {
                   >
                     🐱 Bichinhos
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCatIconTab('geral')}
-                    className={`px-2 py-0.5 rounded transition-all font-medium ${
-                      catIconTab === 'geral'
-                        ? 'bg-white text-indigo-700 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    ✨ Geral
-                  </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-6 sm:grid-cols-7 gap-2 max-h-36 overflow-y-auto p-1.5 border border-slate-200 rounded-xl bg-slate-50/50">
-                {(catIconTab === 'bichinho' ? BICHINHO_ICONS : GERAL_ICONS).map((opt) => {
+                {(catIconTab === 'bichinho'
+                  ? BICHINHO_ICONS
+                  : catIconTab === 'emoji'
+                    ? EMOJI_ICONS
+                    : GERAL_ICONS
+                ).map((opt) => {
                   const isSelected = icon === opt.id
                   return (
                     <button

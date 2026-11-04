@@ -60,6 +60,7 @@ import {
 } from 'lucide-react'
 import {
   BICHINHO_ICONS,
+  EMOJI_ICONS,
   GERAL_ICONS,
   CAIXINHA_ICONS,
   CAIXINHA_COLORS,
@@ -87,7 +88,7 @@ export const Budgets: React.FC = () => {
   const [catId, setCatId] = useState('')
   const [customName, setCustomName] = useState('')
   const [customIcon, setCustomIcon] = useState('pet-cat')
-  const [iconTab, setIconTab] = useState<'bichinho' | 'geral'>('bichinho')
+  const [iconTab, setIconTab] = useState<'geral' | 'emoji' | 'bichinho'>('bichinho')
   const [customColor, setCustomColor] = useState('#ec4899')
   const [amountStr, setAmountStr] = useState('')
   const [monthInput, setMonthInput] = useState(currentMonth)
@@ -154,7 +155,8 @@ export const Budgets: React.FC = () => {
     const expenseCats = categories.filter((c) => c.type === 'despesa')
     setCreationMode('custom')
     setCustomName('')
-    setCustomIcon('plane')
+    setCustomIcon('pet-cat')
+    setIconTab('bichinho')
     setCustomColor('#ec4899')
     setCatId(expenseCats[0]?.id || '')
     setAmountStr('')
@@ -166,6 +168,28 @@ export const Budgets: React.FC = () => {
     setEditingBudget(b)
     setCreationMode('existing')
     setCatId(b.category)
+
+    const cat = categories.find((c) => c.id === b.category)
+    const initialName = cat?.name || ''
+    const initialIcon = cat?.icon || 'pet-cat'
+    const initialColor = cat?.color || '#ec4899'
+
+    setCustomName(initialName)
+    setCustomIcon(initialIcon)
+    setCustomColor(initialColor)
+
+    // Ajusta a aba inicial de acordo com o ícone atual da caixinha
+    if (initialIcon.startsWith('pet-') || BICHINHO_ICONS.some((opt) => opt.id === initialIcon)) {
+      setIconTab('bichinho')
+    } else if (
+      initialIcon.startsWith('emoji:') ||
+      EMOJI_ICONS.some((opt) => opt.id === initialIcon)
+    ) {
+      setIconTab('emoji')
+    } else {
+      setIconTab('geral')
+    }
+
     setAmountStr(
       (b.amount / 100).toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
@@ -174,6 +198,30 @@ export const Budgets: React.FC = () => {
     )
     setMonthInput(b.month)
     setModalOpen(true)
+  }
+
+  // Ao trocar de categoria durante edição ou criação por categoria existente, sincroniza nome, ícone e cor
+  const handleCategoryChange = (newCatId: string) => {
+    setCatId(newCatId)
+    const matched = categories.find((c) => c.id === newCatId)
+    if (matched) {
+      setCustomName(matched.name)
+      setCustomIcon(matched.icon || 'pet-cat')
+      setCustomColor(matched.color || '#ec4899')
+      if (
+        matched.icon?.startsWith('pet-') ||
+        BICHINHO_ICONS.some((opt) => opt.id === matched.icon)
+      ) {
+        setIconTab('bichinho')
+      } else if (
+        matched.icon?.startsWith('emoji:') ||
+        EMOJI_ICONS.some((opt) => opt.id === matched.icon)
+      ) {
+        setIconTab('emoji')
+      } else {
+        setIconTab('geral')
+      }
+    }
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -225,14 +273,28 @@ export const Budgets: React.FC = () => {
       }
 
       if (editingBudget) {
+        // Atualiza a categoria vinculada (nome, ícone, cor)
+        const trimmedName = customName.trim()
+        if (finalCategoryId) {
+          const catUpdatePayload: { name?: string; icon?: string; color?: string } = {
+            icon: customIcon,
+            color: customColor,
+          }
+          if (trimmedName) {
+            catUpdatePayload.name = trimmedName
+          }
+          await categoriesService.update(finalCategoryId, catUpdatePayload)
+        }
+
+        // Atualiza o budget (teto e mês)
         await budgetsService.update(editingBudget.id, {
           category: finalCategoryId,
           amount: cents,
           month: monthInput,
         })
         toast({
-          title: 'Caixinha atualizada',
-          description: 'Teto da caixinha atualizado com sucesso.',
+          title: 'Caixinha atualizada com sucesso! ✨',
+          description: 'Ícone, nome, cor e teto salvos com sucesso.',
         })
       } else {
         await budgetsService.create({
@@ -500,8 +562,160 @@ export const Budgets: React.FC = () => {
               </div>
             )}
 
-            {/* If creating custom: name, icon, color */}
-            {!editingBudget && creationMode === 'custom' ? (
+            {/* Modo edição: permite trocar a categoria vinculada E customizar nome, ícone (3 abas) e cor */}
+            {editingBudget ? (
+              <div className="space-y-3.5">
+                {/* Seletor de Categoria da Caixinha */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
+                    Categoria da Caixinha *
+                  </Label>
+                  <Select value={catId} onValueChange={handleCategoryChange}>
+                    <SelectTrigger id="bCat" className="bg-white">
+                      <SelectValue placeholder="Selecione a categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => {
+                        return (
+                          <SelectItem key={c.id} value={c.id}>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                                style={{ backgroundColor: c.color }}
+                              >
+                                {renderCaixinhaIcon(c.icon, 'w-3 h-3 text-xs')}
+                              </span>
+                              <span>{c.name}</span>
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Box de Personalização de Nome, Figurinha/Ícone e Cor */}
+                <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                  {/* Nome da Caixinha */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="editCatName" className="text-xs font-medium text-slate-700">
+                      Nome da Caixinha *
+                    </Label>
+                    <Input
+                      id="editCatName"
+                      placeholder="Ex: Alimentação - VA, Viagem a Paris, Pet..."
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      className="bg-white"
+                      required
+                    />
+                  </div>
+
+                  {/* Seletor de Figurinha / Ícone com 3 abas */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-xs font-medium text-slate-700">
+                          Figurinha / Ícone
+                        </Label>
+                        <span
+                          className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                          style={{ backgroundColor: customColor }}
+                        >
+                          {renderCaixinhaIcon(customIcon, 'w-3 h-3 text-xs')}
+                        </span>
+                      </div>
+                      <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setIconTab('geral')}
+                          className={`px-2 py-0.5 rounded transition-all font-medium ${
+                            iconTab === 'geral'
+                              ? 'bg-white text-indigo-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Ícones
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIconTab('emoji')}
+                          className={`px-2 py-0.5 rounded transition-all font-medium ${
+                            iconTab === 'emoji'
+                              ? 'bg-white text-indigo-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Emojis
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIconTab('bichinho')}
+                          className={`px-2 py-0.5 rounded transition-all font-medium ${
+                            iconTab === 'bichinho'
+                              ? 'bg-white text-indigo-700 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          🐱 Bichinhos
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                      {(iconTab === 'bichinho'
+                        ? BICHINHO_ICONS
+                        : iconTab === 'emoji'
+                          ? EMOJI_ICONS
+                          : GERAL_ICONS
+                      ).map((opt) => {
+                        const isSelected = customIcon === opt.id
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setCustomIcon(opt.id)}
+                            title={opt.label}
+                            className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
+                                : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            {opt.emoji ? (
+                              <span className="text-lg leading-none">{opt.emoji}</span>
+                            ) : opt.icon ? (
+                              <opt.icon className="w-4 h-4" />
+                            ) : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Seletor de Cor */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-700">Cor da Caixinha</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {CAIXINHA_COLORS.map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => setCustomColor(hex)}
+                          style={{ backgroundColor: hex }}
+                          className={`w-6 h-6 rounded-full transition-transform ${
+                            customColor === hex
+                              ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
+                              : 'hover:scale-105'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : creationMode === 'custom' ? (
+              /* Criação: Modo customizado com nome, ícone (3 abas) e cor */
               <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
                 <div className="space-y-1.5">
                   <Label htmlFor="customCatName" className="text-xs font-medium text-slate-700">
@@ -520,11 +734,43 @@ export const Budgets: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Icon picker com abas: Figurinhas de Bichinhos e Ícones Gerais */}
+                {/* Icon picker com 3 abas: Ícones, Emojis e Bichinhos */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium text-slate-700">Figurinha / Ícone</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-xs font-medium text-slate-700">
+                        Figurinha / Ícone
+                      </Label>
+                      <span
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                        style={{ backgroundColor: customColor }}
+                      >
+                        {renderCaixinhaIcon(customIcon, 'w-3 h-3 text-xs')}
+                      </span>
+                    </div>
                     <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setIconTab('geral')}
+                        className={`px-2 py-0.5 rounded transition-all font-medium ${
+                          iconTab === 'geral'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Ícones
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIconTab('emoji')}
+                        className={`px-2 py-0.5 rounded transition-all font-medium ${
+                          iconTab === 'emoji'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Emojis
+                      </button>
                       <button
                         type="button"
                         onClick={() => setIconTab('bichinho')}
@@ -536,22 +782,16 @@ export const Budgets: React.FC = () => {
                       >
                         🐱 Bichinhos
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setIconTab('geral')}
-                        className={`px-2 py-0.5 rounded transition-all font-medium ${
-                          iconTab === 'geral'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        ✨ Geral
-                      </button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
-                    {(iconTab === 'bichinho' ? BICHINHO_ICONS : GERAL_ICONS).map((opt) => {
+                    {(iconTab === 'bichinho'
+                      ? BICHINHO_ICONS
+                      : iconTab === 'emoji'
+                        ? EMOJI_ICONS
+                        : GERAL_ICONS
+                    ).map((opt) => {
                       const isSelected = customIcon === opt.id
                       return (
                         <button
@@ -597,7 +837,7 @@ export const Budgets: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* Existing category selection */
+              /* Criação: Seleção de categoria existente */
               <div className="space-y-1.5">
                 <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
                   Categoria da Caixinha *

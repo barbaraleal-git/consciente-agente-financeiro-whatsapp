@@ -463,3 +463,72 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
      - **Verificação**: O alerta vermelho exibe o erro REAL retornado pela Meta (ex.: "Meta recusou a criação da sessão de upload: (...)", "Token inválido ou expirado" ou mensagem específica da Graph API).
      - **NUNCA** é exibida a mensagem enganosa "preciso utilizar uma imagem jpeg ou png de no máximo 5MB" quando o arquivo já cumpria esses requisitos.
    - O token da Meta permanece protegido e nunca é exposto na mensagem nem no console do cliente.
+
+---
+
+## S) Guardrail de Temas do Agente (Item 22)
+
+1. **Tentativa de Conversa Fora do Escopo Financeiro**:
+   - Abra o WhatsApp com o agente Consciente ou envie mensagem pelo simulador admin.
+   - Envie uma pergunta completamente fora do escopo (ex: _"Quem descobriu o Brasil?"_ ou _"Qual a previsão do tempo para amanhã?"_).
+   - **Comportamento Esperado**: O agente responde com gentileza e brevidade explicando que seu foco exclusivo é cuidar das finanças pessoais e das caixinhas, convidando o cliente a registrar um gasto ou consultar o saldo.
+
+---
+
+## T) Gasto Retroativo via WhatsApp e Interface (Item 28)
+
+1. **Envio de Lançamento com Data Passada**:
+   - Pelo WhatsApp do cliente, envie: _"Ontem gastei 35 no almoço"_.
+   - **Comportamento Esperado**: O agente reconhece a data no passado e registra com o campo \`date\` de ontem e \`is_retroactive = true\`. A resposta empática do agente cita expressamente a data original considerada e o extrato exibe o badge "Retroativo".
+
+---
+
+## U) Cancelar Último Lançamento via WhatsApp (Item 23)
+
+1. **Solicitação de Cancelamento Seguro**:
+   - No WhatsApp, envie um gasto: _"Gastei 45 no uber"_.
+   - Em seguida envie: _"Cancela o último lançamento"_.
+   - O agente solicita confirmação simples: _"Tem certeza que deseja cancelar o lançamento de R$ 45,00? Responda SIM para confirmar"_.
+   - Ao responder _"SIM"_, o agente confirma o estorno e o campo \`status\` passa para \`'cancelled'\`.
+
+---
+
+## W) Idempotência do Webhook WhatsApp (Prevenção de Duplicidade por Retry da Meta)
+
+1. **Reenvio de Mensagem por Latência**:
+   - O webhook detecta \`wamid\` já processado na coleção \`whatsapp_processed_messages\` e no cache de memória, descartando processamento repetido sem gerar mensagens duplicadas.
+
+---
+
+## V) Totais e Caixinhas Apenas com Transações Ativas (Item 27)
+
+1. **Exclusão Lógica e Recálculo Automático**:
+   - Lançamentos cancelados ou excluídos são deduzidos dos totais do Dashboard, Caixinhas e Relatórios imediatamente, ficando disponíveis em Transações para conferência visual.
+
+---
+
+## X) Histórico Visível de Transações Canceladas na Visão do Cliente e Isolamento Estrito de Totais
+
+1. **Visibilidade Imediata de Transações Canceladas**:
+   - Na rota \`/transactions\`, o filtro padrão exibe todos os lançamentos cronologicamente com cancelados destacados (badge "Cancelado", texto tachado e opacidade reduzida).
+
+---
+
+## Y) Fallback Inteligente e Diferenciação de Mensagens no WhatsApp (Prevenção de Falso Erro de Gasto)
+
+1. **Mensagens Não-Financeiras (Saudação e Status)**:
+   - Em caso de oscilação, perguntas como _"Oi, deu certo?"_ ou saudações nunca recebem erro de gasto, mas mensagens acolhedoras e contextuais.
+
+---
+
+## Z) Edição de Caixinha Existente (Ícone com 3 Abas, Nome, Cor e Teto) em /budgets
+
+1. **Abertura do Modal de Edição de Caixinha Existente**:
+   - Acesse a tela de **Caixinhas** (\`/budgets\`).
+   - Em qualquer caixinha existente (exemplo: _"Alimentação - VA"_ ou _"Pet"_), clique no botão de **Editar** (ícone de lápis).
+   - O modal **"Editar Caixinha"** se abre com categoria selecionada, nome editável, seletor de ícones com 3 abas (**Ícones**, **Emojis** e **🐱 Bichinhos**), seletor de cor, teto (R$) e mês de referência.
+2. **Alteração de Ícone, Nome e Cor**:
+   - Alterne para a aba desejada (ex.: 🐱 Bichinhos), selecione uma figurinha (Panda, Abelhinha, etc.) e salve.
+   - O novo ícone, nome e cor refletem no Dashboard, Caixinhas, Extrato, Modal de Lançamentos e no resumo do WhatsApp.
+3. **Zero Regressão**:
+   - O teto e o mês de referência são mantidos e salvos perfeitamente.

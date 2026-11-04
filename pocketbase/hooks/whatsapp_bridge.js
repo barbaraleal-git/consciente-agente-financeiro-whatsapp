@@ -75,6 +75,53 @@ routerAdd('GET', '/backend/v1/whatsapp/webhook', (e) => {
 })
 
 // ----------------------------------------------------
+// 1.5 Bootstrap dos helpers externos NO ESCOPO DE ARQUIVO (roda 1x no boot)
+// O require() dentro de handlers pode falhar no runtime Goja do PocketBase com
+// "Invalid module". O carregamento seguro é tentado no boot via globalThis.
+// Se falhar, os handlers possuem fallback inteligente embutido 100% inline,
+// sem nenhuma dependência externa, respeitando estritamente o escopo do JSVM.
+// ----------------------------------------------------
+if (typeof globalThis.__reliabilityHelper === 'undefined') {
+  try {
+    globalThis.__reliabilityHelper = require('./reliability_helper.js')
+    console.log('[whatsapp_bridge] [boot] reliability_helper carregado com sucesso')
+  } catch (bootRelErr) {
+    try {
+      globalThis.__reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
+      console.log(
+        '[whatsapp_bridge] [boot] reliability_helper carregado com sucesso (caminho absoluto)',
+      )
+    } catch (bootRelErr2) {
+      globalThis.__reliabilityHelper = null
+      console.error(
+        '[whatsapp_bridge] [boot] ATENÇÃO: reliability_helper indisponível via require no boot — usando fallback interno embutido inline nos handlers',
+        bootRelErr2,
+      )
+    }
+  }
+}
+
+if (typeof globalThis.__caixinhasSummaryHelper === 'undefined') {
+  try {
+    globalThis.__caixinhasSummaryHelper = require('./caixinhas_summary_helper.js')
+    console.log('[whatsapp_bridge] [boot] caixinhas_summary_helper carregado com sucesso')
+  } catch (bootCaiErr) {
+    try {
+      globalThis.__caixinhasSummaryHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
+      console.log(
+        '[whatsapp_bridge] [boot] caixinhas_summary_helper carregado com sucesso (caminho absoluto)',
+      )
+    } catch (bootCaiErr2) {
+      globalThis.__caixinhasSummaryHelper = null
+      console.error(
+        '[whatsapp_bridge] [boot] ATENÇÃO: caixinhas_summary_helper indisponível via require no boot — resumo será processado pelo agente ou rotas internas',
+        bootCaiErr2,
+      )
+    }
+  }
+}
+
+// ----------------------------------------------------
 // 2. Webhook POST - Recebe mensagens reais do WhatsApp da Meta
 // ----------------------------------------------------
 routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
@@ -941,23 +988,11 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             let agentReply = ''
             let newConvId = existingConvId
 
-            // Carrega helper de confiabilidade (guardrail, cancelamento, datas retroativas)
-            let reliabilityHelper =
+            // Helper de confiabilidade é carregado UMA VEZ no boot (ver seção 1.5) e
+            // cacheado em globalThis. NUNCA chamamos require dentro do handler —
+            // isso falhava com "Invalid module" no runtime Goja.
+            const reliabilityHelper =
               typeof globalThis !== 'undefined' ? globalThis.__reliabilityHelper : null
-            if (!reliabilityHelper) {
-              try {
-                reliabilityHelper = require('./reliability_helper.js')
-              } catch (relErr) {
-                try {
-                  reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
-                } catch (relErr2) {
-                  console.error(
-                    '[whatsapp_bridge] Falha ao carregar reliability_helper via require:',
-                    relErr2,
-                  )
-                }
-              }
-            }
 
             // 1. Guardrail de Temas (Item 22): recusa gentil se fora de finanças/app
             if (
@@ -1032,22 +1067,9 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             // Se o usuário está cadastrado e pede a visão geral de suas caixinhas,
             // geramos diretamente o resumo visual padronizado com barras em blocos ▓░,
             // percentuais, alertas e linha de resumo no rodapé.
-            let caixinhasHelper =
+            // Helper de resumo das caixinhas carregado no boot (seção 1.5), sem require em runtime.
+            const caixinhasHelper =
               typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
-            if (!caixinhasHelper) {
-              try {
-                caixinhasHelper = require('./caixinhas_summary_helper.js')
-              } catch (hErr) {
-                try {
-                  caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
-                } catch (hErr2) {
-                  console.error(
-                    '[whatsapp_bridge] Falha ao carregar caixinhas_summary_helper via require:',
-                    hErr2,
-                  )
-                }
-              }
-            }
 
             const isCaixinhasOverview =
               isRegistered &&
@@ -1125,54 +1147,71 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 }
               }
 
-              try {
-                console.log(
-                  `[whatsapp_bridge] Chamando $ai.agent('financeiro-whatsapp').chat user_id=${activeUserId}, conv_id=${existingConvId}`,
-                )
-                const agentResult = $ai.agent('financeiro-whatsapp').chat({
-                  user_id: activeUserId,
-                  conversation_id: existingConvId,
-                  message: promptForAgent,
-                })
-                agentReply = agentResult.content || ''
-                newConvId = agentResult.conversation_id || existingConvId
-                console.log(
-                  `[whatsapp_bridge] Agente respondeu com sucesso! conv_id=${newConvId}, tamanho=${agentReply.length}`,
-                )
-              } catch (aErr) {
-                console.log('[whatsapp_bridge] Falha ao executar agente:', aErr)
+              // Chamada do agente com retry e backoff para falhas transitórias
+              const maxAgentAttempts = 3
+              let agentAttempt = 0
+              let currentConvIdForChat = existingConvId
 
-                // Se a conversa anterior expirou ou não pertence a este usuário, tenta com nova conversa limpa
-                if (existingConvId && isConvNotFoundError(aErr)) {
+              while (agentAttempt < maxAgentAttempts && !agentReply) {
+                agentAttempt++
+                try {
                   console.log(
-                    '[whatsapp_bridge] Conversation_id inválido (' +
-                      existingConvId +
-                      '). Tentando novamente com nova conversa limpa...',
+                    `[whatsapp_bridge] Chamando $ai.agent('financeiro-whatsapp').chat (tentativa ${agentAttempt}/${maxAgentAttempts}) user_id=${activeUserId}, conv_id=${currentConvIdForChat || 'null'}`,
                   )
-                  try {
-                    const retryResult = $ai.agent('financeiro-whatsapp').chat({
-                      user_id: activeUserId,
-                      conversation_id: null,
-                      message: promptForAgent,
-                    })
-                    agentReply = retryResult.content || ''
-                    newConvId = retryResult.conversation_id || null
+                  const agentResult = $ai.agent('financeiro-whatsapp').chat({
+                    user_id: activeUserId,
+                    conversation_id: currentConvIdForChat,
+                    message: promptForAgent,
+                  })
+                  agentReply = agentResult.content || ''
+                  newConvId = agentResult.conversation_id || currentConvIdForChat
+                  console.log(
+                    `[whatsapp_bridge] Agente respondeu com sucesso! (tentativa ${agentAttempt}) conv_id=${newConvId}, tamanho=${agentReply.length}`,
+                  )
+                } catch (aErr) {
+                  console.error(
+                    `[whatsapp_bridge] Falha ao executar agente na tentativa ${agentAttempt}/${maxAgentAttempts}:`,
+                    aErr,
+                  )
+
+                  if (currentConvIdForChat && isConvNotFoundError(aErr)) {
                     console.log(
-                      '[whatsapp_bridge] Recuperação bem-sucedida! Nova conversation_id:',
-                      newConvId,
+                      `[whatsapp_bridge] Conversation_id inválido (${currentConvIdForChat}). Resetando para conversa limpa na próxima tentativa...`,
                     )
-                  } catch (retryErr) {
-                    console.log('[whatsapp_bridge] Falha no retry de nova conversa:', retryErr)
-                    newConvId = null
+                    currentConvIdForChat = null
+                  } else if (
+                    /context canceled|context deadline|gateway call|timeout|deadline exceeded/i.test(
+                      String(aErr),
+                    )
+                  ) {
+                    console.warn(
+                      `[whatsapp_bridge] Falha transitória de gateway/timeout detectada na tentativa ${agentAttempt}. Tentando com conversa limpa e backoff...`,
+                    )
+                    currentConvIdForChat = null
+                    // Backoff exponencial simples (600ms na tentativa 1, 1400ms na tentativa 2)
+                    if (agentAttempt < maxAgentAttempts) {
+                      const backoffMs = agentAttempt * 700
+                      try {
+                        if (typeof $sleep === 'function') {
+                          $sleep(backoffMs)
+                        } else {
+                          const sleepStart = Date.now()
+                          while (Date.now() - sleepStart < backoffMs) {}
+                        }
+                      } catch (_) {}
+                    }
+                  } else {
+                    // Outro erro: reseta conversa limpa para última tentativa se ainda houver
+                    currentConvIdForChat = null
                   }
                 }
-              } finally {
-                isReplyFinished = true
-                if (typingIntervalId && typeof clearInterval === 'function') {
-                  try {
-                    clearInterval(typingIntervalId)
-                  } catch (_) {}
-                }
+              }
+
+              isReplyFinished = true
+              if (typingIntervalId && typeof clearInterval === 'function') {
+                try {
+                  clearInterval(typingIntervalId)
+                } catch (_) {}
               }
             } else {
               console.log(
@@ -1180,7 +1219,99 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               )
             }
 
-            // Fallback garantido: toda mensagem SEMPRE produz uma resposta amigável
+            // Funções de fallback 100% INLINE dentro do callback do webhook
+            // NUNCA declaradas no top-level para respeitar o isolamento de escopo do JSVM do PocketBase
+            const isSpendingExpenseMessageInline = function (rawText) {
+              if (!rawText) return false
+              const t = String(rawText)
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+              const hasNumber = /\d+([.,]\d{1,2})?/.test(t)
+              if (hasNumber) {
+                if (
+                  t.includes('real') ||
+                  t.includes('reais') ||
+                  t.includes('r$') ||
+                  t.includes('gastei') ||
+                  t.includes('comprei') ||
+                  t.includes('paguei') ||
+                  t.includes('custou') ||
+                  t.includes('despesa') ||
+                  t.includes('almo') ||
+                  t.includes('uber') ||
+                  t.includes('mercado') ||
+                  t.includes('padaria') ||
+                  t.includes('farmacia') ||
+                  t.includes('cafe') ||
+                  t.includes('gasolina') ||
+                  t.includes('lanche') ||
+                  t.includes('pizza') ||
+                  t.includes('jantar') ||
+                  t.includes('ifood') ||
+                  t.includes('combustivel')
+                ) {
+                  return true
+                }
+                // Formato abreviado clássico: [categoria/nome] [número] (ex: "Almoço 35", "Mercado 120", "Uber 25,50")
+                if (/^[a-z\s]{3,20}\s+\d+([.,]\d{1,2})?$/.test(t)) {
+                  return true
+                }
+              }
+              if (
+                t.startsWith('gastei ') ||
+                t.startsWith('paguei ') ||
+                t.startsWith('comprei ') ||
+                t.includes(' novo gasto') ||
+                t.includes('registrar gasto') ||
+                t.includes('registra gasto') ||
+                t.includes('lancar gasto') ||
+                t.includes('lança gasto')
+              ) {
+                return true
+              }
+              return false
+            }
+
+            const buildGracefulFallbackInline = function (rawText, isAudio) {
+              if (isAudio) {
+                return 'Recebi seu áudio aqui no Consciente! 🎙️\nTivemos uma oscilação momentânea no processamento agora. Se você puder mandar novamente ou digitar rapidinho em texto (ex: "Almoço 35"), já registro direto na sua caixinha!'
+              }
+              const raw = String(rawText || '').trim()
+              const isSpending = isSpendingExpenseMessageInline(raw)
+              if (isSpending) {
+                return 'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+              }
+              const lower = raw.toLowerCase()
+              if (
+                lower.includes('deu certo') ||
+                lower.includes('conseguiu') ||
+                lower.includes('registrou') ||
+                lower.includes('salvou') ||
+                lower.includes('gravou')
+              ) {
+                return 'Olá! O Consciente está aqui com você! 👋\nTivemos uma oscilação rápida agora há pouco e sua última solicitação pode não ter sido concluída. Você pode me mandar novamente o que gostaria de registrar ou checar? Se foi um gasto, pode mandar o valor e a caixinha (ex: "Almoço 35").'
+              }
+              if (
+                lower === 'oi' ||
+                lower === 'ola' ||
+                lower === 'olá' ||
+                lower.startsWith('oi ') ||
+                lower.startsWith('ola ') ||
+                lower.startsWith('olá ') ||
+                lower.startsWith('bom dia') ||
+                lower.startsWith('boa tarde') ||
+                lower.startsWith('boa noite') ||
+                lower.includes('tudo bem') ||
+                lower.includes('e agora')
+              ) {
+                return 'Olá! Eu sou o Consciente - Seu parceiro nas finanças! 👋\nComo posso te ajudar agora? Você pode registrar um gasto (ex: "Almoço 35"), ver o resumo das caixinhas enviando "resumo", ou tirar uma dúvida financeira!'
+              }
+              return 'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea e não consegui interpretar sua mensagem agora. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+            }
+
+            // Fallback garantido: toda mensagem SEMPRE produz uma resposta amigável e acolhedora
             if (!agentReply) {
               if (!isRegistered) {
                 agentReply =
@@ -1192,20 +1323,21 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 reliabilityHelper &&
                 typeof reliabilityHelper.buildGracefulFallbackReply === 'function'
               ) {
-                agentReply = reliabilityHelper.buildGracefulFallbackReply(
-                  textContent,
-                  isAudioMessage,
-                )
-              } else {
-                // Fallback defensivo caso o helper não esteja acessível
-                const isSpendingSimple = /\d+/.test(textContent)
-                if (isSpendingSimple) {
-                  agentReply =
-                    'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
-                } else {
-                  agentReply =
-                    'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea no processamento. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+                try {
+                  agentReply = reliabilityHelper.buildGracefulFallbackReply(
+                    textContent,
+                    isAudioMessage,
+                  )
+                } catch (relFbErr) {
+                  console.error(
+                    '[whatsapp_bridge] Erro ao chamar buildGracefulFallbackReply do reliabilityHelper, recorrendo ao inline:',
+                    relFbErr,
+                  )
+                  agentReply = buildGracefulFallbackInline(textContent, isAudioMessage)
                 }
+              } else {
+                // Fallback interno 100% embutido inline no callback — NUNCA pede gasto para saudações/dúvidas
+                agentReply = buildGracefulFallbackInline(textContent, isAudioMessage)
               }
               console.log(
                 `[whatsapp_bridge] Mensagem de fallback gerada: "${agentReply.slice(0, 100)}"`,
@@ -1883,18 +2015,9 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       let agentReply = ''
       let newConvId = existingConvId
 
-      // Carrega helper de confiabilidade (guardrail, cancelamento, datas retroativas) no simulate
-      let reliabilityHelperSim =
+      // Helper de confiabilidade carregado no boot (seção 1.5), cacheado em globalThis.
+      const reliabilityHelperSim =
         typeof globalThis !== 'undefined' ? globalThis.__reliabilityHelper : null
-      if (!reliabilityHelperSim) {
-        try {
-          reliabilityHelperSim = require('./reliability_helper.js')
-        } catch (relSimErr) {
-          try {
-            reliabilityHelperSim = require(`${__hooks}/reliability_helper.js`)
-          } catch (_) {}
-        }
-      }
 
       // 1. Guardrail de Temas (Item 22) no simulate
       if (
@@ -1960,17 +2083,9 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       }
 
       // Verificação de intenção padronizada: Resumo Visual das Caixinhas no simulate
-      let caixinhasHelperSim =
+      // Helper de resumo das caixinhas carregado no boot (seção 1.5), sem require em runtime.
+      const caixinhasHelperSim =
         typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
-      if (!caixinhasHelperSim) {
-        try {
-          caixinhasHelperSim = require('./caixinhas_summary_helper.js')
-        } catch (hErr) {
-          try {
-            caixinhasHelperSim = require(`${__hooks}/caixinhas_summary_helper.js`)
-          } catch (_) {}
-        }
-      }
 
       const isCaixinhasOverview =
         isRegistered &&
@@ -2014,44 +2129,146 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       }
 
       if (activeUserId && !agentReply) {
-        try {
-          const agentResult = $ai.agent('financeiro-whatsapp').chat({
-            user_id: activeUserId,
-            conversation_id: existingConvId,
-            message: promptForAgent,
-          })
-          agentReply = agentResult.content || ''
-          newConvId = agentResult.conversation_id || existingConvId
-        } catch (aErr) {
-          console.log('[whatsapp_bridge] Falha ao executar agente no simulate:', aErr)
+        const maxSimAttempts = 3
+        let simAttempt = 0
+        let currentConvIdForSim = existingConvId
 
-          if (existingConvId && isConvNotFoundError(aErr)) {
+        while (simAttempt < maxSimAttempts && !agentReply) {
+          simAttempt++
+          try {
             console.log(
-              '[whatsapp_bridge] Conversation_id inválido no simulate (' +
-                existingConvId +
-                '). Tentando novamente com nova conversa limpa...',
+              `[whatsapp_bridge] [simulate] Chamando $ai.agent('financeiro-whatsapp').chat (tentativa ${simAttempt}/${maxSimAttempts}) user_id=${activeUserId}, conv_id=${currentConvIdForSim || 'null'}`,
             )
-            try {
-              const retryResult = $ai.agent('financeiro-whatsapp').chat({
-                user_id: activeUserId,
-                conversation_id: null,
-                message: promptForAgent,
-              })
-              agentReply = retryResult.content || ''
-              newConvId = retryResult.conversation_id || null
+            const agentResult = $ai.agent('financeiro-whatsapp').chat({
+              user_id: activeUserId,
+              conversation_id: currentConvIdForSim,
+              message: promptForAgent,
+            })
+            agentReply = agentResult.content || ''
+            newConvId = agentResult.conversation_id || currentConvIdForSim
+          } catch (aErr) {
+            console.error(
+              `[whatsapp_bridge] [simulate] Falha ao executar agente na tentativa ${simAttempt}/${maxSimAttempts}:`,
+              aErr,
+            )
+
+            if (currentConvIdForSim && isConvNotFoundError(aErr)) {
               console.log(
-                '[whatsapp_bridge] Recuperação no simulate bem-sucedida! Nova conversation_id:',
-                newConvId,
+                `[whatsapp_bridge] [simulate] Conversation_id inválido (${currentConvIdForSim}). Resetando para conversa limpa na próxima tentativa...`,
               )
-            } catch (retryErr) {
-              console.log(
-                '[whatsapp_bridge] Falha no retry de nova conversa no simulate:',
-                retryErr,
+              currentConvIdForSim = null
+            } else if (
+              /context canceled|context deadline|gateway call|timeout|deadline exceeded/i.test(
+                String(aErr),
               )
-              newConvId = null
+            ) {
+              console.warn(
+                `[whatsapp_bridge] [simulate] Falha transitória de gateway/timeout detectada na tentativa ${simAttempt}. Tentando conversa limpa e backoff...`,
+              )
+              currentConvIdForSim = null
+              if (simAttempt < maxSimAttempts) {
+                const backoffMs = simAttempt * 700
+                try {
+                  if (typeof $sleep === 'function') {
+                    $sleep(backoffMs)
+                  } else {
+                    const sStart = Date.now()
+                    while (Date.now() - sStart < backoffMs) {}
+                  }
+                } catch (_) {}
+              }
+            } else {
+              currentConvIdForSim = null
             }
           }
         }
+      }
+
+      // Funções de fallback 100% INLINE dentro do callback de simulação
+      const isSpendingMessageSimInline = function (rawText) {
+        if (!rawText) return false
+        const t = String(rawText)
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+        const hasNumber = /\d+([.,]\d{1,2})?/.test(t)
+        if (hasNumber) {
+          if (
+            t.includes('real') ||
+            t.includes('reais') ||
+            t.includes('r$') ||
+            t.includes('gastei') ||
+            t.includes('comprei') ||
+            t.includes('paguei') ||
+            t.includes('custou') ||
+            t.includes('despesa') ||
+            t.includes('almo') ||
+            t.includes('uber') ||
+            t.includes('mercado') ||
+            t.includes('padaria') ||
+            t.includes('farmacia') ||
+            t.includes('cafe') ||
+            t.includes('gasolina') ||
+            t.includes('lanche') ||
+            t.includes('pizza') ||
+            t.includes('jantar') ||
+            t.includes('ifood') ||
+            t.includes('combustivel')
+          ) {
+            return true
+          }
+          if (/^[a-z\s]{3,20}\s+\d+([.,]\d{1,2})?$/.test(t)) {
+            return true
+          }
+        }
+        if (
+          t.startsWith('gastei ') ||
+          t.startsWith('paguei ') ||
+          t.startsWith('comprei ') ||
+          t.includes(' novo gasto') ||
+          t.includes('registrar gasto') ||
+          t.includes('registra gasto') ||
+          t.includes('lancar gasto') ||
+          t.includes('lança gasto')
+        ) {
+          return true
+        }
+        return false
+      }
+
+      const buildGracefulFallbackSimInline = function (rawText) {
+        const raw = String(rawText || '').trim()
+        const isSpending = isSpendingMessageSimInline(raw)
+        if (isSpending) {
+          return 'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+        }
+        const lower = raw.toLowerCase()
+        if (
+          lower.includes('deu certo') ||
+          lower.includes('conseguiu') ||
+          lower.includes('registrou') ||
+          lower.includes('salvou') ||
+          lower.includes('gravou')
+        ) {
+          return 'Olá! O Consciente está aqui com você! 👋\nTivemos uma oscilação rápida agora há pouco e sua última solicitação pode não ter sido concluída. Você pode me mandar novamente o que gostaria de registrar ou checar? Se foi um gasto, pode mandar o valor e a caixinha (ex: "Almoço 35").'
+        }
+        if (
+          lower === 'oi' ||
+          lower === 'ola' ||
+          lower === 'olá' ||
+          lower.startsWith('oi ') ||
+          lower.startsWith('ola ') ||
+          lower.startsWith('olá ') ||
+          lower.startsWith('bom dia') ||
+          lower.startsWith('boa tarde') ||
+          lower.startsWith('boa noite') ||
+          lower.includes('tudo bem') ||
+          lower.includes('e agora')
+        ) {
+          return 'Olá! Eu sou o Consciente - Seu parceiro nas finanças! 👋\nComo posso te ajudar agora? Você pode registrar um gasto (ex: "Almoço 35"), ver o resumo das caixinhas enviando "resumo", ou tirar uma dúvida financeira!'
+        }
+        return 'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea e não consegui interpretar sua mensagem agora. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
       }
 
       if (!agentReply) {
@@ -2062,16 +2279,18 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
           reliabilityHelperSim &&
           typeof reliabilityHelperSim.buildGracefulFallbackReply === 'function'
         ) {
-          agentReply = reliabilityHelperSim.buildGracefulFallbackReply(message, false)
-        } else {
-          const isSpendingSimple = /\d+/.test(message)
-          if (isSpendingSimple) {
-            agentReply =
-              'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
-          } else {
-            agentReply =
-              'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea no processamento. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+          try {
+            agentReply = reliabilityHelperSim.buildGracefulFallbackReply(message, false)
+          } catch (relSimErr) {
+            console.error(
+              '[whatsapp_bridge] [simulate] Erro ao chamar reliabilityHelperSim, usando inline:',
+              relSimErr,
+            )
+            agentReply = buildGracefulFallbackSimInline(message)
           }
+        } else {
+          // Fallback interno 100% inline no handler
+          agentReply = buildGracefulFallbackSimInline(message)
         }
       }
 

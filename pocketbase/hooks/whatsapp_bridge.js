@@ -704,7 +704,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                               Authorization: 'Bearer ' + activeKey,
                             },
                             body: form,
-                            timeout: 30,
+                            timeout: 12,
                           })
 
                           const gCode = gRes.statusCode
@@ -759,7 +759,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                             Authorization: 'Bearer ' + activeKey,
                           },
                           body: form,
-                          timeout: 25,
+                          timeout: 12,
                         })
 
                         const oCode = oRes.statusCode
@@ -946,18 +946,17 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               typeof globalThis !== 'undefined' ? globalThis.__reliabilityHelper : null
             if (!reliabilityHelper) {
               try {
-                reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
+                reliabilityHelper = require('./reliability_helper.js')
               } catch (relErr) {
-                console.error(
-                  '[whatsapp_bridge] [CRÍTICO] Falha ao carregar reliability_helper via require:',
-                  relErr,
-                )
+                try {
+                  reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
+                } catch (relErr2) {
+                  console.error(
+                    '[whatsapp_bridge] Falha ao carregar reliability_helper via require:',
+                    relErr2,
+                  )
+                }
               }
-            }
-            if (!reliabilityHelper) {
-              console.error(
-                '[whatsapp_bridge] [CRÍTICO] reliability_helper indisponível! Guardrail e cancelamento inoperantes.',
-              )
             }
 
             // 1. Guardrail de Temas (Item 22): recusa gentil se fora de finanças/app
@@ -1037,18 +1036,17 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
             if (!caixinhasHelper) {
               try {
-                caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
+                caixinhasHelper = require('./caixinhas_summary_helper.js')
               } catch (hErr) {
-                console.error(
-                  '[whatsapp_bridge] [CRÍTICO] Falha ao carregar caixinhas_summary_helper via require:',
-                  hErr,
-                )
+                try {
+                  caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
+                } catch (hErr2) {
+                  console.error(
+                    '[whatsapp_bridge] Falha ao carregar caixinhas_summary_helper via require:',
+                    hErr2,
+                  )
+                }
               }
-            }
-            if (!caixinhasHelper) {
-              console.error(
-                '[whatsapp_bridge] [CRÍTICO] caixinhas_summary_helper indisponível! Resumo visual automático inoperante.',
-              )
             }
 
             const isCaixinhasOverview =
@@ -1190,9 +1188,24 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               } else if (!hasCompletedOnboarding) {
                 agentReply =
                   'Olá! Seu cadastro no Consciente foi localizado, mas suas caixinhas ainda precisam ser configuradas. Acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas caixinhas de gastos!'
+              } else if (
+                reliabilityHelper &&
+                typeof reliabilityHelper.buildGracefulFallbackReply === 'function'
+              ) {
+                agentReply = reliabilityHelper.buildGracefulFallbackReply(
+                  textContent,
+                  isAudioMessage,
+                )
               } else {
-                agentReply =
-                  'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+                // Fallback defensivo caso o helper não esteja acessível
+                const isSpendingSimple = /\d+/.test(textContent)
+                if (isSpendingSimple) {
+                  agentReply =
+                    'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+                } else {
+                  agentReply =
+                    'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea no processamento. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+                }
               }
               console.log(
                 `[whatsapp_bridge] Mensagem de fallback gerada: "${agentReply.slice(0, 100)}"`,
@@ -1871,11 +1884,16 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       let newConvId = existingConvId
 
       // Carrega helper de confiabilidade (guardrail, cancelamento, datas retroativas) no simulate
-      let reliabilityHelperSim = null
-      try {
-        reliabilityHelperSim = require(`${__hooks}/reliability_helper.js`)
-      } catch (relSimErr) {
-        console.log('[whatsapp_bridge] [simulate] Falha ao carregar reliability_helper:', relSimErr)
+      let reliabilityHelperSim =
+        typeof globalThis !== 'undefined' ? globalThis.__reliabilityHelper : null
+      if (!reliabilityHelperSim) {
+        try {
+          reliabilityHelperSim = require('./reliability_helper.js')
+        } catch (relSimErr) {
+          try {
+            reliabilityHelperSim = require(`${__hooks}/reliability_helper.js`)
+          } catch (_) {}
+        }
       }
 
       // 1. Guardrail de Temas (Item 22) no simulate
@@ -1942,14 +1960,16 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       }
 
       // Verificação de intenção padronizada: Resumo Visual das Caixinhas no simulate
-      let caixinhasHelperSim = null
-      try {
-        caixinhasHelperSim = require(`${__hooks}/caixinhas_summary_helper.js`)
-      } catch (hErr) {
-        console.log(
-          '[whatsapp_bridge] [simulate] Falha ao carregar caixinhas_summary_helper:',
-          hErr,
-        )
+      let caixinhasHelperSim =
+        typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
+      if (!caixinhasHelperSim) {
+        try {
+          caixinhasHelperSim = require('./caixinhas_summary_helper.js')
+        } catch (hErr) {
+          try {
+            caixinhasHelperSim = require(`${__hooks}/caixinhas_summary_helper.js`)
+          } catch (_) {}
+        }
       }
 
       const isCaixinhasOverview =
@@ -2038,9 +2058,20 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
         if (!isRegistered) {
           agentReply =
             'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+        } else if (
+          reliabilityHelperSim &&
+          typeof reliabilityHelperSim.buildGracefulFallbackReply === 'function'
+        ) {
+          agentReply = reliabilityHelperSim.buildGracefulFallbackReply(message, false)
         } else {
-          agentReply =
-            'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+          const isSpendingSimple = /\d+/.test(message)
+          if (isSpendingSimple) {
+            agentReply =
+              'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+          } else {
+            agentReply =
+              'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea no processamento. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+          }
         }
       }
 

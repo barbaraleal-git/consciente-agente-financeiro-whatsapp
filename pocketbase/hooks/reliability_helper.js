@@ -638,10 +638,120 @@ function handleCancellationFlow(app, userId, text, contactRecord) {
   return { handled: false, reply: '' }
 }
 
+/**
+ * Detecta se uma mensagem de texto aparenta ser um lançamento de gasto/despesa
+ * (contém valor numérico ou palavras típicas de consumo/compra/almoço/mercado/etc.).
+ */
+function isSpendingExpenseMessage(text) {
+  if (!text) return false
+  const t = String(text)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+  // Presença explícita de valor monetário (ex: "35", "R$ 50", "42,90", "120 reais")
+  const hasNumber = /\d+([.,]\d{1,2})?/.test(t)
+  if (hasNumber) {
+    if (
+      t.includes('real') ||
+      t.includes('reais') ||
+      t.includes('r$') ||
+      t.includes('gastei') ||
+      t.includes('comprei') ||
+      t.includes('paguei') ||
+      t.includes('custou') ||
+      t.includes('despesa') ||
+      t.includes('almo') ||
+      t.includes('uber') ||
+      t.includes('mercado') ||
+      t.includes('padaria') ||
+      t.includes('farmacia') ||
+      t.includes('cafe') ||
+      t.includes('gasolina') ||
+      t.includes('lanche') ||
+      t.includes('pizza') ||
+      t.includes('jantar') ||
+      t.includes('ifood') ||
+      t.includes('combustivel')
+    ) {
+      return true
+    }
+    // Formato abreviado padrão: [categoria/nome] [número] (ex: "Almoço 35", "Mercado 120", "Uber 25,50")
+    if (/^[a-z\s]{3,20}\s+\d+([.,]\d{1,2})?$/.test(t)) {
+      return true
+    }
+  }
+
+  // Palavras de gasto explícito mesmo sem número identificado imediatamente
+  if (
+    t.startsWith('gastei ') ||
+    t.startsWith('paguei ') ||
+    t.startsWith('comprei ') ||
+    t.includes(' novo gasto') ||
+    t.includes('registrar gasto') ||
+    t.includes('registra gasto') ||
+    t.includes('lancar gasto') ||
+    t.includes('lança gasto')
+  ) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Gera mensagem de fallback adequada e empática baseada no contexto da mensagem
+ * quando a IA do agente falha temporariamente por timeout ou oscilação.
+ */
+function buildGracefulFallbackReply(text, isAudio) {
+  // Se for áudio que chegou a transcrever algo ou foi áudio com falha no agente
+  if (isAudio) {
+    return 'Recebi seu áudio aqui no Consciente! 🎙️\nTivemos uma oscilação momentânea no processamento agora. Se você puder mandar novamente ou digitar rapidinho em texto (ex: "Almoço 35"), já registro direto na sua caixinha!'
+  }
+
+  const raw = String(text || '').trim()
+  const isSpending = isSpendingExpenseMessage(raw)
+
+  if (isSpending) {
+    return 'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+  }
+
+  // Se for pergunta, saudação ou conversa comum (ex: "Oi, deu certo?", "tudo bem?", "como você está?")
+  const lower = raw.toLowerCase()
+  if (
+    lower.includes('deu certo') ||
+    lower.includes('conseguiu') ||
+    lower.includes('registrou') ||
+    lower.includes('salvou') ||
+    lower.includes('gravou')
+  ) {
+    return 'Olá! O Consciente está aqui com você! 👋\nTivemos uma oscilação rápida agora há pouco e sua última solicitação pode não ter sido concluída. Você pode me mandar novamente o que gostaria de registrar ou checar? Se foi um gasto, pode mandar o valor e a caixinha (ex: "Almoço 35").'
+  }
+
+  if (
+    lower === 'oi' ||
+    lower === 'ola' ||
+    lower === 'olá' ||
+    lower.startsWith('oi ') ||
+    lower.startsWith('bom dia') ||
+    lower.startsWith('boa tarde') ||
+    lower.startsWith('boa noite') ||
+    lower.includes('tudo bem')
+  ) {
+    return 'Olá! Eu sou o Consciente - Seu parceiro nas finanças! 👋\nComo posso te ajudar agora? Você pode registrar um gasto (ex: "Almoço 35"), ver o resumo das caixinhas enviando "resumo", ou tirar uma dúvida financeira!'
+  }
+
+  // Fallback geral gentil de parceiro financeiro (NUNCA assume que era um gasto)
+  return 'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea e não consegui interpretar sua mensagem agora. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+}
+
 // Exporta tanto em module.exports quanto no globalThis (PocketBase JSVM)
 const reliabilityHelperExports = {
   OFF_TOPIC_GUARDRAIL_REPLY,
   isOffTopicQuery,
+  isSpendingExpenseMessage,
+  buildGracefulFallbackReply,
   parseRetroactiveDate,
   formatDatePtBr,
   isCancellationIntent,

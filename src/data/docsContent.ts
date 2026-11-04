@@ -142,6 +142,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Item 28: Gasto retroativo (lado do agente)** | Capacidade do agente interpretar datas passadas na fala ou texto ("ontem gastei 35", "terça gastei 50"), registrar com o campo \`date\` correspondente e \`is_retroactive = true\`. A confirmação do agente menciona explicitamente a data original e a interface exibe o badge "Retroativo". | **Concluído** |
 | **Idempotência de Webhook WhatsApp (Meta retry)** | Proteção estrita contra retries automáticos da Meta (>5s): deduplicação por \`wamid\` (message_id) em memória rápida com TTL e persistência na coleção \`whatsapp_processed_messages\`. Evita mensagens duplicadas ou falsas rejeições de duplicidade. | **Concluído** |
 | **Garantia de Integridade de Status e Retroativo** | Hook \`transactions_integrity.js\` garante que toda transação nasça com \`status='active'\` e tenha \`is_retroactive=true\` sempre que a data informada diferir do dia da mensagem. Proteção de deleção lógica definitiva. | **Concluído** |
+| **Tratamento de Fallback Inteligente e Resiliência de IA/Áudio** | Correção do bug de mensagens não-financeiras ("Oi, deu certo?") recebendo erro de gasto. Diferenciação contextual entre mensagens de gasto, conversas/dúvidas e saudações; timeouts ajustados de áudio (12s) para não acumular fila; e carregamento resiliente de módulos auxiliares (\`reliability_helper\` e \`caixinhas_summary_helper\`) em ambientes isolados do Goja JSVM. | **Concluído** |
 
 ---
 
@@ -191,7 +192,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
-Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a W intactos e adiciona o cenário X para a exibição de transações canceladas no extrato com isolamento total dos somatórios.
+Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém os cenários essenciais A a X intactos e adiciona o cenário Y para o tratamento inteligente de fallback e resiliência de mensagens não-financeiras no WhatsApp.
 
 ---
 
@@ -507,4 +508,30 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - **Em Relatórios (\`/reports\`)**: resumo executivo, total geral, despesas por categoria e evolução mensal filtram rigorosamente \`status = 'active'\`.
      - **Em Categorias (\`/categories\`)**: a contagem de lançamentos do mês e o total acumulado por categoria ignoram cancelados. A verificação para exclusão de categoria barra apenas se houver transações ATIVAS vinculadas.
      - **No Backoffice (/admin)**: os cartões de métricas globais e o detalhe do cliente somam exclusivamente despesas ativas.
+
+---
+
+## Y) Fallback Inteligente e Diferenciação de Mensagens no WhatsApp (Prevenção de Falso Erro de Gasto)
+
+1. **Mensagens que NÃO são Lançamentos Financeiros (Saudação e Verificação de Status)**:
+   - No WhatsApp do Consciente (ou via simulação de mensagem), envie uma pergunta comum: *"Oi, deu certo?"* ou *"Olá, tudo bem?"*.
+   - **Comportamento Esperado — NUNCA tratar como erro de gasto**:
+     - Em caso de oscilação momentânea ou timeout da IA do agente:
+       - O agente **NUNCA** responde com: \`Não consegui processar seu gasto agora... envie com o valor e a categoria\`.
+       - O agente responde de forma acolhedora e contextual:
+         - Para *"Oi, deu certo?"*: \`Olá! O Consciente está aqui com você! 👋 Tivemos uma oscilação rápida agora há pouco e sua última solicitação pode não ter sido concluída. Você pode me mandar novamente o que gostaria de registrar ou checar? Se foi um gasto, pode mandar o valor e a caixinha (ex: "Almoço 35").\`
+         - Para *"Oi"*, *"Olá"*, *"Bom dia"*: \`Olá! Eu sou o Consciente - Seu parceiro nas finanças! 👋 Como posso te ajudar agora? Você pode registrar um gasto (ex: "Almoço 35"), ver o resumo das caixinhas enviando "resumo", ou tirar uma dúvida financeira!\`
+   - O cliente tem a sensação de que o assistente compreendeu que ele não estava tentando lançar um gasto, preservando a humanização do produto.
+
+2. **Mensagens que SÃO Lançamentos Financeiros**:
+   - Envie um gasto explícito: *"Almoço 42"* ou *"Gastei 120 no mercado"*.
+   - Se ocorrer oscilação na chamada ao agente:
+     - O fallback orienta educadamente a reenviar o valor e categoria para registrar na caixinha.
+
+3. **Mensagens de Áudio com Oscilação**:
+   - Se o áudio sofrer instabilidade na transcrição ou no agente:
+     - A resposta explica que o áudio foi recebido, mas houve oscilação momentânea, convidando gentilmente a reenviar ou digitar em texto curto.
+
+4. **Resiliência dos Módulos Auxiliares**:
+   - Os hooks \`reliability_helper.js\` e \`caixinhas_summary_helper.js\` devem carregar sem erro em qualquer escopo do runtime Goja JSVM (via \`globalThis\` ou caminhos relativos de \`require\`), garantindo que o guardrail de temas (Cenário S), parser de datas retroativas (Cenário T) e cancelamentos (Cenário U) operem sem falhas silenciosas.
 `

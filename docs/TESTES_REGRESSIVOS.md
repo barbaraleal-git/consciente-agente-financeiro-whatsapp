@@ -532,3 +532,25 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
    - O novo ícone, nome e cor refletem no Dashboard, Caixinhas, Extrato, Modal de Lançamentos e no resumo do WhatsApp.
 3. **Zero Regressão**:
    - O teto e o mês de referência são mantidos e salvos perfeitamente.
+
+---
+
+## AA) Fallback Embutido e Resiliente do WhatsApp (Zero Erro de Escopo e Resposta Acolhedora)
+
+1. **Deploy dos Hooks sem Hook Scoping Error**:
+   - O deploy de backend (`deploy_backend`) e a inicialização dos hooks do PocketBase ocorrem sem nenhuma falha de escopo Goja (ex.: `Hook scoping error: top-level declaration`).
+   - Todas as funções auxiliares de fallback inteligente e tentativas de reconexão residem inline dentro do escopo dos próprios handlers e callbacks ou via `globalThis`.
+
+2. **Resposta Acolhedora em Mensagens Não-Financeiras Durante Falha**:
+   - Envie uma mensagem não-financeira como _"Oi"_, _"Olá"_, _"Tudo bem?"_ ou _"Oi, deu certo?"_.
+   - Em caso de indisponibilidade ou timeout da IA ou de módulos externos:
+     - O Consciente responde com mensagem acolhedora e contextual, cumprimentando e oferecendo ajuda.
+     - **Critério Obrigatório**: O agente **NUNCA** responde exigindo valor e categoria (ex.: _"envie o valor e a categoria"_) para conversas comuns ou saudações.
+
+3. **Fallback Correto em Lançamentos Financeiros**:
+   - Envie um gasto explícito (ex.: _"Almoço 35"_ ou _"Mercado 120"_).
+   - Se a IA estiver inoperante ou sofrer timeout:
+     - O fallback orienta educadamente a enviar novamente o valor e a caixinha, preservando a coerência do atendimento financeiro.
+
+4. **Zero Regressão dos Cenários A a Z**:
+   - Todos os fluxos de áudio, resumos visuais de caixinhas, filtros de transações, edição com 3 abas de ícones/bichinhos e isolamento de permissões continuam 100% íntegros.

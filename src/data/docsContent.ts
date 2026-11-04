@@ -144,6 +144,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Garantia de Integridade de Status e Retroativo** | Hook \`transactions_integrity.js\` garante que toda transação nasça com \`status='active'\` e tenha \`is_retroactive=true\` sempre que a data informada diferir do dia da mensagem. Proteção de deleção lógica definitiva. | **Concluído** |
 | **Tratamento de Fallback Inteligente e Resiliência de IA/Áudio** | Correção do bug de mensagens não-financeiras ("Oi, deu certo?") recebendo erro de gasto. Diferenciação contextual entre mensagens de gasto, conversas/dúvidas e saudações; timeouts ajustados de áudio (12s) para não acumular fila; e carregamento resiliente de módulos auxiliares (\`reliability_helper\` e \`caixinhas_summary_helper\`) em ambientes isolados do Goja JSVM. | **Concluído** |
 | **Edição Completa de Caixinha (/budgets e /categories)** | Conclusão do modal "Editar Caixinha" em \`/budgets\` e \`/categories\` permitindo que o cliente altere o ícone/figurinha com 3 abas completas (**Ícones**, **Emojis** e **🐱 Bichinhos** com todos os bichinhos oficiais: Gatinho, Cachorrinho, Patinhas, Ursinho, Panda, Coala, Leãozinho, Coelhinho, Raposa, Tigrinho, Pinguim, Corujinha, Borboleta, Abelhinha etc.), o nome e a cor da caixinha, preservando integralmente o teto e o mês de referência. As alterações refletem em tempo real no Dashboard, Caixinhas, Extrato, Modal de Lançamentos e no resumo visual do WhatsApp. | **Concluído** |
+| **Resiliência do Agente WhatsApp e Correção de Mensagens Duplicadas/Oscilação** | Resolução da oscilação momentânea e mensagens repetidas no WhatsApp: fallback inteligente embutido diretamente inline nos callbacks do hook (\`whatsapp_bridge.js\`), eliminando declarações de escopo superior sujeitas a \`Hook scoping error\`. Até 3 tentativas com backoff progressivo na invocação do agente nativo \`$ai.agent\` e resposta acolhedora humanizada para saudações e conversas, sem falsos pedidos de valor e categoria em falhas externas. | **Concluído** |
 
 ---
 
@@ -193,7 +194,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
-Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém todos os cenários essenciais A a Y intactos e adiciona o cenário Z para a edição de ícone/figurinha (3 abas), nome e cor de caixinhas existentes pelo modal Editar em \`/budgets\`.
+Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém todos os cenários essenciais A a Z intactos e adiciona o cenário AA para o fallback embutido e resiliente no WhatsApp sem erros de escopo.
 
 ---
 
@@ -570,4 +571,26 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 4. **Zero Regressão de Tetos e Mês de Referência**:
    - O teto e o mês continuam gravados com precisão no registro de \`budgets\`, sem duplicar registros para o mesmo mês e sem alterar lançamentos passados.
+
+---
+
+## AA) Fallback Embutido e Resiliente do WhatsApp (Zero Erro de Escopo e Resposta Acolhedora)
+
+1. **Deploy dos Hooks sem Hook Scoping Error**:
+   - O deploy de backend (\`deploy_backend\`) e a inicialização dos hooks do PocketBase ocorrem sem nenhuma falha de escopo Goja (ex.: \`Hook scoping error: top-level declaration\`).
+   - Todas as funções auxiliares de fallback inteligente e tentativas de reconexão residem inline dentro do escopo dos próprios handlers e callbacks ou via \`globalThis\`.
+
+2. **Resposta Acolhedora em Mensagens Não-Financeiras Durante Falha**:
+   - Envie uma mensagem não-financeira como *"Oi"*, *"Olá"*, *"Tudo bem?"* ou *"Oi, deu certo?"*.
+   - Em caso de indisponibilidade ou timeout da IA ou de módulos externos:
+     - O Consciente responde com mensagem acolhedora e contextual, cumprimentando e oferecendo ajuda.
+     - **Critério Obrigatório**: O agente **NUNCA** responde exigindo valor e categoria (ex.: *"envie o valor e a categoria"*) para conversas comuns ou saudações.
+
+3. **Fallback Correto em Lançamentos Financeiros**:
+   - Envie um gasto explícito (ex.: *"Almoço 35"* ou *"Mercado 120"*).
+   - Se a IA estiver inoperante ou sofrer timeout:
+     - O fallback orienta educadamente a enviar novamente o valor e a caixinha, preservando a coerência do atendimento financeiro.
+
+4. **Zero Regressão dos Cenários A a Z**:
+   - Todos os fluxos de áudio, resumos visuais de caixinhas, filtros de transações, edição com 3 abas de ícones/bichinhos e isolamento de permissões continuam 100% íntegros.
 `

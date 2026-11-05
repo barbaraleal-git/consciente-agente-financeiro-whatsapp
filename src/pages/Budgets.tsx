@@ -10,6 +10,7 @@ import {
 import { useRealtime } from '@/hooks/use-realtime'
 import {
   formatCurrency,
+  formatDate,
   getCurrentMonthStr,
   formatMonthName,
   parseCurrencyToCents,

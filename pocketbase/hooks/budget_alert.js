@@ -61,14 +61,15 @@ cronAdd('budget-check', '0 * * * *', () => {
 
     for (const budget of budgets) {
       const ownerId = budget.getString('owner')
-      const catId = budget.getString('category')
+      const bId = budget.id
+      const bName = budget.getString('name') || 'Caixinha'
       const budgetAmount = budget.getInt('amount')
       if (budgetAmount <= 0) continue
 
-      // Sum transactions for this category, month, and owner (somente ativas)
+      // Sum transactions vinculadas a este budget no mês (somente ativas)
       const txs = $app.findRecordsByFilter(
         'transactions',
-        `owner = '${ownerId}' && category = '${catId}' && date >= '${currentMonth}-01' && date <= '${currentMonth}-31' && type = 'despesa' && (status = 'active' || status = '')`,
+        `owner = '${ownerId}' && budget = '${bId}' && date >= '${currentMonth}-01' && date <= '${currentMonth}-31' && type = 'despesa' && (status = 'active' || status = '')`,
         '',
         1000,
         0,
@@ -81,12 +82,7 @@ cronAdd('budget-check', '0 * * * *', () => {
 
       const ratio = spent / budgetAmount
       if (ratio >= 0.8) {
-        let categoryName = 'Categoria'
-        try {
-          const catRec = $app.findRecordById('categories', catId)
-          categoryName = catRec.getString('name')
-        } catch (_) {}
-
+        const categoryName = bName
         const percentage = Math.round(ratio * 100)
         const isExceeded = ratio >= 0.9
         const alertType = isExceeded ? 'budget' : 'warning'

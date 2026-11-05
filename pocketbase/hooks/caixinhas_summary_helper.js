@@ -265,9 +265,15 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     const catId = bg.getString('category')
     const bId = bg.id
     const bAmt = bg.getInt('amount') || 0
+    const bName = bg.getString('name') || ''
+    const bIcon = bg.getString('icon') || ''
+    const bColor = bg.getString('color') || ''
     budgetByBudgetId[bId] = bg
     budgetsList.push({
       id: bId,
+      name: bName,
+      icon: bIcon,
+      color: bColor,
       category: catId,
       amount: bAmt,
       month: bg.getString('month') || monthStr,
@@ -398,12 +404,13 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
             }
           }
           if (!candBudget) continue
-          const candMeta = categoryById[candBudget.category]
-          if (candMeta && candMeta.normName && combined.includes(candMeta.normName)) {
+          const candName = candBudget.name || categoryById[candBudget.category]?.name || ''
+          const candNorm = norm(candName)
+          if (candNorm && combined.includes(candNorm)) {
             return candBudget
           }
-          if (candMeta && candMeta.name) {
-            const parts = candMeta.name.split('-').map((p) => norm(p))
+          if (candName) {
+            const parts = candName.split('-').map((p) => norm(p))
             if (parts.length > 1) {
               const suffix = parts[parts.length - 1]
               if (suffix && suffix.length >= 2) {
@@ -426,16 +433,12 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
 
     for (let b = 0; b < budgetsList.length; b++) {
       const bg = budgetsList[b]
-      const bCatId = bg.category
-      const bMeta = categoryById[bCatId]
+      const bName = bg.name || categoryById[bg.category]?.name || ''
+      const bNorm = norm(bName)
       let score = 0
 
-      if (txCatId && bCatId && txCatId === bCatId) {
-        score = 100
-      }
-
-      if (bMeta && bMeta.name) {
-        const parts = bMeta.name.split('-').map((p) => norm(p))
+      if (bName) {
+        const parts = bName.split('-').map((p) => norm(p))
         if (parts.length > 1) {
           const suffix = parts[parts.length - 1]
           if (suffix && suffix.length >= 2) {
@@ -445,11 +448,11 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
             }
           }
         }
-        if (bMeta.normName && combined.includes(bMeta.normName)) {
+        if (bNorm && combined.includes(bNorm)) {
           score = Math.max(score, 70)
         }
-        if (txCatName && bMeta.normName) {
-          if (bMeta.normName.includes(txCatName) || txCatName.includes(bMeta.normName)) {
+        if (txCatName && bNorm) {
+          if (bNorm.includes(txCatName) || txCatName.includes(bNorm)) {
             score = Math.max(score, 50)
           }
         }
@@ -465,26 +468,22 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   }
 
   // Calcula o gasto somando cada transação ativa UMA ÚNICA VEZ na caixinha resolvida
-  const spentByCategoryId = {}
+  const spentByBudgetId = {}
   for (let b = 0; b < budgetsList.length; b++) {
-    const bg = budgetsList[b]
-    if (bg.category) {
-      spentByCategoryId[bg.category] = 0
-    }
+    spentByBudgetId[budgetsList[b].id] = 0
   }
 
   for (let t = 0; t < transactions.length; t++) {
     const tx = transactions[t]
     const amt = tx.getInt('amount') || 0
     const matchedBudget = resolveTxBudget(tx)
-    if (matchedBudget && matchedBudget.category) {
-      spentByCategoryId[matchedBudget.category] =
-        (spentByCategoryId[matchedBudget.category] || 0) + amt
+    if (matchedBudget && matchedBudget.id) {
+      spentByBudgetId[matchedBudget.id] = (spentByBudgetId[matchedBudget.id] || 0) + amt
     }
   }
 
   // 4. Se não há caixinhas ativas cadastradas
-  if (categories.length === 0 && Object.keys(budgetByCategoryId).length === 0) {
+  if (budgetsList.length === 0) {
     return (
       `📊 *Suas Caixinhas — Mês de ${monthName}*\n\n` +
       `Você ainda não tem caixinhas configuradas no Consciente.\n\n` +
@@ -492,22 +491,19 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     )
   }
 
-  // 5. Monta a lista consolidada das caixinhas
+  // 5. Monta a lista consolidada das caixinhas direto de budgetsList
   const list = []
   let totalSpentCents = 0
   let totalBudgetCents = 0
 
-  for (let c = 0; c < categories.length; c++) {
-    const cat = categories[c]
-    const catId = cat.id
-    const name = cat.getString('name') || 'Caixinha'
-    const iconId = cat.getString('icon') || ''
+  for (let b = 0; b < budgetsList.length; b++) {
+    const bg = budgetsList[b]
+    const bId = bg.id
+    const name = bg.name || categoryById[bg.category]?.name || 'Caixinha'
+    const iconId = bg.icon || categoryById[bg.category]?.icon || ''
     const emoji = resolveCaixinhaEmoji(iconId, name)
-    const budgetCents = budgetByCategoryId[catId] || 0
-    const spentCents = spentByCategoryId[catId] || 0
-
-    // Ignora se não tem budget e não teve gasto neste mês (evita poluir a lista)
-    if (budgetCents === 0 && spentCents === 0) continue
+    const budgetCents = bg.amount || 0
+    const spentCents = spentByBudgetId[bId] || 0
 
     totalSpentCents += spentCents
     totalBudgetCents += budgetCents
@@ -526,20 +522,6 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
       spentCents,
       percent,
     })
-  }
-
-  // Se nenhuma caixinha teve teto ou gasto filtrado, traz ao menos as categorias criadas
-  if (list.length === 0 && categories.length > 0) {
-    for (let c = 0; c < categories.length; c++) {
-      const cat = categories[c]
-      list.push({
-        name: cat.getString('name') || 'Caixinha',
-        emoji: resolveCaixinhaEmoji(cat.getString('icon'), cat.getString('name')),
-        budgetCents: 0,
-        spentCents: 0,
-        percent: 0,
-      })
-    }
   }
 
   // Ordena: estouradas primeiro (>= 100%), depois atenção (>= 80%), depois pelo maior valor gasto

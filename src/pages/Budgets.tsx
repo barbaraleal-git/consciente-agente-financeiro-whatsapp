@@ -92,8 +92,6 @@ export const Budgets: React.FC = () => {
   const [modalTab, setModalTab] = useState<'geral' | 'categorias'>('geral')
 
   // Form Fields
-  const [creationMode, setCreationMode] = useState<'existing' | 'custom'>('custom')
-  const [catId, setCatId] = useState('')
   const [customName, setCustomName] = useState('')
   const [customIcon, setCustomIcon] = useState('pet-cat')
   const [iconTab, setIconTab] = useState<'geral' | 'emoji' | 'bichinho'>('bichinho')
@@ -141,9 +139,16 @@ export const Budgets: React.FC = () => {
       const remaining = Math.max(0, b.amount - spent)
       const percentage = Math.round((spent / (b.amount || 1)) * 100)
 
+      const displayName = b.name || cat?.name || 'Caixinha'
+      const displayIcon = b.icon || cat?.icon || 'pet-cat'
+      const displayColor = b.color || cat?.color || '#ec4899'
+
       return {
         budget: b,
         category: cat,
+        displayName,
+        displayIcon,
+        displayColor,
         budgetAmount: b.amount,
         spentAmount: spent,
         remainingAmount: remaining,
@@ -191,13 +196,10 @@ export const Budgets: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingBudget(null)
     setModalTab('geral')
-    const expenseCats = categories.filter((c) => c.type === 'despesa')
-    setCreationMode('custom')
     setCustomName('')
     setCustomIcon('pet-cat')
     setIconTab('bichinho')
     setCustomColor('#ec4899')
-    setCatId(expenseCats[0]?.id || '')
     setAmountStr('')
     setMonthInput(selectedMonth)
     setSelectedLinkedCatNames([])
@@ -207,13 +209,11 @@ export const Budgets: React.FC = () => {
   const handleOpenEdit = (b: Budget) => {
     setEditingBudget(b)
     setModalTab('geral')
-    setCreationMode('existing')
-    setCatId(b.category)
 
     const cat = categories.find((c) => c.id === b.category)
-    const initialName = cat?.name || ''
-    const initialIcon = cat?.icon || 'pet-cat'
-    const initialColor = cat?.color || '#ec4899'
+    const initialName = b.name || cat?.name || ''
+    const initialIcon = b.icon || cat?.icon || 'pet-cat'
+    const initialColor = b.color || cat?.color || '#ec4899'
 
     setCustomName(initialName)
     setCustomIcon(initialIcon)
@@ -257,30 +257,6 @@ export const Budgets: React.FC = () => {
     })
   }
 
-  // Ao trocar de categoria durante edição ou criação por categoria existente, sincroniza nome, ícone e cor
-  const handleCategoryChange = (newCatId: string) => {
-    setCatId(newCatId)
-    const matched = categories.find((c) => c.id === newCatId)
-    if (matched) {
-      setCustomName(matched.name)
-      setCustomIcon(matched.icon || 'pet-cat')
-      setCustomColor(matched.color || '#ec4899')
-      if (
-        matched.icon?.startsWith('pet-') ||
-        BICHINHO_ICONS.some((opt) => opt.id === matched.icon)
-      ) {
-        setIconTab('bichinho')
-      } else if (
-        matched.icon?.startsWith('emoji:') ||
-        EMOJI_ICONS.some((opt) => opt.id === matched.icon)
-      ) {
-        setIconTab('emoji')
-      } else {
-        setIconTab('geral')
-      }
-    }
-  }
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     const cents = parseCurrencyToCents(amountStr)
@@ -292,60 +268,25 @@ export const Budgets: React.FC = () => {
       })
       return
     }
+
+    const trimmedName = customName.trim()
+    if (!trimmedName) {
+      toast({
+        title: 'Nome obrigatório',
+        description: 'Informe o nome da sua caixinha (ex: Viagem a Paris, Mercado...).',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setSaving(true)
     try {
-      let finalCategoryId = catId
-
-      // If creating a brand new custom caixinha with own name & icon
-      if (!editingBudget && creationMode === 'custom') {
-        const trimmedName = customName.trim()
-        if (!trimmedName) {
-          toast({
-            title: 'Nome obrigatório',
-            description: 'Informe o nome da sua caixinha (ex: Viagem a Paris).',
-            variant: 'destructive',
-          })
-          setSaving(false)
-          return
-        }
-
-        // Create new category in PocketBase
-        const createdCat = await categoriesService.create({
+      if (editingBudget) {
+        // Atualiza a própria caixinha (nome, ícone, cor, teto e mês) - sem campo de categoria
+        await budgetsService.update(editingBudget.id, {
           name: trimmedName,
-          type: 'despesa',
           icon: customIcon,
           color: customColor,
-        })
-        finalCategoryId = createdCat.id
-      } else {
-        if (!finalCategoryId) {
-          toast({
-            title: 'Categoria obrigatória',
-            description: 'Selecione uma categoria.',
-            variant: 'destructive',
-          })
-          setSaving(false)
-          return
-        }
-      }
-
-      if (editingBudget) {
-        // Atualiza a categoria vinculada (nome, ícone, cor)
-        const trimmedName = customName.trim()
-        if (finalCategoryId) {
-          const catUpdatePayload: { name?: string; icon?: string; color?: string } = {
-            icon: customIcon,
-            color: customColor,
-          }
-          if (trimmedName) {
-            catUpdatePayload.name = trimmedName
-          }
-          await categoriesService.update(finalCategoryId, catUpdatePayload)
-        }
-
-        // Atualiza o budget (teto e mês)
-        await budgetsService.update(editingBudget.id, {
-          category: finalCategoryId,
           amount: cents,
           month: monthInput,
         })
@@ -367,8 +308,11 @@ export const Budgets: React.FC = () => {
           description: 'Ícone, nome, cor, teto e categorias vinculadas salvos com sucesso.',
         })
       } else {
+        // Cria caixinha autônoma (sem categoria obrigatória)
         const createdBudget = await budgetsService.create({
-          category: finalCategoryId,
+          name: trimmedName,
+          icon: customIcon,
+          color: customColor,
           amount: cents,
           month: monthInput,
         })
@@ -405,7 +349,6 @@ export const Budgets: React.FC = () => {
       setSaving(false)
     }
   }
-
   const handleDelete = async () => {
     if (!deleteBudget) return
     try {
@@ -530,14 +473,12 @@ export const Budgets: React.FC = () => {
                       <div className="flex items-center gap-2.5">
                         <div
                           className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs text-sm"
-                          style={{ backgroundColor: item.category?.color || '#64748b' }}
+                          style={{ backgroundColor: item.displayColor }}
                         >
-                          {renderCaixinhaIcon(item.category?.icon, 'w-4 h-4')}
+                          {renderCaixinhaIcon(item.displayIcon, 'w-4 h-4')}
                         </div>
                         <div>
-                          <span className="font-semibold text-slate-900">
-                            {item.category?.name || 'Categoria'}
-                          </span>
+                          <span className="font-semibold text-slate-900">{item.displayName}</span>
                         </div>
                       </div>
 

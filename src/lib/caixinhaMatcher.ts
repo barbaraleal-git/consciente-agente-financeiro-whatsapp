@@ -117,15 +117,15 @@ export function resolveTransactionBudget(
       // Várias candidatas no histórico (sem t.budget gravado anteriormente):
       // Desempata pelo texto da transação (note / descrição) procurando correspondência com o nome da caixinha ou sufixo
       for (const cand of candidates) {
-        const candCat = categories.find((c) => c.id === cand.category)
-        if (!candCat) continue
-        const candCatNorm = normalizeText(candCat.name)
+        const candName = cand.name || categories.find((c) => c.id === cand.category)?.name || ''
+        if (!candName) continue
+        const candNameNorm = normalizeText(candName)
 
-        if (candCatNorm && combinedText.includes(candCatNorm)) {
+        if (candNameNorm && combinedText.includes(candNameNorm)) {
           return cand
         }
 
-        const parts = candCat.name.split('-').map((p) => normalizeText(p))
+        const parts = candName.split('-').map((p) => normalizeText(p))
         if (parts.length > 1) {
           const suffix = parts[parts.length - 1]
           if (suffix && suffix.length >= 2) {
@@ -149,17 +149,12 @@ export function resolveTransactionBudget(
 
   for (const b of monthBudgets) {
     let score = 0
-    const budgetCat = categories.find((c) => c.id === b.category)
-    const budgetCatNameNorm = budgetCat ? normalizeText(budgetCat.name) : ''
-
-    // Match exato de ID de categoria base
-    if (t.category === b.category) {
-      score = 100
-    }
+    const bName = b.name || categories.find((c) => c.id === b.category)?.name || ''
+    const bNameNorm = normalizeText(bName)
 
     // Match de sufixo no note/descrição (ex.: "VA" ou "VR")
-    if (budgetCat) {
-      const parts = budgetCat.name.split('-').map((p) => normalizeText(p))
+    if (bName) {
+      const parts = bName.split('-').map((p) => normalizeText(p))
       if (parts.length > 1) {
         const suffix = parts[parts.length - 1]
         if (suffix && suffix.length >= 2) {
@@ -171,16 +166,13 @@ export function resolveTransactionBudget(
       }
 
       // Match do nome completo da caixinha contido no note/descrição
-      if (budgetCatNameNorm && combinedText.includes(budgetCatNameNorm)) {
+      if (bNameNorm && combinedText.includes(bNameNorm)) {
         score = Math.max(score, 70)
       }
 
-      // Match de hierarquia ou contenção de nomes de categoria
-      if (txCatNameNorm && budgetCatNameNorm) {
-        if (
-          budgetCatNameNorm.includes(txCatNameNorm) ||
-          txCatNameNorm.includes(budgetCatNameNorm)
-        ) {
+      // Match de hierarquia ou contenção entre nome da caixinha e nome da categoria do lançamento
+      if (txCatNameNorm && bNameNorm) {
+        if (bNameNorm.includes(txCatNameNorm) || txCatNameNorm.includes(bNameNorm)) {
           score = Math.max(score, 50)
         }
       }
@@ -282,17 +274,20 @@ export function getEffectiveCategory(
   const resolvedBudget = resolveTransactionBudget(t, budgets, categories, userLinks)
 
   if (resolvedBudget) {
-    const budgetCat = categories.find((c) => c.id === resolvedBudget.category)
-    if (budgetCat) {
-      return {
-        id: budgetCat.id,
-        name: budgetCat.name,
-        color: budgetCat.color || directCat?.color || '#ec4899',
-        icon: budgetCat.icon || directCat?.icon || 'pet-cat',
-        isCaixinha: true,
-        badge,
-        matchedCaixinhasNames: [budgetCat.name],
-      }
+    const bName =
+      resolvedBudget.name ||
+      categories.find((c) => c.id === resolvedBudget.category)?.name ||
+      'Caixinha'
+    const bColor = resolvedBudget.color || directCat?.color || '#ec4899'
+    const bIcon = resolvedBudget.icon || directCat?.icon || 'pet-cat'
+    return {
+      id: resolvedBudget.id,
+      name: bName,
+      color: bColor,
+      icon: bIcon,
+      isCaixinha: true,
+      badge,
+      matchedCaixinhasNames: [bName],
     }
   }
 

@@ -38,7 +38,10 @@ export interface Transaction extends RecordModel {
 }
 export interface Budget extends RecordModel {
   owner: string
-  category: string
+  name?: string
+  icon?: string
+  color?: string
+  category?: string
   expand?: {
     category?: Category
   }
@@ -260,7 +263,7 @@ export const budgetsService = {
     const filter = month ? `month = '${month}'` : ''
     return pb.collection('budgets').getFullList<Budget>({
       filter,
-      sort: 'category',
+      sort: 'name,-created',
       expand: 'category',
     })
   },

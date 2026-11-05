@@ -260,15 +260,22 @@ routerAdd(
           // Se o budget tiver mês específico diferente do mês selecionado, continua
           continue
         }
-        const cat = catMap[catId] || { name: 'Sem categoria', icon: 'tag', color: '#64748b' }
+        const bDirectName = b.getString('name')
+        const bDirectIcon = b.getString('icon')
+        const bDirectColor = b.getString('color')
+        const cat = catMap[catId] || { name: 'Caixinha', icon: 'tag', color: '#64748b' }
+        const caixinhaName = bDirectName || cat.name
+        const caixinhaIcon = bDirectIcon || cat.icon
+        const caixinhaColor = bDirectColor || cat.color
         const limitCents = b.getInt('amount')
         const spentCents = spentByCatMonth[catId] || 0
         caixinhas.push({
           id: b.id,
+          name: caixinhaName,
           category_id: catId,
-          category_name: cat.name,
-          icon: cat.icon,
-          color: cat.color,
+          category_name: caixinhaName,
+          icon: caixinhaIcon,
+          color: caixinhaColor,
           limit_cents: limitCents,
           spent_cents: spentCents,
           period: b.getString('month') || targetMonthStr,
@@ -280,15 +287,22 @@ routerAdd(
         for (let i = 0; i < budgets.length; i++) {
           const b = budgets[i]
           const catId = b.getString('category')
-          const cat = catMap[catId] || { name: 'Sem categoria', icon: 'tag', color: '#64748b' }
+          const bDirectName = b.getString('name')
+          const bDirectIcon = b.getString('icon')
+          const bDirectColor = b.getString('color')
+          const cat = catMap[catId] || { name: 'Caixinha', icon: 'tag', color: '#64748b' }
+          const caixinhaName = bDirectName || cat.name
+          const caixinhaIcon = bDirectIcon || cat.icon
+          const caixinhaColor = bDirectColor || cat.color
           const limitCents = b.getInt('amount')
           const spentCents = spentByCatMonth[catId] || 0
           caixinhas.push({
             id: b.id,
+            name: caixinhaName,
             category_id: catId,
-            category_name: cat.name,
-            icon: cat.icon,
-            color: cat.color,
+            category_name: caixinhaName,
+            icon: caixinhaIcon,
+            color: caixinhaColor,
             limit_cents: limitCents,
             spent_cents: spentCents,
             period: b.getString('month') || targetMonthStr,

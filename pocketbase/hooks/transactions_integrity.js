@@ -145,13 +145,15 @@ onRecordCreate((e) => {
               const candId = candidateBudgetIds[c]
               const candBudget = monthBudgets.find((b) => b.id === candId)
               if (!candBudget) continue
-              const candCat = catMap[candBudget.getString('category')]
-              if (candCat && candCat.normName && combined.includes(candCat.normName)) {
+              const candName =
+                candBudget.getString('name') || catMap[candBudget.getString('category')]?.name || ''
+              const candNorm = normStr(candName)
+              if (candNorm && combined.includes(candNorm)) {
                 resolvedBudgetId = candId
                 break
               }
-              if (candCat && candCat.name) {
-                const parts = candCat.name.split('-').map((p) => normStr(p))
+              if (candName) {
+                const parts = candName.split('-').map((p) => normStr(p))
                 if (parts.length > 1) {
                   const suffix = parts[parts.length - 1]
                   if (suffix && suffix.length >= 2) {
@@ -177,16 +179,12 @@ onRecordCreate((e) => {
 
           for (let b = 0; b < monthBudgets.length; b++) {
             const bg = monthBudgets[b]
-            const bCatId = bg.getString('category')
-            const bCat = catMap[bCatId]
+            const bName = bg.getString('name') || catMap[bg.getString('category')]?.name || ''
+            const bNorm = normStr(bName)
             let score = 0
 
-            if (txCatId && bCatId && txCatId === bCatId) {
-              score = 100
-            }
-
-            if (bCat && bCat.name) {
-              const parts = bCat.name.split('-').map((p) => normStr(p))
+            if (bName) {
+              const parts = bName.split('-').map((p) => normStr(p))
               if (parts.length > 1) {
                 const suffix = parts[parts.length - 1]
                 if (suffix && suffix.length >= 2) {
@@ -196,11 +194,11 @@ onRecordCreate((e) => {
                   }
                 }
               }
-              if (bCat.normName && combined.includes(bCat.normName)) {
+              if (bNorm && combined.includes(bNorm)) {
                 score = Math.max(score, 70)
               }
-              if (txCatName && bCat.normName) {
-                if (bCat.normName.includes(txCatName) || txCatName.includes(bCat.normName)) {
+              if (txCatName && bNorm) {
+                if (bNorm.includes(txCatName) || txCatName.includes(bNorm)) {
                   score = Math.max(score, 50)
                 }
               }

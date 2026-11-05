@@ -998,9 +998,11 @@ function getCandidateBudgetsForCategory(app, userId, categoryId, categoryName, c
   for (let b = 0; b < userBudgets.length; b++) {
     const bg = userBudgets[b]
     if (matchingBudgetIds.includes(bg.id)) {
+      const directName = bg.getString('name')
+      const directIcon = bg.getString('icon')
       const bCat = catMap[bg.getString('category')]
-      const bName = bCat ? bCat.getString('name') : 'Caixinha'
-      const bIcon = bCat ? bCat.getString('icon') : ''
+      const bName = directName || (bCat ? bCat.getString('name') : 'Caixinha')
+      const bIcon = directIcon || (bCat ? bCat.getString('icon') : '')
       candidates.push({
         id: bg.id,
         name: bName,

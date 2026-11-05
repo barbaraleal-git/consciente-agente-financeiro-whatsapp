@@ -815,7 +815,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 2. **Cenário 1 — Solicitação de "Resumo" no WhatsApp (Bypass da IA)**:
    - Com o cliente autenticado e com caixinhas ativas, envie a mensagem "Resumo", "resumo" ou "quais são minhas caixinhas" no WhatsApp.
    - **Comportamento Esperado**:
-     - A resposta é montada e devolvida diretamente pelo helper determinístico (\`caixinhas_summary_helper.js\`), sem passar pelo \`$ai.agent\`.
+     - A resposta é montada e devolvida diretamente pelo motor determinístico **100% inline** do \`whatsapp_bridge.js\` (seção 1.6 — funções \`inlineIsCaixinhasOverviewIntent\` e \`inlineBuildCaixinhasSummaryForUser\`), sem passar pelo \`$ai.agent\` e SEM nenhuma dependência de \`require\`/\`globalThis\`/\`caixinhas_summary_helper.js\` no caminho crítico do webhook (o helper externo quebrou em produção com \`GoError: Invalid module\`).
      - O visual traz cada caixinha ativa existente na base (nome, ícone, barra \`▓░\`, percentual, gasto/teto e saldo restante).
      - Nenhuma caixinha excluída (ex.: *"Alimentação - Crédito"*) é exibida.
      - O rodapé com "Total Gasto no Mês", "Total dos Tetos" e "Saldo Restante no Mês" é somado estritamente dos ITENS LISTADOS na mensagem (consistência matemática absoluta centavo a centavo).
@@ -832,7 +832,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Envie uma mensagem conversacional ou lançamento financeiro (ex.: "almoço 35 reais" ou "onde posso economizar?").
    - A requisição segue para o \`$ai.agent\`.
    - **Comportamento Esperado**:
-     - O prompt do agente recebe a injeção do estado oficial e fresco de caixinhas ativas da base de dados daquele mês.
+     - O prompt do agente recebe a injeção do estado oficial e fresco de caixinhas ativas da base de dados daquele mês (também 100% inline no \`whatsapp_bridge.js\`, via \`inlineBuildCaixinhasContextPrompt\`).
      - O agente respeita a instrução explícita de não citar caixinhas excluídas e não tenta calcular totais ou saldos por conta própria.
 
 5. **Cenário 4 — Resiliência com Mensagem Honesta de Erro**:
@@ -842,7 +842,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Envie \`resumo\`, \`Resumo\`, \`RESUMO\`, \`resumo!\`, \`meu resumo\`, \`visão geral\`, \`quais são minhas caixinhas\`, \`como estão minhas caixinhas\` e \`ver resumo\`.
    - Envie também mensagens com valores monetários que NÃO são resumo (ex.: \`almoço 35\`, \`uber 20 reais\`): elas devem continuar indo para a IA como lançamento.
    - **Comportamento Esperado**:
-     - TODAS as variantes de pedido de resumo caem na interceptação determinística (log \`[whatsapp_bridge] Interceptação determinística de resumo\`), sem nenhum \`Chamando $ai.agent\`.
+     - TODAS as variantes de pedido de resumo caem na interceptação determinística (log \`[whatsapp_bridge] Interceptação determinística de resumo (inline)\`), sem nenhum \`Chamando $ai.agent\`.
      - Lançamentos com valores continuam fluindo normalmente para o agente (zero regressão).
      - Mensagens não-financeiras ("oi", "obrigada") continuam com o fallback acolhedor do agente.
 
@@ -853,4 +853,14 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - Transações \`cancelled\` nunca entram em nenhuma soma.
      - Os percentuais exibidos (ex.: VA 21%, VR 16%) batem com o gasto/teto da tela \`/budgets\`.
      - Os totais do rodapé ("Total Gasto no Mês", "Total dos Tetos", "Saldo Restante") são iguais à soma exata dos itens listados — nenhuma aritmética divergente (regressão do R$ 5.450,00 é impossível por construção).
+
+8. **Cenário 7 — Saúde do Módulo na JSVM (v0.0.63)**:
+   - Após o deploy do backend, verifique nos logs (\`list_logs source=hooks\`):
+   - **Comportamento Esperado**:
+     - Nenhum erro de carregamento de módulo (\`GoError: Invalid module\` ou similar) e nenhum log de \`caixinhas_summary_helper não carregado via require\` — a interceptação de resumo não depende mais de módulo externo.
+   - Envie a mensagem \`Resumo\` no WhatsApp.
+   - **Comportamento Esperado**:
+     - Aparece no log a linha \`[whatsapp_bridge] Interceptação determinística de resumo (inline) para usuário ...\`.
+     - NÃO aparece \`Chamando $ai.agent\` para essa mensagem.
+     - A resposta entregue contém as caixinhas ativas da base e os totais batendo com o app.
 `

@@ -471,11 +471,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         Caixinhas Vinculadas à Categoria
                       </div>
                       {candidateBudgets.map((b) => {
-                        const bCat =
-                          categories.find((c) => c.id === b.category) || b.expand?.category
-                        const bName = bCat?.name || 'Caixinha'
-                        const bIcon = bCat?.icon || 'wallet'
-                        const bColor = bCat?.color || '#0284c7'
+                        const bCat = b.category
+                          ? categories.find((c) => c.id === b.category) || b.expand?.category
+                          : b.expand?.category
+                        const bName = b.name || bCat?.name || 'Caixinha'
+                        const bIcon = b.icon || bCat?.icon || 'wallet'
+                        const bColor = b.color || bCat?.color || '#0284c7'
                         return (
                           <SelectItem key={b.id} value={b.id}>
                             <div className="flex items-center gap-2">
@@ -508,11 +509,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                           Outras Caixinhas Disponíveis
                         </div>
                         {otherBudgets.map((b) => {
-                          const bCat =
-                            categories.find((c) => c.id === b.category) || b.expand?.category
-                          const bName = bCat?.name || 'Caixinha'
-                          const bIcon = bCat?.icon || 'wallet'
-                          const bColor = bCat?.color || '#64748b'
+                          const bCat = b.category
+                            ? categories.find((c) => c.id === b.category) || b.expand?.category
+                            : b.expand?.category
+                          const bName = b.name || bCat?.name || 'Caixinha'
+                          const bIcon = b.icon || bCat?.icon || 'wallet'
+                          const bColor = b.color || bCat?.color || '#64748b'
                           return (
                             <SelectItem key={b.id} value={b.id}>
                               <div className="flex items-center gap-2">

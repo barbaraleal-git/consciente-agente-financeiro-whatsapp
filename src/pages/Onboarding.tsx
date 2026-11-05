@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { categoriesService, budgetsService, type Category } from '@/services/finance'
+import {
+  categoriesService,
+  budgetsService,
+  categoryCaixinhaLinksService,
+  type Category,
+} from '@/services/finance'
 import {
   formatCurrency,
   getCurrentMonthStr,
@@ -208,19 +213,37 @@ export const Onboarding: React.FC = () => {
 
       for (const catId of selectedCatIds) {
         const cents = parseCurrencyToCents(amounts[catId] || '0')
-        const existing = existingBudgets.find((b) => b.category === catId)
+        const targetCategory = availableCategories.find((c) => c.id === catId)
+        const targetName = targetCategory?.name || 'Caixinha'
+        const existing = existingBudgets.find((b) => b.category === catId || b.name === targetName)
 
         if (existing) {
           await budgetsService.update(existing.id, {
+            name: existing.name || targetName,
+            icon: existing.icon || targetCategory?.icon || 'wallet',
+            color: existing.color || targetCategory?.color || '#0284c7',
             amount: cents,
             month: currentMonth,
           })
         } else {
-          await budgetsService.create({
-            category: catId,
+          const newBudget = await budgetsService.create({
+            name: targetName,
+            icon: targetCategory?.icon || 'wallet',
+            color: targetCategory?.color || '#0284c7',
             amount: cents,
             month: currentMonth,
           })
+          // Cria vínculo automático para a categoria no novo modelo autônomo
+          if (newBudget?.id && targetCategory?.name) {
+            await categoryCaixinhaLinksService
+              .create({
+                budget: newBudget.id,
+                category_name: targetCategory.name,
+                category: targetCategory.id,
+                active: true,
+              })
+              .catch(() => null)
+          }
         }
       }
 

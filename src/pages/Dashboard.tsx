@@ -620,7 +620,11 @@ export const Dashboard: React.FC = () => {
             ) : (
               <div className="space-y-3.5">
                 {budgets.slice(0, 4).map((b) => {
-                  const cat = categories.find((c) => c.id === b.category)
+                  const cat = b.category ? categories.find((c) => c.id === b.category) : undefined
+                  const displayName = b.name || cat?.name || 'Caixinha'
+                  const displayIcon = b.icon || cat?.icon || 'wallet'
+                  const displayColor = b.color || cat?.color || '#64748b'
+
                   // Calculate spent in this caixinha com matching unificado e vínculos de categorias
                   const spent = getBudgetSpent(
                     b,
@@ -640,13 +644,11 @@ export const Dashboard: React.FC = () => {
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
                             className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs shrink-0"
-                            style={{ backgroundColor: cat?.color || '#64748b' }}
+                            style={{ backgroundColor: displayColor }}
                           >
-                            {renderCaixinhaIcon(cat?.icon, 'w-3 h-3 text-xs')}
+                            {renderCaixinhaIcon(displayIcon, 'w-3 h-3 text-xs')}
                           </span>
-                          <span className="font-medium text-slate-800 truncate">
-                            {cat?.name || 'Categoria'}
-                          </span>
+                          <span className="font-medium text-slate-800 truncate">{displayName}</span>
                         </div>
                         <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
                           {formatCurrency(spent)} / {formatCurrency(b.amount)}

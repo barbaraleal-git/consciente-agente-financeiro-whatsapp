@@ -150,6 +150,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Escolha Obrigatória de Caixinha / Regra de Não Duplicação (v0.0.56)** | **REGRA DE OURO ATENDIDA**: Cada transação ativa soma em exatamente UMA única caixinha, nunca duplicando valores no histórico nem em novos gastos. Se a categoria tem múltiplas caixinhas vinculadas: no WhatsApp, a IA suspende a gravação, pergunta em qual caixinha deseja registrar numerando as opções amigavelmente e grava na caixinha escolhida após a resposta do cliente; no App (\`TransactionModal.tsx\`), o sistema exige a seleção obrigatória da caixinha antes de salvar. Se houver vínculo único, grava direto e informa. Se não houver vínculos, mantém fallback retrocompatível estável. Campo \`budget\` em \`transactions\` e \`pending_caixinha\` em \`whatsapp_contacts\`. | **Concluído** |
 | **Remanejamento de Caixinha no App e Paridade WhatsApp vs. App (v0.0.57)** | **NOVO RECURSO + BUGFIX**: O cliente pode editar qualquer transação existente de despesa em \`/transactions\` e remanejar para qualquer caixinha do mês (ou desvincular para "Automático / Sem caixinha fixa"). Ao salvar, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, mantendo zero duplicação e exclusão de cancelados. Corrigida a paridade de visualização de caixinhas entre o App (\`/budgets\`) e o resumo do WhatsApp adicionando os vínculos reativos de \`userLinks\` nas dependências do \`useMemo\` de \`budgetStats\` em \`Budgets.tsx\` e \`Dashboard.tsx\`. | **Concluído** |
 | **Persistência Obrigatória de Budget no WhatsApp e Paridade Total App × WhatsApp (v0.0.58)** | **BUGFIX CRÍTICO DE PARIDADE**: Corrigida a causa raiz da divergência entre a resposta conversacional do WhatsApp e a tela \`/budgets\` do App. Em todos os caminhos de criação no WhatsApp (texto, áudio, fluxo conversacional de desambiguação e hook \`transactions_integrity.js\`), a caixinha decidida/anunciada é imediatamente persistida no campo \`budget\` de \`transactions\`. Backfill idempotente executado (migração 0031) garantindo que transações ativas antigas com budget vazio tenham o campo preenchido fielmente pelo resolver determinístico único, corrigindo os lançamentos Mercado Violeta e Rascal para 100% de paridade e mantendo isolamento de cancelados. | **Concluído** |
+| **Desacoplamento e Autonomia Total das Caixinhas (v0.0.59)** | **AUTONOMIA TOTAL DAS CAIXINHAS**: Remoção completa do conceito de "categoria da caixinha" (\`category\` em \`budgets\`). Caixinhas passam a ser 100% autônomas com nome, figurinha (ícones, emojis ou bichinhos), cor e teto próprios. O modal de criar e editar caixinha (\`/budgets\`) foi totalmente limpo, eliminando seletor de categoria e ramificações. Gastos alimentam a caixinha unicamente via campo gravado \`budget\`, vínculos parametrizados (\`category_caixinha_links\`) ou matching inteligente. Zero regressão na regra de ouro (cada lançamento conta em no máximo 1 caixinha e cancelados são excluídos). | **Concluído** |
 
 ---
 
@@ -766,4 +767,38 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 6. **Cenário 5 — Isolamento de Cancelados**:
    - Transações com status \`cancelled\` continuam estritamente excluídas de qualquer soma ou teto.
+
+---
+
+## AG) Autonomia das Caixinhas sem Campo Categoria e Alimentação Parametrizada (v0.0.59)
+
+1. **Objetivo do Teste**:
+   - Garantir que a caixinha seja criada e editada como entidade 100% autônoma (apenas nome, figurinha, cor, teto e mês), sem qualquer campo ou seletor de categoria da caixinha.
+   - Garantir que lançamentos alimentem a caixinha exclusivamente através de:
+     a) Campo direto \`budget\` fixado na transação;
+     b) Vínculo parametrizado em \`category_caixinha_links\` (aba "Categorias Vinculadas");
+     c) Matching semântico / IA resiliente;
+     NUNCA por campo de categoria da própria caixinha.
+
+2. **Cenário 1 — Criação de Caixinha Autônoma no App**:
+   - Acesse a tela \`/budgets\` e clique em "Nova Caixinha".
+   - **Verificação Visual**: O modal abre na aba "Teto e Aparência" contendo exclusivamente Nome da Caixinha, Figurinha/Ícone (abas Ícones, Emojis e Bichinhos 🐱), Cor da Caixinha, Teto (R$) e Mês de Referência. Nenhum seletor de "Categoria da Caixinha" ou toggle de modo existe.
+   - Preencha Nome ("Viagem de Férias"), escolha uma figurinha de bichinho (ex.: 🦁), cor e valor de R$ 3.000,00.
+   - Salve. A caixinha é criada com sucesso e renderizada no card com seu nome, ícone e cor próprios.
+
+3. **Cenário 2 — Parametrização de Categorias Vinculadas**:
+   - Abra a edição da caixinha recém-criada e alterne para a aba "Categorias Vinculadas".
+   - Marque a categoria correspondente (ex.: "Transporte" ou "Lazer").
+   - Salve a caixinha.
+   - Registre uma despesa na categoria selecionada.
+   - **Comportamento Esperado**: O consumo da caixinha reflete a transação, respeitando a regra de ouro de contagem em exatamente UMA caixinha (zero duplicidade).
+
+4. **Cenário 3 — Edição Sem Categoria**:
+   - Clique em "Editar" em qualquer caixinha existente.
+   - O modal carrega os valores atuais (nome, figurinha, cor e teto) sem qualquer campo ou erro de categoria.
+   - Modifique o nome ou a cor e salve. Os dados persistem sem erros no banco e refletem em tempo real no Dashboard, Extrato e WhatsApp.
+
+5. **Cenário 4 — Exclusão Estrita de Cancelados e Zero Duplicidade**:
+   - Cancele um lançamento vinculado via WhatsApp ou altere para \`cancelled\`.
+   - O consumo da caixinha é recalculado imediatamente sem o valor cancelado.
 `

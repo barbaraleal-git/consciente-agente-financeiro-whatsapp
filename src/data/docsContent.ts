@@ -151,7 +151,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Remanejamento de Caixinha no App e Paridade WhatsApp vs. App (v0.0.57)** | **NOVO RECURSO + BUGFIX**: O cliente pode editar qualquer transação existente de despesa em \`/transactions\` e remanejar para qualquer caixinha do mês (ou desvincular para "Automático / Sem caixinha fixa"). Ao salvar, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, mantendo zero duplicação e exclusão de cancelados. Corrigida a paridade de visualização de caixinhas entre o App (\`/budgets\`) e o resumo do WhatsApp adicionando os vínculos reativos de \`userLinks\` nas dependências do \`useMemo\` de \`budgetStats\` em \`Budgets.tsx\` e \`Dashboard.tsx\`. | **Concluído** |
 | **Persistência Obrigatória de Budget no WhatsApp e Paridade Total App × WhatsApp (v0.0.58)** | **BUGFIX CRÍTICO DE PARIDADE**: Corrigida a causa raiz da divergência entre a resposta conversacional do WhatsApp e a tela \`/budgets\` do App. Em todos os caminhos de criação no WhatsApp (texto, áudio, fluxo conversacional de desambiguação e hook \`transactions_integrity.js\`), a caixinha decidida/anunciada é imediatamente persistida no campo \`budget\` de \`transactions\`. Backfill idempotente executado (migração 0031) garantindo que transações ativas antigas com budget vazio tenham o campo preenchido fielmente pelo resolver determinístico único, corrigindo os lançamentos Mercado Violeta e Rascal para 100% de paridade e mantendo isolamento de cancelados. | **Concluído** |
 | **Desacoplamento e Autonomia Total das Caixinhas (v0.0.59)** | **AUTONOMIA TOTAL DAS CAIXINHAS**: Remoção completa do conceito de "categoria da caixinha" (\`category\` em \`budgets\`). Caixinhas passam a ser 100% autônomas com nome, figurinha (ícones, emojis ou bichinhos), cor e teto próprios. O modal de criar e editar caixinha (\`/budgets\`) foi totalmente limpo, eliminando seletor de categoria e ramificações. Gastos alimentam a caixinha unicamente via campo gravado \`budget\`, vínculos parametrizados (\`category_caixinha_links\`) ou matching inteligente. Zero regressão na regra de ouro (cada lançamento conta em no máximo 1 caixinha e cancelados são excluídos). | **Concluído** |
-| **Resumo de Caixinhas no WhatsApp 100% Determinístico da Base (v0.0.62)** | **BUGFIX DE PARIDADE E ANTI-ALUCINAÇÃO**: O comando de resumo no WhatsApp é interceptado ANTES de qualquer chamada ao \`$ai.agent\` e gerado 100% deterministicamente direto da base de dados (\`caixinhas_summary_helper.js\`). Elimina o bug onde o histórico/memória do agente ressuscitava caixinha excluída (ex.: *"Alimentação - Crédito"*) ou gerava rodapé aritmético inconsistente com os itens listados. Nas demais mensagens que seguem para a IA, é injetado contexto fresco e instrução explícita proibindo citar caixinhas fora da lista ativa da base. | **Concluído** |
+| **Resumo de Caixinhas no WhatsApp 100% Determinístico da Base (v0.0.62/v0.0.66)** | **BUGFIX DEFINITIVO DE INTERCEPTAÇÃO**: Correção cirúrgica da interceptação do resumo determinístico no webhook do WhatsApp. O bloco de checagem e montagem chamava \`caixinhasEngine\` não declarada no escopo local, gerando ReferenceError engolido que desviava a mensagem para o \`$ai.agent\`. Corrigido para invocar as funções locais estritas (\`localIsCaixinhasOverviewIntent\`, \`localBuildCaixinhasSummaryForUser\` e \`localBuildCaixinhasContextPrompt\`) 100% embutidas no corpo do callback do webhook sem require. Resumo das caixinhas ativas e contexto anti-alucinação funcionando de forma determinística direta da base. | **Concluído** |
 
 ---
 
@@ -854,7 +854,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - Os percentuais exibidos (ex.: VA 21%, VR 16%) batem com o gasto/teto da tela \`/budgets\`.
      - Os totais do rodapé ("Total Gasto no Mês", "Total dos Tetos", "Saldo Restante") são iguais à soma exata dos itens listados — nenhuma aritmética divergente (regressão do R$ 5.450,00 é impossível por construção).
 
-8. **Cenário 7 — Saúde do Módulo na JSVM (v0.0.63)**:
+8. **Cenário 7 — Saúde do Módulo na JSVM (v0.0.63/v0.0.66)**:
    - Após o deploy do backend, verifique nos logs (\`list_logs source=hooks\`):
    - **Comportamento Esperado**:
      - Nenhum erro de carregamento de módulo (\`GoError: Invalid module\` ou similar) e nenhum log de \`caixinhas_summary_helper não carregado via require\` — a interceptação de resumo não depende mais de módulo externo.
@@ -863,4 +863,15 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - Aparece no log a linha \`[whatsapp_bridge] Interceptação determinística de resumo (inline) para usuário ...\`.
      - NÃO aparece \`Chamando $ai.agent\` para essa mensagem.
      - A resposta entregue contém as caixinhas ativas da base e os totais batendo com o app.
+
+---
+
+## AI) Resolução Cirúrgica do Resumo Determinístico no Webhook POST (v0.0.66)
+1. **Problema**: O callback do webhook POST continha referências ao identificador não declarado \`caixinhasEngine\` na checagem de intenção (\`caixinhasEngine.isCaixinhasOverviewIntent\`), na geração do resumo (\`caixinhasEngine.buildCaixinhasSummaryForUser\`) e na injeção anti-alucinação (\`caixinhasEngine.buildCaixinhasContextPrompt\`). Isso gerava ReferenceError silencioso capturado no try/catch, fazendo com que \`isCaixinhasOverview\` permanecesse falso e a mensagem fosse repassada indevidamente ao \`$ai.agent\`.
+2. **Correção**:
+   - Substituição de \`caixinhasEngine.isCaixinhasOverviewIntent\` por \`localIsCaixinhasOverviewIntent\` (função inline já existente no callback).
+   - Substituição de \`caixinhasEngine.buildCaixinhasSummaryForUser\` por \`localBuildCaixinhasSummaryForUser\` (função inline já existente no callback).
+   - Substituição de \`caixinhasEngine.buildCaixinhasContextPrompt\` por \`localBuildCaixinhasContextPrompt\` (função inline já existente no callback).
+   - Remoção da tentativa de require no boot de \`reliabilityHelper\` no top-level, eliminando ruído de "Invalid module" no log.
+3. **Validação**: Backend deployed e compilado limpo; zero chamadas a módulo externo.
 `

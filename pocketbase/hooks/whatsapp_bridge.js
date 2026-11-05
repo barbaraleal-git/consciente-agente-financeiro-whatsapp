@@ -76,29 +76,12 @@ routerAdd('GET', '/backend/v1/whatsapp/webhook', (e) => {
 
 // ----------------------------------------------------
 // 1.5 Bootstrap dos helpers externos NO ESCOPO DE ARQUIVO (roda 1x no boot)
-// O require() dentro de handlers pode falhar no runtime Goja do PocketBase com
-// "Invalid module". O carregamento seguro é tentado no boot via globalThis.
-// Se falhar, os handlers possuem fallback inteligente embutido 100% inline,
-// sem nenhuma dependência externa, respeitando estritamente o escopo do JSVM.
+// No runtime Goja do PocketBase, require() não é suportado no top-level.
+// globalThis.__reliabilityHelper é definido como null; todos os handlers
+// utilizam fallbacks e funções determinísticas 100% embutidas inline.
 // ----------------------------------------------------
 if (typeof globalThis.__reliabilityHelper === 'undefined') {
-  try {
-    globalThis.__reliabilityHelper = require('./reliability_helper.js')
-    console.log('[whatsapp_bridge] [boot] reliability_helper carregado com sucesso')
-  } catch (bootRelErr) {
-    try {
-      globalThis.__reliabilityHelper = require(`${__hooks}/reliability_helper.js`)
-      console.log(
-        '[whatsapp_bridge] [boot] reliability_helper carregado com sucesso (caminho absoluto)',
-      )
-    } catch (bootRelErr2) {
-      globalThis.__reliabilityHelper = null
-      console.error(
-        '[whatsapp_bridge] [boot] ATENÇÃO: reliability_helper indisponível via require no boot — usando fallback interno embutido inline nos handlers',
-        bootRelErr2,
-      )
-    }
-  }
+  globalThis.__reliabilityHelper = null
 }
 
 // ----------------------------------------------------
@@ -1772,15 +1755,12 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             // Verificação de intenção padronizada: Resumo Visual das Caixinhas
             // REGRA INVIOLÁVEL: O resumo de caixinhas no WhatsApp é 100% DETERMINÍSTICO da base de dados.
             // NUNCA passa pelo $ai.agent (evita alucinação de caixinhas deletadas ou números inconsistentes).
-            // Motor resolvido SEM REQUIRE via caixinhasEngine (globalThis/closure do hook).
+            // Funções locais estritas declaradas dentro do callback (localIsCaixinhasOverviewIntent, localBuildCaixinhasSummaryForUser).
             let isCaixinhasOverview = false
             if (isRegistered && textContent) {
               try {
-                if (
-                  caixinhasEngine &&
-                  typeof caixinhasEngine.isCaixinhasOverviewIntent === 'function'
-                ) {
-                  isCaixinhasOverview = caixinhasEngine.isCaixinhasOverviewIntent(textContent)
+                if (typeof localIsCaixinhasOverviewIntent === 'function') {
+                  isCaixinhasOverview = localIsCaixinhasOverviewIntent(textContent)
                 }
               } catch (intentErr) {
                 console.log('[whatsapp_bridge] Erro na checagem de intenção de resumo:', intentErr)
@@ -1792,10 +1772,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 `[whatsapp_bridge] Interceptação determinística de resumo (inline) para usuário ${activeUserId}. Montando resumo DIRETO da base (SEM IA)...`,
               )
               try {
-                if (!caixinhasEngine) {
-                  throw new Error('motor determinístico de resumo não resolvido (sem require)')
-                }
-                const summary = caixinhasEngine.buildCaixinhasSummaryForUser(
+                const summary = localBuildCaixinhasSummaryForUser(
                   $app,
                   activeUserId,
                   todayStr.slice(0, 7),
@@ -1836,14 +1813,11 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               // Para mensagens que seguem para o $ai.agent, injeta no prompt a lista fresca
               // das caixinhas ativas lidas da base de dados neste exato momento.
               // Instrução explícita: PROIBIDO inventar/citar caixinha fora da lista.
-              // Motor determinístico SEM REQUIRE via caixinhasEngine (globalThis/closure).
+              // Usa localBuildCaixinhasContextPrompt declarada no callback.
               if (isRegistered) {
                 try {
-                  if (
-                    caixinhasEngine &&
-                    typeof caixinhasEngine.buildCaixinhasContextPrompt === 'function'
-                  ) {
-                    const caixinhasContext = caixinhasEngine.buildCaixinhasContextPrompt(
+                  if (typeof localBuildCaixinhasContextPrompt === 'function') {
+                    const caixinhasContext = localBuildCaixinhasContextPrompt(
                       $app,
                       activeUserId,
                       todayStr.slice(0, 7),
@@ -1853,7 +1827,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                     }
                   } else {
                     console.log(
-                      '[whatsapp_bridge] Contexto anti-alucinação indisponível (motor determinístico não resolvido — sem require).',
+                      '[whatsapp_bridge] Contexto anti-alucinação indisponível (localBuildCaixinhasContextPrompt não encontrada).',
                     )
                   }
                 } catch (ctxErr) {

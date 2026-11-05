@@ -554,3 +554,30 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
 
 4. **Zero Regressão dos Cenários A a Z**:
    - Todos os fluxos de áudio, resumos visuais de caixinhas, filtros de transações, edição com 3 abas de ícones/bichinhos e isolamento de permissões continuam 100% íntegros.
+
+---
+
+## AB) Alinhamento e Match Unificado de Caixinhas entre o WhatsApp e o App (Fonte Única de Verdade)
+
+1. **Contexto e Causa Raiz Solucionada**:
+   - No WhatsApp, o usuário pode registrar ou reclassificar lançamentos com categorias semânticas (ex.: _"Alimentação Essencial"_ ou _"Alimentação Não Essencial"_) ou notas direcionando para a caixinha (ex.: _"Alimentação - VA"_ ou _"VR"_).
+   - Anteriormente, o resumo do WhatsApp calculava os gastos somando transações vinculadas às caixinhas por aproximação ou notas, enquanto o App exigia igualdade estrita do ID de categoria (`t.category === b.category`). Como resultado, as caixinhas de alimentação apareciam com gastos preenchidos no WhatsApp mas totalmente vazias no App.
+   - **Comportamento Unificado**:
+     - O matcher unificado em `src/lib/caixinhaMatcher.ts` e `caixinhas_summary_helper.js` agora reconhece consistentemente tanto o vínculo direto por ID, quanto associações semânticas por note/observação (ex.: _"Alimentação - VA"_, _"VR"_, _"VA"_), sufixos característicos e subcategorias contidas no nome da caixinha.
+
+2. **Verificação no App - Tela de Caixinhas (`/budgets`)**:
+   - Acesse a tela de **Caixinhas** (`/budgets`).
+   - As caixinhas de alimentação com teto definido (ex.: _"Alimentação - VA"_ com teto de R$ 1.000,00 e _"Alimentação - VR"_ com teto de R$ 1.200,00):
+     - Mostram exatamente os mesmos valores apurados no resumo do WhatsApp (ex.: **R$ 214,56** de R$ 1.000,00 no VA e **R$ 190,00** de R$ 1.200,00 no VR).
+     - Cada cartão de caixinha exibe uma seção expansível/visível de **Lançamentos vinculados** detalhando os gastos pertinentes (ex.: _"Mercado Violeta - R$ 214,56"_ sob a caixinha VA, e _"Rascal - R$ 190,00"_ sob a caixinha VR).
+
+3. **Verificação no Dashboard (`/`)**:
+   - Na visão geral do Dashboard, o bloco de Caixinhas do Mês exibe os gastos consumidos e as barras de porcentagem correspondentes aos valores do WhatsApp.
+   - Na lista de transações recentes, os lançamentos exibem o nome da caixinha efetiva vinculada e, quando aplicável, o badge de sub-classificação (_"Essencial"_ ou _"Não Essencial"_).
+
+4. **Verificação na Lista de Transações (`/transactions`)**:
+   - A listagem de lançamentos identifica claramente a qual caixinha cada transação pertence (ex.: _"Alimentação - VA"_ com badge _"Essencial"_ para Mercado Violeta; _"Alimentação - VR"_ com badge _"Não Essencial"_ para Rascal).
+
+5. **Garantia de Isolamento de Transações Canceladas/Excluídas (Zero Regressão)**:
+   - Apenas lançamentos com status ativo (`status === 'active'`) são contabilizados nos totais das caixinhas.
+   - Lançamentos cancelados ou excluídos permanecem visíveis para auditoria mas jamais somam nem alteram as barras de progresso.

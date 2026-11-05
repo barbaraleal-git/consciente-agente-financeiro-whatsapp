@@ -67,6 +67,7 @@ import {
   renderCaixinhaIcon,
   getCaixinhaIconComponent,
 } from '@/lib/caixinhaIcons'
+import { getBudgetSpent, isTransactionInBudget } from '@/lib/caixinhaMatcher'
 
 export const Budgets: React.FC = () => {
   const { toast } = useToast()
@@ -118,19 +119,11 @@ export const Budgets: React.FC = () => {
   useRealtime<Budget>('budgets', () => loadData())
   useRealtime<Transaction>('transactions', () => loadData())
 
-  // Calculate budget statistics for the selected month (somente transações ativas)
+  // Calculate budget statistics for the selected month (somente transações ativas com match unificado)
   const budgetStats = useMemo(() => {
     return budgets.map((b) => {
       const cat = categories.find((c) => c.id === b.category)
-      const spent = transactions
-        .filter(
-          (t) =>
-            (t.status || 'active') === 'active' &&
-            t.category === b.category &&
-            t.date.startsWith(b.month) &&
-            t.type === 'despesa',
-        )
-        .reduce((sum, t) => sum + t.amount, 0)
+      const spent = getBudgetSpent(b, transactions, categories, budgets)
 
       const remaining = Math.max(0, b.amount - spent)
       const percentage = Math.round((spent / (b.amount || 1)) * 100)
@@ -513,6 +506,47 @@ export const Budgets: React.FC = () => {
                         </button>
                       </div>
                     </div>
+
+                    {/* Lançamentos vinculados a esta caixinha */}
+                    {(() => {
+                      const matchedTxs = transactions
+                        .filter((t) => isTransactionInBudget(t, item.budget, categories, budgets))
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+                      if (matchedTxs.length === 0) return null
+
+                      return (
+                        <div className="pt-2 border-t border-slate-100/80 space-y-1.5 mt-2 bg-slate-50/50 p-2 rounded-lg">
+                          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                            <span>Lançamentos vinculados ({matchedTxs.length})</span>
+                            <span className="text-slate-500 font-bold">
+                              {formatCurrency(item.spentAmount)}
+                            </span>
+                          </p>
+                          <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+                            {matchedTxs.map((tx) => (
+                              <div
+                                key={tx.id}
+                                className="text-xs flex items-center justify-between py-1 px-1.5 rounded bg-white border border-slate-100 text-slate-700 hover:bg-slate-50"
+                              >
+                                <div className="min-w-0 pr-2">
+                                  <span className="font-medium truncate block text-slate-900">
+                                    {tx.description}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
+                                    {formatDate(tx.date)}
+                                    {tx.note ? ` • ${tx.note}` : ''}
+                                  </span>
+                                </div>
+                                <span className="font-semibold tabular-nums shrink-0 text-slate-900 text-xs">
+                                  {formatCurrency(tx.amount)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}

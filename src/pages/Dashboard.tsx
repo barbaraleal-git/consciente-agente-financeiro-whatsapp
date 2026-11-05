@@ -20,6 +20,7 @@ import {
   getSourceLabel,
 } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
+import { getBudgetSpent, getEffectiveCategory } from '@/lib/caixinhaMatcher'
 import { MessageSquare, Mic, PenLine, FileSpreadsheet, Bot, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -134,16 +135,16 @@ export const Dashboard: React.FC = () => {
     }
   }, [activeTransactions, budgets, currentMonth])
 
-  // Category distribution for current month
+  // Category distribution for current month (utiliza caixinha/categoria efetiva)
   const categoryExpenses = useMemo(() => {
     const map: Record<string, { name: string; color: string; amount: number }> = {}
 
     monthlyMetrics.thisMonthTxs
       .filter((t) => t.type === 'despesa')
       .forEach((t) => {
-        const cat = categories.find((c) => c.id === t.category)
-        const name = cat ? cat.name : 'Outros'
-        const color = cat ? cat.color : '#64748b'
+        const eff = getEffectiveCategory(t, categories, budgets)
+        const name = eff.name || 'Outros'
+        const color = eff.color || '#64748b'
 
         if (!map[name]) {
           map[name] = { name, color, amount: 0 }
@@ -158,7 +159,7 @@ export const Dashboard: React.FC = () => {
       ...item,
       percentage: Math.round((item.amount / total) * 100),
     }))
-  }, [monthlyMetrics, categories])
+  }, [monthlyMetrics, categories, budgets])
 
   // Last 6 months evolution data (somente transações ativas)
   const evolutionData = useMemo(() => {
@@ -514,29 +515,41 @@ export const Dashboard: React.FC = () => {
                       className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/60 px-2 rounded-lg transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base"
-                          style={{
-                            backgroundColor: cat ? `${cat.color}20` : '#f1f5f9',
-                            color: cat ? cat.color : '#64748b',
-                          }}
-                        >
-                          {cat?.icon ? (
-                            renderCaixinhaIcon(cat.icon, 'w-4 h-4 text-base')
-                          ) : (
-                            <Receipt className="w-4 h-4" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-900 truncate">
-                            {tx.description}
-                          </p>
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                            <span>{cat?.name || 'Geral'}</span>
-                            <span>•</span>
-                            <span>{formatDate(tx.date)}</span>
-                          </div>
-                        </div>
+                        {(() => {
+                          const eff = getEffectiveCategory(tx, categories, budgets)
+                          return (
+                            <>
+                              <div
+                                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base"
+                                style={{
+                                  backgroundColor: eff ? `${eff.color}20` : '#f1f5f9',
+                                  color: eff ? eff.color : '#64748b',
+                                }}
+                              >
+                                {eff.icon ? (
+                                  renderCaixinhaIcon(eff.icon, 'w-4 h-4 text-base')
+                                ) : (
+                                  <Receipt className="w-4 h-4" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-900 truncate">
+                                  {tx.description}
+                                </p>
+                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 flex-wrap">
+                                  <span className="font-medium text-slate-700">{eff.name}</span>
+                                  {eff.badge && (
+                                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                      {eff.badge}
+                                    </span>
+                                  )}
+                                  <span>•</span>
+                                  <span>{formatDate(tx.date)}</span>
+                                </div>
+                              </div>
+                            </>
+                          )
+                        })()}
                       </div>
 
                       <div className="text-right shrink-0">
@@ -602,10 +615,8 @@ export const Dashboard: React.FC = () => {
               <div className="space-y-3.5">
                 {budgets.slice(0, 4).map((b) => {
                   const cat = categories.find((c) => c.id === b.category)
-                  // Calculate spent in this category
-                  const spent = monthlyMetrics.thisMonthTxs
-                    .filter((t) => t.category === b.category && t.type === 'despesa')
-                    .reduce((sum, t) => sum + t.amount, 0)
+                  // Calculate spent in this caixinha com matching unificado
+                  const spent = getBudgetSpent(b, monthlyMetrics.thisMonthTxs, categories, budgets)
 
                   const pct = Math.min(Math.round((spent / (b.amount || 1)) * 100), 100)
                   const isWarning = pct >= 80 && pct < 90

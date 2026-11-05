@@ -2,12 +2,15 @@ import React, { useEffect, useState, useMemo } from 'react'
 import {
   transactionsService,
   categoriesService,
+  budgetsService,
   type Transaction,
   type Category,
+  type Budget,
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatCurrency, formatDate, formatDateTime, getSourceLabel } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
+import { getEffectiveCategory } from '@/lib/caixinhaMatcher'
 import { TransactionModal } from '@/components/TransactionModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +57,7 @@ export const Transactions: React.FC = () => {
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filters
@@ -75,12 +79,14 @@ export const Transactions: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [txs, cats] = await Promise.all([
+      const [txs, cats, bgs] = await Promise.all([
         transactionsService.getFullList(),
         categoriesService.list(),
+        budgetsService.list(),
       ])
       setTransactions(txs)
       setCategories(cats)
+      setBudgets(bgs)
     } catch (err) {
       console.error(err)
     } finally {
@@ -395,17 +401,29 @@ export const Transactions: React.FC = () => {
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs shrink-0"
-                                style={{ backgroundColor: cat?.color || '#64748b' }}
-                              >
-                                {renderCaixinhaIcon(cat?.icon, 'w-3 h-3 text-xs')}
-                              </span>
-                              <span className="text-slate-700">
-                                {cat?.name || 'Não categorizado'}
-                              </span>
-                            </div>
+                            {(() => {
+                              const eff = getEffectiveCategory(tx, categories, budgets)
+                              return (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs shrink-0"
+                                      style={{ backgroundColor: eff.color || '#64748b' }}
+                                    >
+                                      {renderCaixinhaIcon(eff.icon, 'w-3 h-3 text-xs')}
+                                    </span>
+                                    <span className="text-slate-800 font-medium text-xs">
+                                      {eff.name || 'Não categorizado'}
+                                    </span>
+                                  </div>
+                                  {eff.badge && (
+                                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                      {eff.badge}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })()}
                           </td>
                           <td className="py-3.5 px-4 text-slate-500">
                             <div>
@@ -557,22 +575,34 @@ export const Transactions: React.FC = () => {
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                            <span
-                              className="w-4 h-4 rounded-md flex items-center justify-center text-white text-[10px] shrink-0"
-                              style={{ backgroundColor: cat?.color || '#64748b' }}
-                            >
-                              {renderCaixinhaIcon(cat?.icon, 'w-2.5 h-2.5 text-[10px]')}
-                            </span>
-                            <span>{cat?.name || 'Geral'}</span>
-                            <span>•</span>
-                            <span>{formatDate(tx.date)}</span>
-                            {tx.is_retroactive && (
-                              <span className="text-[10px] text-amber-600 font-medium">
-                                (original)
-                              </span>
-                            )}
-                          </div>
+                          {(() => {
+                            const eff = getEffectiveCategory(tx, categories, budgets)
+                            return (
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5 flex-wrap">
+                                <span
+                                  className="w-4 h-4 rounded-md flex items-center justify-center text-white text-[10px] shrink-0"
+                                  style={{ backgroundColor: eff.color || '#64748b' }}
+                                >
+                                  {renderCaixinhaIcon(eff.icon, 'w-2.5 h-2.5 text-[10px]')}
+                                </span>
+                                <span className="font-medium text-slate-800">
+                                  {eff.name || 'Geral'}
+                                </span>
+                                {eff.badge && (
+                                  <span className="inline-flex items-center px-1 py-0.2 rounded text-[9px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                    {eff.badge}
+                                  </span>
+                                )}
+                                <span>•</span>
+                                <span>{formatDate(tx.date)}</span>
+                                {tx.is_retroactive && (
+                                  <span className="text-[10px] text-amber-600 font-medium">
+                                    (original)
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </div>
                         <p
                           className={`text-sm font-bold tabular-nums ${

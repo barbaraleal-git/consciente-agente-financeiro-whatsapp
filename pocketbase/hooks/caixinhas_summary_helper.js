@@ -282,13 +282,78 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     console.log('[caixinhas_summary] Erro ao carregar transações:', tErr)
   }
 
+  // Mapa de nomes/palavras das caixinhas/categorias para matching flexível
+  const categoryById = {}
+  for (let c = 0; c < categories.length; c++) {
+    const cat = categories[c]
+    categoryById[cat.id] = {
+      id: cat.id,
+      name: cat.getString('name') || '',
+      icon: cat.getString('icon') || '',
+      normName: (cat.getString('name') || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim(),
+    }
+  }
+
   const spentByCategoryId = {}
   for (let t = 0; t < transactions.length; t++) {
     const tx = transactions[t]
     const cId = tx.getString('category')
     const amt = tx.getInt('amount') || 0
-    if (cId) {
-      spentByCategoryId[cId] = (spentByCategoryId[cId] || 0) + amt
+    const note = (tx.getString('note') || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+
+    let matchedCatId = cId
+
+    // Se o cId direto não tem budget cadastrado, verifica se o note ou nome da categoria vincula a alguma caixinha com budget
+    if (!budgetByCategoryId[matchedCatId]) {
+      // 1. Tenta encontrar caixinha cujo nome ou sufixo esteja no note (ex.: note contém "Alimentação - VA" ou "VA")
+      for (const bCatId in budgetByCategoryId) {
+        const catMeta = categoryById[bCatId]
+        if (!catMeta) continue
+
+        // Match no note
+        if (note && catMeta.normName && note.includes(catMeta.normName)) {
+          matchedCatId = bCatId
+          break
+        }
+
+        // Match de sufixo no note (ex.: "VA" de "Alimentação - VA")
+        const parts = catMeta.name.split('-').map((p) =>
+          p
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim(),
+        )
+        if (parts.length > 1) {
+          const suffix = parts[parts.length - 1]
+          if (suffix && suffix.length >= 2) {
+            const regex = new RegExp(`(^|[^a-z0-9])${suffix}([^a-z0-9]|$)`, 'i')
+            if (regex.test(note)) {
+              matchedCatId = bCatId
+              break
+            }
+          }
+        }
+
+        // Match entre nome da categoria da transação e caixinha (ex.: categoria "Alimentação Essencial" vs caixinha "Alimentação")
+        const txCat = categoryById[cId]
+        if (txCat && catMeta.normName && txCat.normName.includes(catMeta.normName)) {
+          matchedCatId = bCatId
+          break
+        }
+      }
+    }
+
+    if (matchedCatId) {
+      spentByCategoryId[matchedCatId] = (spentByCategoryId[matchedCatId] || 0) + amt
     }
   }
 

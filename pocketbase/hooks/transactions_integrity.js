@@ -140,40 +140,31 @@ onRecordCreate((e) => {
           if (candidateBudgetIds.length === 1) {
             resolvedBudgetId = candidateBudgetIds[0]
           } else if (candidateBudgetIds.length > 1) {
-            // Desempate por texto (note / descrição)
-            for (let c = 0; c < candidateBudgetIds.length; c++) {
-              const candId = candidateBudgetIds[c]
-              const candBudget = monthBudgets.find((b) => b.id === candId)
-              if (!candBudget) continue
-              const candName =
-                candBudget.getString('name') || catMap[candBudget.getString('category')]?.name || ''
-              const candNorm = normStr(candName)
-              if (candNorm && combined.includes(candNorm)) {
-                resolvedBudgetId = candId
-                break
-              }
-              if (candName) {
-                const parts = candName.split('-').map((p) => normStr(p))
-                if (parts.length > 1) {
-                  const suffix = parts[parts.length - 1]
-                  if (suffix && suffix.length >= 2) {
-                    const regex = new RegExp(`(^|[^a-z0-9])${suffix}([^a-z0-9]|$)`, 'i')
-                    if (regex.test(combined)) {
-                      resolvedBudgetId = candId
-                      break
-                    }
-                  }
-                }
-              }
-            }
-            if (!resolvedBudgetId) {
-              resolvedBudgetId = candidateBudgetIds[0]
-            }
+            // REGRA OBRIGATÓRIA: Categoria vinculada a 2+ caixinhas ativas NUNCA deve ser atribuída
+            // automaticamente por hook. O budget DEVE permanecer vazio para que o fluxo conversacional
+            // pergunte ao usuário (1️⃣/2️⃣) em qual caixinha lançar.
+            resolvedBudgetId = ''
+            console.log(
+              `[transactions_integrity] Categoria '${txCatId}' possui ${candidateBudgetIds.length} caixinhas vinculadas ativas. NENHUMA caixinha atribuída automaticamente (aguarda desambiguação).`,
+            )
           }
         }
 
-        // (b) Fallback sem vínculos
-        if (!resolvedBudgetId) {
+        // (b) Fallback sem vínculos (APENAS se a categoria não possuir múltiplos vínculos ativos)
+        const hasMultipleLinks = userLinks.some((lk) => {
+          const lkCatId = lk.getString('category_id') || lk.getString('category')
+          const lkCatName = normStr(lk.getString('category_name'))
+          return (
+            (lkCatId && txCatId && lkCatId === txCatId) ||
+            (txCatName &&
+              lkCatName &&
+              (txCatName === lkCatName ||
+                txCatName.includes(lkCatName) ||
+                lkCatName.includes(txCatName)))
+          )
+        })
+
+        if (!resolvedBudgetId && !hasMultipleLinks) {
           let bestScore = 0
           let bestBudgetId = ''
 

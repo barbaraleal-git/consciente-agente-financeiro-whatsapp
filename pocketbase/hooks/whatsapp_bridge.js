@@ -784,6 +784,698 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         `4. Se o usuário pedir resumo, visão geral ou estado das caixinhas, responda que o resumo oficial é enviado automaticamente pelo sistema com os dados atualizados — NUNCA monte a lista de caixinhas por conta própria.]`
       )
     }
+
+    // =========================================================================
+    // FUNÇÕES LOCAIS INLINE DE FLUXO DE CAIXINHA (PADRÃO localXxx)
+    // 100% INLINE no corpo do callback do webhook - NUNCA require()
+    // =========================================================================
+    const localNorm = function (str) {
+      return String(str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+    }
+
+    const localGetNumberEmoji = function (index) {
+      const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
+      return emojis[index] || `${index + 1}.`
+    }
+
+    const localFormatDatePtBr = function (ymdStr) {
+      if (!ymdStr || ymdStr.length < 10) return ''
+      const parts = ymdStr.slice(0, 10).split('-')
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`
+      }
+      return ymdStr
+    }
+
+    const localParseRetroactiveDate = function (text, referenceDate) {
+      if (!text) return null
+      const now = referenceDate ? new Date(referenceDate) : new Date()
+      const refYear = now.getFullYear()
+      const refMonth = now.getMonth()
+      const refDay = now.getDate()
+      const t = localNorm(text)
+
+      const formatYmd = function (d) {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+      }
+      const todayYmd = formatYmd(now)
+
+      if (/\banteontem\b/.test(t)) {
+        const target = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000)
+        return { isRetroactive: true, targetDateStr: formatYmd(target), matchedPhrase: 'anteontem' }
+      }
+      if (/\bontem\b/.test(t)) {
+        const target = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000)
+        return { isRetroactive: true, targetDateStr: formatYmd(target), matchedPhrase: 'ontem' }
+      }
+      const weekDaysMap = {
+        domingo: 0,
+        segunda: 1,
+        terca: 2,
+        quarta: 3,
+        quinta: 4,
+        sexta: 5,
+        sabado: 6,
+      }
+      const weekMatch = t.match(
+        /\b(n[ao]|ultim[ao]|passad[ao])?\s*(segunda|terca|quarta|quinta|sexta|sabado|domingo)(-feira)?\b/,
+      )
+      if (weekMatch) {
+        const targetDayIndex = weekDaysMap[weekMatch[2]]
+        if (typeof targetDayIndex === 'number') {
+          const currentDayIndex = now.getDay()
+          let diff = currentDayIndex - targetDayIndex
+          if (diff <= 0) diff += 7
+          const target = new Date(now.getTime() - diff * 24 * 60 * 60 * 1000)
+          const targetStr = formatYmd(target)
+          if (targetStr !== todayYmd) {
+            return {
+              isRetroactive: true,
+              targetDateStr: targetStr,
+              matchedPhrase: weekMatch[0].trim(),
+            }
+          }
+        }
+      }
+      const slashMatch = t.match(/\b(\d{1,2})\/(\d{1,2})(\/(\d{2,4}))?\b/)
+      if (slashMatch) {
+        const dNum = parseInt(slashMatch[1], 10)
+        const mNum = parseInt(slashMatch[2], 10) - 1
+        let yNum = slashMatch[4] ? parseInt(slashMatch[4], 10) : refYear
+        if (yNum < 100) yNum += 2000
+        if (dNum >= 1 && dNum <= 31 && mNum >= 0 && mNum <= 11) {
+          const target = new Date(yNum, mNum, dNum)
+          const targetStr = formatYmd(target)
+          return {
+            isRetroactive: targetStr !== todayYmd,
+            targetDateStr: targetStr,
+            matchedPhrase: slashMatch[0],
+          }
+        }
+      }
+      const monthsMap = {
+        janeiro: 0,
+        fevereiro: 1,
+        marco: 2,
+        abril: 3,
+        maio: 4,
+        junho: 5,
+        julho: 6,
+        agosto: 7,
+        setembro: 8,
+        outubro: 9,
+        novembro: 10,
+        dezembro: 11,
+      }
+      const dayMonthMatch = t.match(
+        /\b(no\s+)?dia\s+(\d{1,2})(\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro))?\b/,
+      )
+      if (dayMonthMatch) {
+        const dNum = parseInt(dayMonthMatch[2], 10)
+        let mNum = refMonth
+        if (dayMonthMatch[4] && typeof monthsMap[dayMonthMatch[4]] === 'number') {
+          mNum = monthsMap[dayMonthMatch[4]]
+        } else if (dNum > refDay) {
+          mNum = refMonth === 0 ? 11 : refMonth - 1
+        }
+        const yNum = mNum > refMonth ? refYear - 1 : refYear
+        if (dNum >= 1 && dNum <= 31) {
+          const target = new Date(yNum, mNum, dNum)
+          const targetStr = formatYmd(target)
+          return {
+            isRetroactive: targetStr !== todayYmd,
+            targetDateStr: targetStr,
+            matchedPhrase: dayMonthMatch[0].trim(),
+          }
+        }
+      }
+      return null
+    }
+
+    const localIsConfirmationNo = function (text) {
+      if (!text) return false
+      const t = localNorm(text)
+      return (
+        t === 'nao' ||
+        t === 'n' ||
+        t === 'cancela nao' ||
+        t === 'deixa' ||
+        t === 'deixa pra la' ||
+        t === 'esquece' ||
+        t === 'nao precisa'
+      )
+    }
+
+    const localTryParseSpendingExpense = function (app, userId, text, referenceDateYmd) {
+      if (!app || !userId || !text) return null
+      const raw = String(text).trim()
+      const norm = localNorm(raw)
+
+      const hasNumber = /\d+([.,]\d{1,2})?/.test(norm)
+      let isCandidate = false
+      if (hasNumber) {
+        if (
+          norm.includes('real') ||
+          norm.includes('reais') ||
+          norm.includes('r$') ||
+          norm.includes('gastei') ||
+          norm.includes('comprei') ||
+          norm.includes('paguei') ||
+          norm.includes('custou') ||
+          norm.includes('despesa') ||
+          norm.includes('almo') ||
+          norm.includes('uber') ||
+          norm.includes('mercado') ||
+          norm.includes('padaria') ||
+          norm.includes('farmacia') ||
+          norm.includes('cafe') ||
+          norm.includes('gasolina') ||
+          norm.includes('lanche') ||
+          norm.includes('pizza') ||
+          norm.includes('jantar') ||
+          norm.includes('ifood') ||
+          norm.includes('combustivel')
+        ) {
+          isCandidate = true
+        } else if (/^[a-z\s]{3,20}\s+\d+([.,]\d{1,2})?$/.test(norm)) {
+          isCandidate = true
+        } else if (/^\d+([.,]\d{1,2})?\s+[a-z\s]{3,20}$/.test(norm)) {
+          isCandidate = true
+        }
+      } else if (
+        norm.startsWith('gastei ') ||
+        norm.startsWith('paguei ') ||
+        norm.startsWith('comprei ') ||
+        norm.includes(' novo gasto') ||
+        norm.includes('registrar gasto') ||
+        norm.includes('registra gasto') ||
+        norm.includes('lancar gasto') ||
+        norm.includes('lança gasto')
+      ) {
+        isCandidate = true
+      }
+
+      if (!isCandidate) return null
+
+      const valMatch =
+        raw.match(/r\$\s*(\d+(?:[.,]\d{1,2})?)/i) ||
+        raw.match(/(\d+(?:[.,]\d{1,2})?)\s*reais/i) ||
+        raw.match(/\b(\d+(?:[.,]\d{1,2})?)\b/)
+
+      if (!valMatch) return null
+
+      const numStr = valMatch[1].replace(',', '.')
+      const floatVal = parseFloat(numStr)
+      if (isNaN(floatVal) || floatVal <= 0) return null
+      const cents = Math.round(floatVal * 100)
+
+      let dateYmd = referenceDateYmd || new Date().toISOString().slice(0, 10)
+      let isRetroactive = false
+      let matchedPhrase = ''
+      const retro = localParseRetroactiveDate(raw, dateYmd)
+      if (retro && retro.isRetroactive && retro.targetDateStr) {
+        dateYmd = retro.targetDateStr
+        isRetroactive = true
+        matchedPhrase = retro.matchedPhrase
+      }
+
+      let userCategories = []
+      try {
+        userCategories = app.findRecordsByFilter(
+          'categories',
+          `(owner = '${userId}' || owner = '' || owner = null) && type = 'despesa'`,
+          '-created',
+          100,
+          0,
+        )
+      } catch (_) {}
+
+      if (userCategories.length === 0) {
+        try {
+          userCategories = app.findRecordsByFilter(
+            'categories',
+            `type = 'despesa'`,
+            '-created',
+            100,
+            0,
+          )
+        } catch (_) {}
+      }
+
+      let matchedCategory = null
+      let matchedCategoryScore = 0
+
+      const cleanedTerm = norm
+        .replace(valMatch[0].toLowerCase(), '')
+        .replace(
+          /\b(gastei|comprei|paguei|custou|no|na|de|em|para|com|reais|r\$|ontem|anteontem)\b/g,
+          ' ',
+        )
+        .trim()
+
+      for (let c = 0; c < userCategories.length; c++) {
+        const cat = userCategories[c]
+        const cName = localNorm(cat.getString('name'))
+        let score = 0
+
+        if (cName && norm.includes(cName)) {
+          score = 100
+        } else if (
+          cName.includes('alimenta') &&
+          (norm.includes('almo') ||
+            norm.includes('jantar') ||
+            norm.includes('lanche') ||
+            norm.includes('comida') ||
+            norm.includes('restaurante') ||
+            norm.includes('mercado') ||
+            norm.includes('padaria') ||
+            norm.includes('ifood') ||
+            norm.includes('pizza') ||
+            norm.includes('cafe'))
+        ) {
+          score = 80
+        } else if (
+          cName.includes('transporte') &&
+          (norm.includes('uber') ||
+            norm.includes('gasolina') ||
+            norm.includes('combustivel') ||
+            norm.includes('onibus') ||
+            norm.includes('metro') ||
+            norm.includes('estacionamento') ||
+            norm.includes('pedagio'))
+        ) {
+          score = 80
+        } else if (
+          cName.includes('saude') &&
+          (norm.includes('farmacia') ||
+            norm.includes('remedio') ||
+            norm.includes('medico') ||
+            norm.includes('consulta') ||
+            norm.includes('dentista'))
+        ) {
+          score = 80
+        } else if (
+          cName.includes('moradia') &&
+          (norm.includes('aluguel') ||
+            norm.includes('condominio') ||
+            norm.includes('luz') ||
+            norm.includes('agua') ||
+            norm.includes('internet'))
+        ) {
+          score = 80
+        } else if (
+          cName.includes('lazer') &&
+          (norm.includes('cinema') ||
+            norm.includes('show') ||
+            norm.includes('passeio') ||
+            norm.includes('viagem') ||
+            norm.includes('bar'))
+        ) {
+          score = 80
+        }
+
+        if (score > matchedCategoryScore) {
+          matchedCategoryScore = score
+          matchedCategory = cat
+        }
+      }
+
+      if (!matchedCategory && userCategories.length > 0) {
+        matchedCategory =
+          userCategories.find((c) => localNorm(c.getString('name')).includes('outros')) ||
+          userCategories[0]
+      }
+
+      if (!matchedCategory) return null
+
+      let desc = cleanedTerm
+        ? cleanedTerm.charAt(0).toUpperCase() + cleanedTerm.slice(1)
+        : matchedCategory.getString('name')
+
+      if (desc.length < 3) {
+        desc = matchedCategory.getString('name')
+      }
+
+      return {
+        amount: cents,
+        description: desc,
+        categoryId: matchedCategory.id,
+        categoryName: matchedCategory.getString('name'),
+        date: dateYmd,
+        isRetroactive: isRetroactive,
+        matchedPhrase: matchedPhrase,
+      }
+    }
+
+    const localGetCandidateBudgetsForCategory = function (
+      app,
+      userId,
+      categoryId,
+      categoryName,
+      currentMonth,
+    ) {
+      const normCatName = localNorm(categoryName)
+      let links = []
+      try {
+        links = app.findRecordsByFilter(
+          'category_caixinha_links',
+          `user = '${userId}' && active = true`,
+          '-created',
+          100,
+          0,
+        )
+      } catch (_) {}
+
+      if (links.length === 0) return []
+
+      const matchingBudgetIds = []
+      for (let l = 0; l < links.length; l++) {
+        const lk = links[l]
+        const lkCatId = lk.getString('category_id') || lk.getString('category')
+        const lkCatName = localNorm(lk.getString('category_name'))
+        const bId = lk.getString('budget')
+        if (!bId) continue
+
+        if (
+          (lkCatId && lkCatId === categoryId) ||
+          (lkCatName &&
+            normCatName &&
+            (lkCatName === normCatName ||
+              lkCatName.includes(normCatName) ||
+              normCatName.includes(lkCatName)))
+        ) {
+          if (!matchingBudgetIds.includes(bId)) {
+            matchingBudgetIds.push(bId)
+          }
+        }
+      }
+
+      if (matchingBudgetIds.length === 0) return []
+
+      let userBudgets = []
+      try {
+        userBudgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-created', 100, 0)
+      } catch (_) {}
+
+      let allCats = []
+      try {
+        allCats = app.findRecordsByFilter('categories', '', '', 200, 0)
+      } catch (_) {}
+      const catMap = {}
+      for (let c = 0; c < allCats.length; c++) {
+        catMap[allCats[c].id] = allCats[c]
+      }
+
+      const candidates = []
+      for (let b = 0; b < userBudgets.length; b++) {
+        const bg = userBudgets[b]
+        if (matchingBudgetIds.includes(bg.id)) {
+          const directName = bg.getString('name')
+          const directIcon = bg.getString('icon')
+          const bCat = catMap[bg.getString('category')]
+          const bName = directName || (bCat ? bCat.getString('name') : 'Caixinha')
+          const bIcon = directIcon || (bCat ? bCat.getString('icon') : '')
+          candidates.push({
+            id: bg.id,
+            name: bName,
+            icon: bIcon,
+            amount: bg.getInt('amount') || 0,
+          })
+        }
+      }
+
+      return candidates
+    }
+
+    const localHandleCaixinhaFlow = function (
+      app,
+      userId,
+      text,
+      contactRecord,
+      referenceDateYmd,
+      sourceOverride,
+    ) {
+      if (!app || !userId || !text) {
+        return { handled: false, reply: '' }
+      }
+
+      const cleanText = String(text).trim()
+      const todayStr = referenceDateYmd || new Date().toISOString().slice(0, 10)
+      const txSource = sourceOverride || 'whatsapp_text'
+
+      // 1. VERIFICA SE EXISTE PENDÊNCIA AGUARDANDO RESPOSTA (pending_caixinha)
+      let pendingData = null
+      if (contactRecord) {
+        const rawPending = contactRecord.getString('pending_caixinha')
+        if (rawPending) {
+          try {
+            pendingData = JSON.parse(rawPending)
+          } catch (_) {}
+        }
+      }
+
+      if (
+        pendingData &&
+        Array.isArray(pendingData.candidate_budgets) &&
+        pendingData.candidate_budgets.length > 0
+      ) {
+        if (localIsConfirmationNo(cleanText) || cleanText.toLowerCase() === 'cancelar') {
+          contactRecord.set('pending_caixinha', '')
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+          return {
+            handled: true,
+            reply:
+              'Tudo bem! Cancelei o registro do gasto. Seus lançamentos não foram alterados! Se precisar de algo, só me chamar. 😊',
+          }
+        }
+
+        const cands = pendingData.candidate_budgets
+        let chosenBudget = null
+
+        const numIdx = parseInt(cleanText, 10)
+        if (!isNaN(numIdx) && numIdx >= 1 && numIdx <= cands.length) {
+          chosenBudget = cands[numIdx - 1]
+        } else {
+          const normInput = localNorm(cleanText)
+          for (let i = 0; i < cands.length; i++) {
+            const cName = localNorm(cands[i].name)
+            if (normInput === cName || cName.includes(normInput) || normInput.includes(cName)) {
+              chosenBudget = cands[i]
+              break
+            }
+            const parts = cands[i].name.split('-').map((p) => localNorm(p))
+            if (parts.length > 1) {
+              const suffix = parts[parts.length - 1]
+              if (suffix && (normInput === suffix || normInput.includes(suffix))) {
+                chosenBudget = cands[i]
+                break
+              }
+            }
+          }
+        }
+
+        if (chosenBudget) {
+          let txCol = null
+          try {
+            txCol = app.findCollectionByNameOrId('transactions')
+          } catch (_) {}
+
+          if (txCol) {
+            const newTx = new Record(txCol)
+            newTx.set('owner', userId)
+            newTx.set('amount', pendingData.amount)
+            newTx.set('description', pendingData.description)
+            newTx.set('date', pendingData.date)
+            newTx.set('category', pendingData.category_id)
+            newTx.set('type', 'despesa')
+            newTx.set('source', pendingData.source || txSource)
+            newTx.set('status', 'active')
+            newTx.set('is_retroactive', pendingData.is_retroactive || false)
+            newTx.set('budget', chosenBudget.id)
+            newTx.set('message_timestamp', new Date().toISOString())
+            if (pendingData.note) {
+              newTx.set('note', pendingData.note)
+            }
+            app.save(newTx)
+          }
+
+          contactRecord.set('pending_caixinha', '')
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+
+          const valFmt = localFormatCentsToBrl(pendingData.amount)
+          let retroPhrase = ''
+          if (pendingData.is_retroactive && pendingData.date) {
+            retroPhrase = ` (contabilizado em ${localFormatDatePtBr(pendingData.date)})`
+          }
+
+          // Calcula quanto resta do teto da caixinha escolhida
+          let remainingPhrase = ''
+          try {
+            const monthPrefix = (pendingData.date || todayStr).slice(0, 7)
+            const bRec = app.findRecordById('budgets', chosenBudget.id)
+            const tetoCents = (bRec && bRec.getInt('amount')) || chosenBudget.amount || 0
+            if (tetoCents > 0) {
+              const txs = app.findRecordsByFilter(
+                'transactions',
+                `owner = '${userId}' && budget = '${chosenBudget.id}' && type = 'despesa' && (status = 'active' || status = '' || status = null) && date >= '${monthPrefix}-01' && date <= '${monthPrefix}-31'`,
+                '',
+                500,
+                0,
+              )
+              let spentTotal = 0
+              for (let st = 0; st < txs.length; st++) {
+                spentTotal += txs[st].getInt('amount') || 0
+              }
+              const rest = tetoCents - spentTotal
+              if (rest >= 0) {
+                remainingPhrase = ` Restam ${localFormatCentsToBrl(rest)} do seu teto neste mês.`
+              } else {
+                remainingPhrase = ` 🚨 Atenção: caixinha estourada por ${localFormatCentsToBrl(Math.abs(rest))}.`
+              }
+            }
+          } catch (_) {}
+
+          return {
+            handled: true,
+            reply: `Perfeito! Registrei seu gasto de *${pendingData.description}* (${valFmt}) na caixinha *${chosenBudget.name}*${retroPhrase} ✅${remainingPhrase}\n\nQualquer novo gasto, só mandar!`,
+          }
+        }
+
+        let repeatList = ''
+        for (let i = 0; i < cands.length; i++) {
+          repeatList += `${localGetNumberEmoji(i)} ${cands[i].name}\n`
+        }
+        const valFmt = localFormatCentsToBrl(pendingData.amount)
+        return {
+          handled: true,
+          reply: `Não entendi qual opção você escolheu para o gasto de *${valFmt}* (${pendingData.description}).\n\nPor favor, responda apenas com o número da caixinha:\n\n${repeatList}\nOu envie "cancelar" para desconsiderar.`,
+        }
+      }
+
+      // 2. SE NÃO HÁ PENDÊNCIA, ANALISA SE A MENSAGEM É UM NOVO GASTO COM VÍNCULOS DE CAIXINHA
+      const parsedExpense = localTryParseSpendingExpense(app, userId, cleanText, todayStr)
+      if (!parsedExpense) {
+        return { handled: false, reply: '' }
+      }
+
+      const candidates = localGetCandidateBudgetsForCategory(
+        app,
+        userId,
+        parsedExpense.categoryId,
+        parsedExpense.categoryName,
+        todayStr.slice(0, 7),
+      )
+
+      // Caso 1: MAIS DE UMA CAIXINHA CANDIDATA (>1) -> Pergunta 1️⃣/2️⃣ e NÃO grava transação ainda
+      if (candidates.length > 1) {
+        if (contactRecord) {
+          contactRecord.set(
+            'pending_caixinha',
+            JSON.stringify({
+              amount: parsedExpense.amount,
+              description: parsedExpense.description,
+              category_id: parsedExpense.categoryId,
+              category_name: parsedExpense.categoryName,
+              date: parsedExpense.date,
+              is_retroactive: parsedExpense.isRetroactive,
+              candidate_budgets: candidates,
+              source: txSource,
+              created_at: new Date().toISOString(),
+            }),
+          )
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+        }
+
+        let optionsList = ''
+        for (let i = 0; i < candidates.length; i++) {
+          optionsList += `${localGetNumberEmoji(i)} ${candidates[i].name}\n`
+        }
+        const valFmt = localFormatCentsToBrl(parsedExpense.amount)
+
+        return {
+          handled: true,
+          reply: `Esse gasto de ${valFmt} (${parsedExpense.description}) entra em qual caixinha?\n\n${optionsList}\nResponda com o número ou nome da caixinha! 😊`,
+        }
+      }
+
+      // Caso 2: UMA ÚNICA CAIXINHA CANDIDATA (=== 1) -> Grava direto com o budget preenchido
+      if (candidates.length === 1) {
+        const singleBudget = candidates[0]
+        let txCol = null
+        try {
+          txCol = app.findCollectionByNameOrId('transactions')
+        } catch (_) {}
+
+        if (txCol) {
+          const newTx = new Record(txCol)
+          newTx.set('owner', userId)
+          newTx.set('amount', parsedExpense.amount)
+          newTx.set('description', parsedExpense.description)
+          newTx.set('date', parsedExpense.date)
+          newTx.set('category', parsedExpense.categoryId)
+          newTx.set('type', 'despesa')
+          newTx.set('source', txSource)
+          newTx.set('status', 'active')
+          newTx.set('is_retroactive', parsedExpense.isRetroactive || false)
+          newTx.set('budget', singleBudget.id)
+          newTx.set('message_timestamp', new Date().toISOString())
+          app.save(newTx)
+        }
+
+        const valFmt = localFormatCentsToBrl(parsedExpense.amount)
+        let retroPhrase = ''
+        if (parsedExpense.isRetroactive && parsedExpense.date) {
+          retroPhrase = ` (contabilizado em ${localFormatDatePtBr(parsedExpense.date)})`
+        }
+
+        let remainingPhrase = ''
+        try {
+          const monthPrefix = (parsedExpense.date || todayStr).slice(0, 7)
+          const bRec = app.findRecordById('budgets', singleBudget.id)
+          const tetoCents = (bRec && bRec.getInt('amount')) || singleBudget.amount || 0
+          if (tetoCents > 0) {
+            const txs = app.findRecordsByFilter(
+              'transactions',
+              `owner = '${userId}' && budget = '${singleBudget.id}' && type = 'despesa' && (status = 'active' || status = '' || status = null) && date >= '${monthPrefix}-01' && date <= '${monthPrefix}-31'`,
+              '',
+              500,
+              0,
+            )
+            let spentTotal = 0
+            for (let st = 0; st < txs.length; st++) {
+              spentTotal += txs[st].getInt('amount') || 0
+            }
+            const rest = tetoCents - spentTotal
+            if (rest >= 0) {
+              remainingPhrase = ` Restam ${localFormatCentsToBrl(rest)} do seu teto neste mês.`
+            } else {
+              remainingPhrase = ` 🚨 Atenção: caixinha estourada por ${localFormatCentsToBrl(Math.abs(rest))}.`
+            }
+          }
+        } catch (_) {}
+
+        return {
+          handled: true,
+          reply: `Registrei seu gasto de *${parsedExpense.description}* (${valFmt}) na caixinha *${singleBudget.name}*${retroPhrase} ✅${remainingPhrase}`,
+        }
+      }
+
+      // Caso 3: ZERO VÍNCULOS PARAMETRIZADOS (=== 0)
+      return { handled: false, reply: '' }
+    }
     const normalizeDigits = function (raw) {
       if (!raw) return ''
       let digits = String(raw).replace(/\D/g, '')
@@ -1693,10 +2385,39 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               }
             }
 
-            // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha (Item 29 / v0.0.56)
+            // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha (Item 29 / v0.0.56 / v0.0.69)
             // Se há pendência de escolha de caixinha (pending_caixinha) ou novo gasto em categoria
             // com 1 ou mais caixinhas vinculadas (category_caixinha_links):
+            // Executado primariamente via localHandleCaixinhaFlow 100% INLINE no callback (padrão localXxx sem require)
             if (
+              !agentReply &&
+              isRegistered &&
+              textContent &&
+              typeof localHandleCaixinhaFlow === 'function'
+            ) {
+              try {
+                const caixinhaRes = localHandleCaixinhaFlow(
+                  $app,
+                  activeUserId,
+                  textContent,
+                  contact,
+                  todayStr,
+                  msgSource,
+                )
+                if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
+                  agentReply = caixinhaRes.reply
+                  console.log(
+                    '[whatsapp_bridge] Fluxo de escolha de caixinha (inline) executado com resposta:',
+                    agentReply,
+                  )
+                }
+              } catch (cxFlowErr) {
+                console.log(
+                  '[whatsapp_bridge] Erro no fluxo de escolha de caixinha (inline):',
+                  cxFlowErr,
+                )
+              }
+            } else if (
               !agentReply &&
               isRegistered &&
               textContent &&
@@ -1715,7 +2436,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
                   agentReply = caixinhaRes.reply
                   console.log(
-                    '[whatsapp_bridge] Fluxo de escolha de caixinha executado com resposta:',
+                    '[whatsapp_bridge] Fluxo de escolha de caixinha executado com resposta (fallback helper):',
                     agentReply,
                   )
                 }
@@ -2786,8 +3507,32 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
         }
       }
 
-      // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha no simulate (Item 29 / v0.0.56)
-      if (
+      // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha no simulate (Item 29 / v0.0.56 / v0.0.69)
+      // Executado primariamente via localHandleCaixinhaFlow inline no callback (padrão localXxx sem require)
+      if (!agentReply && isRegistered && message && typeof localHandleCaixinhaFlow === 'function') {
+        try {
+          const caixinhaRes = localHandleCaixinhaFlow(
+            $app,
+            activeUserId,
+            message,
+            contact,
+            todayStr,
+            'whatsapp_text',
+          )
+          if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
+            agentReply = caixinhaRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha (inline) executado:',
+              agentReply,
+            )
+          }
+        } catch (cxFlowErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha (inline):',
+            cxFlowErr,
+          )
+        }
+      } else if (
         !agentReply &&
         isRegistered &&
         message &&
@@ -2806,7 +3551,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
           if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
             agentReply = caixinhaRes.reply
             console.log(
-              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha executado:',
+              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha executado (fallback helper):',
               agentReply,
             )
           }
@@ -2814,38 +3559,6 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
           console.log(
             '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha:',
             cxFlowErr,
-          )
-        }
-      }
-
-      // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha (Item 29) no simulate
-      if (
-        !agentReply &&
-        isRegistered &&
-        message &&
-        reliabilityHelperSim &&
-        typeof reliabilityHelperSim.handleCaixinhaFlow === 'function'
-      ) {
-        try {
-          const caixinhaSimRes = reliabilityHelperSim.handleCaixinhaFlow(
-            $app,
-            activeUserId,
-            message,
-            contact,
-            todayStr,
-            'whatsapp_text',
-          )
-          if (caixinhaSimRes && caixinhaSimRes.handled && caixinhaSimRes.reply) {
-            agentReply = caixinhaSimRes.reply
-            console.log(
-              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha executado com resposta:',
-              agentReply,
-            )
-          }
-        } catch (cxSimErr) {
-          console.log(
-            '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha:',
-            cxSimErr,
           )
         }
       }

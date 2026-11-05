@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T02:28:00.663Z",
+  "generatedAt": "2026-11-05T03:20:33.207Z",
   "collections": [
     {
       "name": "users",
@@ -225,6 +225,13 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "budget",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "budgets"
         }
       ],
       "indexes": [
@@ -575,6 +582,12 @@
         },
         {
           "name": "pending_cancel",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pending_caixinha",
           "type": "json",
           "required": false,
           "system": false

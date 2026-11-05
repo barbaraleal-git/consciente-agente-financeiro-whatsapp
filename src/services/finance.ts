@@ -34,6 +34,7 @@ export interface Transaction extends RecordModel {
   note?: string
   status?: TransactionStatus
   is_retroactive?: boolean
+  budget?: string // ID da caixinha única associada
 }
 export interface Budget extends RecordModel {
   owner: string

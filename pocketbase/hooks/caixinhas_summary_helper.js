@@ -324,22 +324,6 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     }
   }
 
-  // Mapa de links por caixinha (budget ID)
-  // Permite que uma mesma transação alimente mais de uma caixinha caso vinculada (ex. Alimentação Essencial em VA e VR)
-  const linksByBudgetId = {}
-  for (let l = 0; l < userLinks.length; l++) {
-    const lk = userLinks[l]
-    const bId = lk.getString('budget')
-    const cName = (lk.getString('category_name') || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-    const cId = lk.getString('category')
-    if (!linksByBudgetId[bId]) linksByBudgetId[bId] = []
-    linksByBudgetId[bId].push({ cName, cId })
-  }
-
   // Helper interno de normalização
   function norm(str) {
     return String(str || '')
@@ -349,90 +333,153 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
       .trim()
   }
 
-  // Calcula o gasto por categoria/budget considerando vínculos N:N ou fallback
-  const spentByCategoryId = {}
+  // Mapa de vínculos explícitos
+  const activeLinks = []
+  for (let l = 0; l < userLinks.length; l++) {
+    const lk = userLinks[l]
+    const bId = lk.getString('budget')
+    const cName = norm(lk.getString('category_name'))
+    const cId = lk.getString('category')
+    activeLinks.push({ bId, cName, cId })
+  }
 
-  for (let b = 0; b < budgetsList.length; b++) {
-    const bg = budgetsList[b]
-    const budgetCatId = bg.category
-    const budgetMeta = categoryById[budgetCatId]
-    const budgetLinks = linksByBudgetId[bg.id] || []
+  // Função interna para resolver a caixinha única de uma transação
+  // (REGRA OFICIAL: ZERO DUPLICAÇÃO — cada transação pertence a UMA e apenas UMA caixinha)
+  function resolveTxBudget(tx) {
+    const directBudgetId = tx.getString('budget')
+    if (directBudgetId) {
+      for (let b = 0; b < budgetsList.length; b++) {
+        if (budgetsList[b].id === directBudgetId) return budgetsList[b]
+      }
+    }
 
-    let budgetSpent = 0
+    const txCatId = tx.getString('category')
+    const txNote = norm(tx.getString('note'))
+    const txDesc = norm(tx.getString('description'))
+    const combined = `${txNote} ${txDesc}`.trim()
+    const txCatMeta = categoryById[txCatId]
+    const txCatName = norm(txCatMeta ? txCatMeta.name : '')
 
-    for (let t = 0; t < transactions.length; t++) {
-      const tx = transactions[t]
-      const txCatId = tx.getString('category')
-      const amt = tx.getInt('amount') || 0
-      const txNote = norm(tx.getString('note'))
-      const txCatMeta = categoryById[txCatId]
-      const txCatName = norm(txCatMeta ? txCatMeta.name : '')
-
-      let isMatch = false
-
-      if (budgetLinks.length > 0) {
-        // MODO 1: Vínculos explícitos definidos pelo cliente para esta caixinha
-        for (let k = 0; k < budgetLinks.length; k++) {
-          const lk = budgetLinks[k]
-          if (lk.cId && txCatId && lk.cId === txCatId) {
-            isMatch = true
-            break
-          }
-          if (
-            lk.cName &&
-            txCatName &&
-            (txCatName === lk.cName || txCatName.includes(lk.cName) || lk.cName.includes(txCatName))
-          ) {
-            isMatch = true
-            break
-          }
-          if (lk.cName && txNote && (txNote === lk.cName || txNote.includes(lk.cName))) {
-            isMatch = true
-            break
-          }
+    // Se houver vínculos explícitos configurados pelo cliente:
+    if (activeLinks.length > 0) {
+      const candidateBudgetIds = []
+      for (let l = 0; l < activeLinks.length; l++) {
+        const lk = activeLinks[l]
+        let isCand = false
+        if (lk.cId && txCatId && lk.cId === txCatId) {
+          isCand = true
+        } else if (
+          txCatName &&
+          lk.cName &&
+          (txCatName === lk.cName || txCatName.includes(lk.cName) || lk.cName.includes(txCatName))
+        ) {
+          isCand = true
         }
-      } else {
-        // MODO 2 (Fallback zero-regressão): se não há vínculos para esta caixinha
-        // Match direto por categoria
-        if (txCatId && budgetCatId && txCatId === budgetCatId) {
-          isMatch = true
-        } else if (budgetMeta && budgetMeta.normName) {
-          // Match por note (ex.: note contém "Alimentação - VA" ou "VA")
-          if (txNote && txNote.includes(budgetMeta.normName)) {
-            isMatch = true
-          } else {
-            // Match de sufixo no note
-            const parts = budgetMeta.name.split('-').map((p) => norm(p))
+        if (isCand && !candidateBudgetIds.includes(lk.bId)) {
+          candidateBudgetIds.push(lk.bId)
+        }
+      }
+
+      if (candidateBudgetIds.length === 1) {
+        for (let b = 0; b < budgetsList.length; b++) {
+          if (budgetsList[b].id === candidateBudgetIds[0]) return budgetsList[b]
+        }
+      }
+
+      if (candidateBudgetIds.length > 1) {
+        // Desempate por texto (note/descrição) com nome de caixinha ou sufixo
+        for (let i = 0; i < candidateBudgetIds.length; i++) {
+          const candId = candidateBudgetIds[i]
+          let candBudget = null
+          for (let b = 0; b < budgetsList.length; b++) {
+            if (budgetsList[b].id === candId) {
+              candBudget = budgetsList[b]
+              break
+            }
+          }
+          if (!candBudget) continue
+          const candMeta = categoryById[candBudget.category]
+          if (candMeta && candMeta.normName && combined.includes(candMeta.normName)) {
+            return candBudget
+          }
+          if (candMeta && candMeta.name) {
+            const parts = candMeta.name.split('-').map((p) => norm(p))
             if (parts.length > 1) {
               const suffix = parts[parts.length - 1]
               if (suffix && suffix.length >= 2) {
                 const regex = new RegExp(`(^|[^a-z0-9])${suffix}([^a-z0-9]|$)`, 'i')
-                if (regex.test(txNote)) {
-                  isMatch = true
-                }
+                if (regex.test(combined)) return candBudget
               }
             }
           }
+        }
+        // Se sem desempate no texto, atribui estavelmente à primeira candidata para jamais duplicar
+        for (let b = 0; b < budgetsList.length; b++) {
+          if (budgetsList[b].id === candidateBudgetIds[0]) return budgetsList[b]
+        }
+      }
+    }
 
-          // Match de nome da categoria da transação
-          if (
-            !isMatch &&
-            txCatMeta &&
-            txCatMeta.normName &&
-            txCatMeta.normName.includes(budgetMeta.normName)
-          ) {
-            isMatch = true
+    // Fallback sem vínculos: pontua a melhor caixinha
+    let bestBudget = null
+    let bestScore = 0
+
+    for (let b = 0; b < budgetsList.length; b++) {
+      const bg = budgetsList[b]
+      const bCatId = bg.category
+      const bMeta = categoryById[bCatId]
+      let score = 0
+
+      if (txCatId && bCatId && txCatId === bCatId) {
+        score = 100
+      }
+
+      if (bMeta && bMeta.name) {
+        const parts = bMeta.name.split('-').map((p) => norm(p))
+        if (parts.length > 1) {
+          const suffix = parts[parts.length - 1]
+          if (suffix && suffix.length >= 2) {
+            const regex = new RegExp(`(^|[^a-z0-9])${suffix}([^a-z0-9]|$)`, 'i')
+            if (regex.test(combined)) {
+              score = Math.max(score, 80)
+            }
+          }
+        }
+        if (bMeta.normName && combined.includes(bMeta.normName)) {
+          score = Math.max(score, 70)
+        }
+        if (txCatName && bMeta.normName) {
+          if (bMeta.normName.includes(txCatName) || txCatName.includes(bMeta.normName)) {
+            score = Math.max(score, 50)
           }
         }
       }
 
-      if (isMatch) {
-        budgetSpent += amt
+      if (score > bestScore) {
+        bestScore = score
+        bestBudget = bg
       }
     }
 
-    if (budgetCatId) {
-      spentByCategoryId[budgetCatId] = budgetSpent
+    return bestBudget
+  }
+
+  // Calcula o gasto somando cada transação ativa UMA ÚNICA VEZ na caixinha resolvida
+  const spentByCategoryId = {}
+  for (let b = 0; b < budgetsList.length; b++) {
+    const bg = budgetsList[b]
+    if (bg.category) {
+      spentByCategoryId[bg.category] = 0
+    }
+  }
+
+  for (let t = 0; t < transactions.length; t++) {
+    const tx = transactions[t]
+    const amt = tx.getInt('amount') || 0
+    const matchedBudget = resolveTxBudget(tx)
+    if (matchedBudget && matchedBudget.category) {
+      spentByCategoryId[matchedBudget.category] =
+        (spentByCategoryId[matchedBudget.category] || 0) + amt
     }
   }
 

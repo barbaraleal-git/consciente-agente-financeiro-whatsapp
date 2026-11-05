@@ -45,6 +45,14 @@ export interface Budget extends RecordModel {
   amount: number // in cents
 }
 
+export interface CategoryCaixinhaLink extends RecordModel {
+  user: string
+  budget: string
+  category_name: string
+  category_id?: string
+  active: boolean
+}
+
 export interface Alert extends RecordModel {
   owner: string
   title: string
@@ -270,6 +278,77 @@ export const budgetsService = {
 
   async delete(id: string): Promise<boolean> {
     return pb.collection('budgets').delete(id)
+  },
+}
+
+// ----------------- Category Caixinha Links Service -----------------
+export const categoryCaixinhaLinksService = {
+  async list(budgetId?: string): Promise<CategoryCaixinhaLink[]> {
+    const filter = budgetId ? `budget = '${budgetId}'` : ''
+    return pb.collection('category_caixinha_links').getFullList<CategoryCaixinhaLink>({
+      filter,
+      sort: 'category_name',
+    })
+  },
+
+  async listByUser(): Promise<CategoryCaixinhaLink[]> {
+    return pb.collection('category_caixinha_links').getFullList<CategoryCaixinhaLink>({
+      sort: 'category_name',
+    })
+  },
+
+  async create(data: Partial<CategoryCaixinhaLink>): Promise<CategoryCaixinhaLink> {
+    const user = pb.authStore.record?.id
+    return pb.collection('category_caixinha_links').create<CategoryCaixinhaLink>({
+      ...data,
+      user,
+      active: data.active !== undefined ? data.active : true,
+    })
+  },
+
+  async update(id: string, data: Partial<CategoryCaixinhaLink>): Promise<CategoryCaixinhaLink> {
+    return pb.collection('category_caixinha_links').update<CategoryCaixinhaLink>(id, data)
+  },
+
+  async delete(id: string): Promise<boolean> {
+    return pb.collection('category_caixinha_links').delete(id)
+  },
+
+  async syncBudgetLinks(
+    budgetId: string,
+    categoryNames: Array<{ name: string; id?: string }>,
+  ): Promise<void> {
+    const user = pb.authStore.record?.id
+    if (!user) return
+
+    // Busca vínculos atuais da caixinha
+    const currentLinks = await this.list(budgetId)
+    const currentMap = new Map<string, CategoryCaixinhaLink>()
+    currentLinks.forEach((link) => {
+      currentMap.set(link.category_name.toLowerCase().trim(), link)
+    })
+
+    const targetNamesSet = new Set(categoryNames.map((c) => c.name.toLowerCase().trim()))
+
+    // 1. Remove ou desativa vínculos que não estão mais marcados
+    for (const [key, link] of currentMap.entries()) {
+      if (!targetNamesSet.has(key)) {
+        await this.delete(link.id)
+      }
+    }
+
+    // 2. Adiciona novos vínculos
+    for (const target of categoryNames) {
+      const key = target.name.toLowerCase().trim()
+      if (!currentMap.has(key)) {
+        await this.create({
+          budget: budgetId,
+          category_name: target.name.trim(),
+          category_id: target.id || '',
+          active: true,
+        })
+      }
+    }
   },
 }
 

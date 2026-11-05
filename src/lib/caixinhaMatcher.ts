@@ -1,4 +1,4 @@
-import type { Budget, Category, Transaction } from '@/services/finance'
+import type { Budget, Category, CategoryCaixinhaLink, Transaction } from '@/services/finance'
 
 /**
  * Normaliza string para comparação sem acentos, pontuação ou caixa alta.
@@ -29,6 +29,7 @@ export function isTransactionInBudget(
   b: Budget,
   categories: Category[],
   allBudgets?: Budget[],
+  userLinks?: CategoryCaixinhaLink[],
 ): boolean {
   // Apenas transações ativas contam para os totais
   const status = t.status || 'active'
@@ -36,6 +37,54 @@ export function isTransactionInBudget(
   if (t.type !== 'despesa') return false
   if (b.month && !t.date.startsWith(b.month)) return false
 
+  // Se houver vínculos explícitos configurados pelo cliente:
+  const activeLinks = (userLinks || []).filter((l) => l.active)
+  if (activeLinks.length > 0) {
+    // Vínculos da caixinha específica avaliada
+    const budgetSpecificLinks = activeLinks.filter((l) => l.budget === b.id)
+
+    // Se esta caixinha possui vínculos explícitos configurados:
+    if (budgetSpecificLinks.length > 0) {
+      const txCat = categories.find((c) => c.id === t.category)
+      const txCatNameNorm = txCat ? normalizeText(txCat.name) : ''
+      const noteNorm = normalizeText(t.note)
+
+      for (const link of budgetSpecificLinks) {
+        const linkCatNameNorm = normalizeText(link.category_name)
+        if (!linkCatNameNorm) continue
+
+        // 1. Match por ID de categoria se informado
+        if (link.category_id && t.category === link.category_id) {
+          return true
+        }
+
+        // 2. Match pelo nome da categoria da transação
+        if (
+          txCatNameNorm &&
+          (txCatNameNorm === linkCatNameNorm ||
+            txCatNameNorm.includes(linkCatNameNorm) ||
+            linkCatNameNorm.includes(txCatNameNorm))
+        ) {
+          return true
+        }
+
+        // 3. Match pelo note/observação da transação (ex: "Alimentação Essencial")
+        if (noteNorm && (noteNorm === linkCatNameNorm || noteNorm.includes(linkCatNameNorm))) {
+          return true
+        }
+      }
+
+      // Se a caixinha tem vínculos explícitos mas nenhum casou, também verificamos se coincide diretamente
+      // com a categoria base da própria caixinha (ex: t.category === b.category)
+      if (t.category === b.category) {
+        return true
+      }
+
+      return false
+    }
+  }
+
+  // --- COMPORTAMENTO PADRÃO / FALLBACK (Zero Regressão para clientes sem vínculos) ---
   // 1. Vínculo direto por ID de categoria
   if (t.category === b.category) return true
 
@@ -85,17 +134,30 @@ export function isTransactionInBudget(
 }
 
 /**
- * Retorna o valor total gasto em um budget/caixinha considerando a lógica unificada.
+ * Retorna o valor total gasto em um budget/caixinha considerando a lógica unificada e parametrização.
  */
 export function getBudgetSpent(
   b: Budget,
   transactions: Transaction[],
   categories: Category[],
   allBudgets?: Budget[],
+  userLinks?: CategoryCaixinhaLink[],
 ): number {
   return transactions
-    .filter((t) => isTransactionInBudget(t, b, categories, allBudgets))
+    .filter((t) => isTransactionInBudget(t, b, categories, allBudgets, userLinks))
     .reduce((sum, t) => sum + t.amount, 0)
+}
+
+/**
+ * Retorna todas as caixinhas vinculadas a uma transação (quando uma transação alimenta mais de uma caixinha).
+ */
+export function getMatchedBudgetsForTransaction(
+  t: Transaction,
+  budgets: Budget[],
+  categories: Category[],
+  userLinks?: CategoryCaixinhaLink[],
+): Budget[] {
+  return budgets.filter((b) => isTransactionInBudget(t, b, categories, budgets, userLinks))
 }
 
 /**
@@ -105,6 +167,7 @@ export function getEffectiveCategory(
   t: Transaction,
   categories: Category[],
   budgets: Budget[],
+  userLinks?: CategoryCaixinhaLink[],
 ): {
   id: string
   name: string
@@ -112,6 +175,7 @@ export function getEffectiveCategory(
   icon: string
   isCaixinha: boolean
   badge?: string
+  matchedCaixinhasNames?: string[]
 } {
   const directCat = categories.find((c) => c.id === t.category)
 
@@ -130,10 +194,20 @@ export function getEffectiveCategory(
     }
   }
 
-  // Busca se há um budget/caixinha que dá match com esta transação
-  const matchedBudget = budgets.find((b) => isTransactionInBudget(t, b, categories, budgets))
-  if (matchedBudget) {
-    const budgetCat = categories.find((c) => c.id === matchedBudget.category)
+  // Busca todas as caixinhas que dão match com esta transação
+  const matchedBudgets = getMatchedBudgetsForTransaction(t, budgets, categories, userLinks)
+  const matchedCaixinhasNames: string[] = []
+
+  matchedBudgets.forEach((b) => {
+    const cat = categories.find((c) => c.id === b.category)
+    if (cat?.name) {
+      matchedCaixinhasNames.push(cat.name)
+    }
+  })
+
+  if (matchedBudgets.length > 0) {
+    const primaryBudget = matchedBudgets[0]
+    const budgetCat = categories.find((c) => c.id === primaryBudget.category)
     if (budgetCat) {
       return {
         id: budgetCat.id,
@@ -142,6 +216,7 @@ export function getEffectiveCategory(
         icon: budgetCat.icon || directCat?.icon || 'pet-cat',
         isCaixinha: true,
         badge,
+        matchedCaixinhasNames,
       }
     }
   }
@@ -153,5 +228,6 @@ export function getEffectiveCategory(
     icon: directCat?.icon || 'pet-cat',
     isCaixinha: false,
     badge,
+    matchedCaixinhasNames: [],
   }
 }

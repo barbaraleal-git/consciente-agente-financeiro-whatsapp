@@ -258,12 +258,38 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   }
 
   const budgetByCategoryId = {}
+  const budgetByBudgetId = {}
+  const budgetsList = []
   for (let b = 0; b < budgets.length; b++) {
     const bg = budgets[b]
     const catId = bg.getString('category')
+    const bId = bg.id
+    const bAmt = bg.getInt('amount') || 0
+    budgetByBudgetId[bId] = bg
+    budgetsList.push({
+      id: bId,
+      category: catId,
+      amount: bAmt,
+      month: bg.getString('month') || monthStr,
+    })
     if (catId && !budgetByCategoryId[catId]) {
-      budgetByCategoryId[catId] = bg.getInt('amount') || 0
+      budgetByCategoryId[catId] = bAmt
     }
+  }
+
+  // 2.1 Busca vínculos personalizados de categorias (category_caixinha_links)
+  let userLinks = []
+  try {
+    userLinks = app.findRecordsByFilter(
+      'category_caixinha_links',
+      `user = '${userId}' && active = true`,
+      '-created',
+      200,
+      0,
+    )
+  } catch (lErr) {
+    // Se a coleção ainda não tiver registros ou erro silencioso
+    console.log('[caixinhas_summary] Nenhum vínculo explícito carregado:', lErr)
   }
 
   // 3. Busca transações do mês corrente (tipo 'despesa') do usuário — APENAS ATIVAS
@@ -298,62 +324,115 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     }
   }
 
-  const spentByCategoryId = {}
-  for (let t = 0; t < transactions.length; t++) {
-    const tx = transactions[t]
-    const cId = tx.getString('category')
-    const amt = tx.getInt('amount') || 0
-    const note = (tx.getString('note') || '')
+  // Mapa de links por caixinha (budget ID)
+  // Permite que uma mesma transação alimente mais de uma caixinha caso vinculada (ex. Alimentação Essencial em VA e VR)
+  const linksByBudgetId = {}
+  for (let l = 0; l < userLinks.length; l++) {
+    const lk = userLinks[l]
+    const bId = lk.getString('budget')
+    const cName = (lk.getString('category_name') || '')
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .trim()
+    const cId = lk.getString('category')
+    if (!linksByBudgetId[bId]) linksByBudgetId[bId] = []
+    linksByBudgetId[bId].push({ cName, cId })
+  }
 
-    let matchedCatId = cId
+  // Helper interno de normalização
+  function norm(str) {
+    return String(str || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+  }
 
-    // Se o cId direto não tem budget cadastrado, verifica se o note ou nome da categoria vincula a alguma caixinha com budget
-    if (!budgetByCategoryId[matchedCatId]) {
-      // 1. Tenta encontrar caixinha cujo nome ou sufixo esteja no note (ex.: note contém "Alimentação - VA" ou "VA")
-      for (const bCatId in budgetByCategoryId) {
-        const catMeta = categoryById[bCatId]
-        if (!catMeta) continue
+  // Calcula o gasto por categoria/budget considerando vínculos N:N ou fallback
+  const spentByCategoryId = {}
 
-        // Match no note
-        if (note && catMeta.normName && note.includes(catMeta.normName)) {
-          matchedCatId = bCatId
-          break
-        }
+  for (let b = 0; b < budgetsList.length; b++) {
+    const bg = budgetsList[b]
+    const budgetCatId = bg.category
+    const budgetMeta = categoryById[budgetCatId]
+    const budgetLinks = linksByBudgetId[bg.id] || []
 
-        // Match de sufixo no note (ex.: "VA" de "Alimentação - VA")
-        const parts = catMeta.name.split('-').map((p) =>
-          p
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .trim(),
-        )
-        if (parts.length > 1) {
-          const suffix = parts[parts.length - 1]
-          if (suffix && suffix.length >= 2) {
-            const regex = new RegExp(`(^|[^a-z0-9])${suffix}([^a-z0-9]|$)`, 'i')
-            if (regex.test(note)) {
-              matchedCatId = bCatId
-              break
-            }
+    let budgetSpent = 0
+
+    for (let t = 0; t < transactions.length; t++) {
+      const tx = transactions[t]
+      const txCatId = tx.getString('category')
+      const amt = tx.getInt('amount') || 0
+      const txNote = norm(tx.getString('note'))
+      const txCatMeta = categoryById[txCatId]
+      const txCatName = norm(txCatMeta ? txCatMeta.name : '')
+
+      let isMatch = false
+
+      if (budgetLinks.length > 0) {
+        // MODO 1: Vínculos explícitos definidos pelo cliente para esta caixinha
+        for (let k = 0; k < budgetLinks.length; k++) {
+          const lk = budgetLinks[k]
+          if (lk.cId && txCatId && lk.cId === txCatId) {
+            isMatch = true
+            break
+          }
+          if (
+            lk.cName &&
+            txCatName &&
+            (txCatName === lk.cName || txCatName.includes(lk.cName) || lk.cName.includes(txCatName))
+          ) {
+            isMatch = true
+            break
+          }
+          if (lk.cName && txNote && (txNote === lk.cName || txNote.includes(lk.cName))) {
+            isMatch = true
+            break
           }
         }
+      } else {
+        // MODO 2 (Fallback zero-regressão): se não há vínculos para esta caixinha
+        // Match direto por categoria
+        if (txCatId && budgetCatId && txCatId === budgetCatId) {
+          isMatch = true
+        } else if (budgetMeta && budgetMeta.normName) {
+          // Match por note (ex.: note contém "Alimentação - VA" ou "VA")
+          if (txNote && txNote.includes(budgetMeta.normName)) {
+            isMatch = true
+          } else {
+            // Match de sufixo no note
+            const parts = budgetMeta.name.split('-').map((p) => norm(p))
+            if (parts.length > 1) {
+              const suffix = parts[parts.length - 1]
+              if (suffix && suffix.length >= 2) {
+                const regex = new RegExp(`(^|[^a-z0-9])${suffix}([^a-z0-9]|$)`, 'i')
+                if (regex.test(txNote)) {
+                  isMatch = true
+                }
+              }
+            }
+          }
 
-        // Match entre nome da categoria da transação e caixinha (ex.: categoria "Alimentação Essencial" vs caixinha "Alimentação")
-        const txCat = categoryById[cId]
-        if (txCat && catMeta.normName && txCat.normName.includes(catMeta.normName)) {
-          matchedCatId = bCatId
-          break
+          // Match de nome da categoria da transação
+          if (
+            !isMatch &&
+            txCatMeta &&
+            txCatMeta.normName &&
+            txCatMeta.normName.includes(budgetMeta.normName)
+          ) {
+            isMatch = true
+          }
         }
+      }
+
+      if (isMatch) {
+        budgetSpent += amt
       }
     }
 
-    if (matchedCatId) {
-      spentByCategoryId[matchedCatId] = (spentByCategoryId[matchedCatId] || 0) + amt
+    if (budgetCatId) {
+      spentByCategoryId[budgetCatId] = budgetSpent
     }
   }
 

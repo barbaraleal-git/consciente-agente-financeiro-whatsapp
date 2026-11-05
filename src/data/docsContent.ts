@@ -146,6 +146,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Edição Completa de Caixinha (/budgets e /categories)** | Conclusão do modal "Editar Caixinha" em \`/budgets\` e \`/categories\` permitindo que o cliente altere o ícone/figurinha com 3 abas completas (**Ícones**, **Emojis** e **🐱 Bichinhos** com todos os bichinhos oficiais: Gatinho, Cachorrinho, Patinhas, Ursinho, Panda, Coala, Leãozinho, Coelhinho, Raposa, Tigrinho, Pinguim, Corujinha, Borboleta, Abelhinha etc.), o nome e a cor da caixinha, preservando integralmente o teto e o mês de referência. As alterações refletem em tempo real no Dashboard, Caixinhas, Extrato, Modal de Lançamentos e no resumo visual do WhatsApp. | **Concluído** |
 | **Resiliência do Agente WhatsApp e Correção de Mensagens Duplicadas/Oscilação** | Resolução da oscilação momentânea e mensagens repetidas no WhatsApp: fallback inteligente embutido diretamente inline nos callbacks do hook (\`whatsapp_bridge.js\`), eliminando declarações de escopo superior sujeitas a \`Hook scoping error\`. Até 3 tentativas com backoff progressivo na invocação do agente nativo \`$ai.agent\` e resposta acolhedora humanizada para saudações e conversas, sem falsos pedidos de valor e categoria em falhas externas. | **Concluído** |
 | **Match e Alinhamento de Caixinhas App × WhatsApp (Fonte Única de Verdade)** | Resolução da inconsistência reportada pela usuária em que caixinhas de alimentação apareciam com os gastos corretos no WhatsApp mas zeradas no App. Implementação de lógica unificada em \`caixinhaMatcher.ts\` e \`caixinhas_summary_helper.js\`: além da igualdade estrita de ID de categoria, o sistema suporta associação semântica via \`note\` (ex.: *"caixinha Alimentação - VA"* ou *"VR"*), sufixos característicos e subcategorias contidas no nome da caixinha. Dashboard, Caixinhas e Extrato refletem com precisão os lançamentos vinculados e badges de sub-classificação (*"Essencial"* / *"Não Essencial"*), mantendo isolamento absoluto de lançamentos cancelados/excluídos. | **Concluído** |
+| **Parametrização Categoria↔Caixinhas por Cliente (Vínculos N:N Personalizados)** | Atendimento ao pedido da usuária: o próprio cliente define quais categorias de lançamentos podem ser consideradas em quais caixinhas (ex.: *"Alimentação Essencial"* alimentando tanto a caixinha *Alimentação VR* quanto *Alimentação VA*; *"Alimentação Não Essencial"* em *VR* e em *Lazer*). Modelada nova coleção idempotente \`category_caixinha_links\`, aba *"Categorias Vinculadas"* no modal de edição de caixinhas (\`/budgets\`) com aviso de flexibilidade de múltiplas caixinhas, matcher unificado (\`caixinhaMatcher.ts\` e \`caixinhas_summary_helper.js\`) com fallback retrocompatível de zero regressão para clientes sem vínculos e isolamento total de cancelados. | **Concluído** |
 
 ---
 
@@ -620,4 +621,41 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 5. **Garantia de Isolamento de Transações Canceladas/Excluídas (Zero Regressão)**:
    - Apenas lançamentos com status ativo (\`status === 'active'\`) são contabilizados nos totais das caixinhas.
-   - Lançamentos cancelados ou excluídos permanecem visíveis para auditoria mas jamais somam nem alteram as barras de progresso.`
+   - Lançamentos cancelados ou excluídos permanecem visíveis para auditoria mas jamais somam nem alteram as barras de progresso.
+
+---
+
+## AC) Parametrização Categoria↔Caixinhas por Cliente (Vínculos N:N) e Zero Regressão
+
+1. **Contexto e Regra de Negócio**:
+   - Cada cliente possui realidade financeira e arranjos de benefícios próprios (ex.: VR, VA, Alimentação Essencial, Lazer).
+   - O cliente pode decidir livremente quais categorias alimentam quais caixinhas:
+     - Uma mesma categoria pode alimentar mais de uma caixinha (ex.: *"Alimentação Essencial"* soma tanto em *"Alimentação VA"* quanto em *"Alimentação VR"*).
+     - Uma caixinha pode receber lançamentos de múltiplas categorias.
+   - Quando o cliente parametriza vínculos para uma caixinha, os lançamentos ativos dessas categorias somam nas caixinhas vinculadas.
+   - **Zero Regressão**: Clientes que ainda não configuraram vínculos explícitos continuam com o comportamento padrão anterior (matching por ID de categoria, notas semânticas e sufixos VA/VR) 100% preservado.
+
+2. **Passo a Passo de Verificação no App (/budgets)**:
+   - Acesse **Caixinhas** (\`/budgets\`).
+   - Clique em **Editar** em uma caixinha (ex.: *"Alimentação - VA"*).
+   - No modal, alterne para a aba **"Categorias Vinculadas"**:
+     - O sistema lista todas as categorias disponíveis do cliente (cadastradas + observadas em lançamentos).
+     - Marque a categoria *"Alimentação Essencial"*.
+     - O aviso explicativo destaca que os lançamentos desta categoria somarão nesta caixinha e que categorias podem alimentar mais de uma caixinha.
+     - Clique em **Salvar Caixinha**.
+   - Em seguida, edite a caixinha *"Alimentação - VR"*, vá na aba **"Categorias Vinculadas"** e marque também *"Alimentação Essencial"*. Salve.
+
+3. **Verificação de Soma Dupla Parametrizada**:
+   - Lance ou localize uma transação ativa com a categoria *"Alimentação Essencial"* no valor de R$ 100,00.
+   - Observe os totais apurados:
+     - A caixinha *"Alimentação - VA"* tem seu consumo acrescido dos R$ 100,00.
+     - A caixinha *"Alimentação - VR"* também tem seu consumo acrescido dos R$ 100,00.
+     - A lista expansível de lançamentos vinculados em cada caixinha exibe a transação com data, descrição e valor.
+
+4. **Verificação no WhatsApp**:
+   - Envie *"como estão minhas caixinhas"* ou solicite o resumo visual no WhatsApp.
+   - O resumo gerado pelo helper (\`caixinhas_summary_helper.js\`) computa exatamente os mesmos valores apurados no painel web, somando a transação nas caixinhas parametrizadas.
+
+5. **Remoção de Vínculo e Isolamento de Cancelados**:
+   - Desmarque a categoria no modal de edição da caixinha: o valor deixa de somar imediatamente.
+   - Lançamentos com \`status === 'cancelled'\` ou \`status === 'deleted'\` continuam visíveis no extrato mas **NUNCA** entram em nenhuma soma de caixinha.`

@@ -4,10 +4,12 @@ import {
   transactionsService,
   budgetsService,
   categoriesService,
+  categoryCaixinhaLinksService,
   alertsService,
   type Transaction,
   type Budget,
   type Category,
+  type CategoryCaixinhaLink,
   type Alert,
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -45,21 +47,24 @@ export const Dashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [userLinks, setUserLinks] = useState<CategoryCaixinhaLink[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadData = async () => {
     try {
-      const [txData, bData, cData, aData] = await Promise.all([
+      const [txData, bData, cData, aData, linksData] = await Promise.all([
         transactionsService.getFullList(),
         budgetsService.list(currentMonth),
         categoriesService.list(),
         alertsService.list(),
+        categoryCaixinhaLinksService.listByUser().catch(() => [] as CategoryCaixinhaLink[]),
       ])
       setTransactions(txData)
       setBudgets(bData)
       setCategories(cData)
       setAlerts(aData)
+      setUserLinks(linksData)
     } catch (err) {
       console.error(err)
     } finally {
@@ -78,6 +83,7 @@ export const Dashboard: React.FC = () => {
   // Realtime
   useRealtime<Transaction>('transactions', () => loadData())
   useRealtime<Budget>('budgets', () => loadData())
+  useRealtime<CategoryCaixinhaLink>('category_caixinha_links', () => loadData())
 
   // Calculate monthly metrics (apenas transações com status 'active'; retrocompatível se status for vazio)
   const activeTransactions = useMemo(() => {
@@ -142,7 +148,7 @@ export const Dashboard: React.FC = () => {
     monthlyMetrics.thisMonthTxs
       .filter((t) => t.type === 'despesa')
       .forEach((t) => {
-        const eff = getEffectiveCategory(t, categories, budgets)
+        const eff = getEffectiveCategory(t, categories, budgets, userLinks)
         const name = eff.name || 'Outros'
         const color = eff.color || '#64748b'
 
@@ -516,7 +522,7 @@ export const Dashboard: React.FC = () => {
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {(() => {
-                          const eff = getEffectiveCategory(tx, categories, budgets)
+                          const eff = getEffectiveCategory(tx, categories, budgets, userLinks)
                           return (
                             <>
                               <div
@@ -615,8 +621,14 @@ export const Dashboard: React.FC = () => {
               <div className="space-y-3.5">
                 {budgets.slice(0, 4).map((b) => {
                   const cat = categories.find((c) => c.id === b.category)
-                  // Calculate spent in this caixinha com matching unificado
-                  const spent = getBudgetSpent(b, monthlyMetrics.thisMonthTxs, categories, budgets)
+                  // Calculate spent in this caixinha com matching unificado e vínculos de categorias
+                  const spent = getBudgetSpent(
+                    b,
+                    monthlyMetrics.thisMonthTxs,
+                    categories,
+                    budgets,
+                    userLinks,
+                  )
 
                   const pct = Math.min(Math.round((spent / (b.amount || 1)) * 100), 100)
                   const isWarning = pct >= 80 && pct < 90

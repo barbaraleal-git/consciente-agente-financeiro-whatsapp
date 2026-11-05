@@ -2,9 +2,11 @@ import React, { useEffect, useState, useMemo } from 'react'
 import {
   budgetsService,
   categoriesService,
+  categoryCaixinhaLinksService,
   transactionsService,
   type Budget,
   type Category,
+  type CategoryCaixinhaLink,
   type Transaction,
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -78,12 +80,16 @@ export const Budgets: React.FC = () => {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [userLinks, setUserLinks] = useState<CategoryCaixinhaLink[]>([])
   const [loading, setLoading] = useState(true)
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [deleteBudget, setDeleteBudget] = useState<Budget | null>(null)
+
+  // Modal Tabs (dados gerais vs categorias vinculadas)
+  const [modalTab, setModalTab] = useState<'geral' | 'categorias'>('geral')
 
   // Form Fields
   const [creationMode, setCreationMode] = useState<'existing' | 'custom'>('custom')
@@ -96,16 +102,21 @@ export const Budgets: React.FC = () => {
   const [monthInput, setMonthInput] = useState(currentMonth)
   const [saving, setSaving] = useState(false)
 
+  // Categorias selecionadas para vincular a esta caixinha (nomes normalizados em minúsculas)
+  const [selectedLinkedCatNames, setSelectedLinkedCatNames] = useState<string[]>([])
+
   const loadData = async () => {
     try {
-      const [bList, cList, txList] = await Promise.all([
+      const [bList, cList, txList, linksList] = await Promise.all([
         budgetsService.list(selectedMonth),
         categoriesService.list(),
         transactionsService.getFullList(),
+        categoryCaixinhaLinksService.listByUser().catch(() => [] as CategoryCaixinhaLink[]),
       ])
       setBudgets(bList)
       setCategories(cList)
       setTransactions(txList)
+      setUserLinks(linksList)
     } catch (err) {
       console.error(err)
     } finally {
@@ -119,12 +130,13 @@ export const Budgets: React.FC = () => {
 
   useRealtime<Budget>('budgets', () => loadData())
   useRealtime<Transaction>('transactions', () => loadData())
+  useRealtime<CategoryCaixinhaLink>('category_caixinha_links', () => loadData())
 
-  // Calculate budget statistics for the selected month (somente transações ativas com match unificado)
+  // Calculate budget statistics for the selected month (somente transações ativas com match unificado e vínculos)
   const budgetStats = useMemo(() => {
     return budgets.map((b) => {
       const cat = categories.find((c) => c.id === b.category)
-      const spent = getBudgetSpent(b, transactions, categories, budgets)
+      const spent = getBudgetSpent(b, transactions, categories, budgets, userLinks)
 
       const remaining = Math.max(0, b.amount - spent)
       const percentage = Math.round((spent / (b.amount || 1)) * 100)
@@ -144,8 +156,41 @@ export const Budgets: React.FC = () => {
   const totalSpent = budgetStats.reduce((sum, s) => sum + s.spentAmount, 0)
   const totalRemaining = Math.max(0, totalDefined - totalSpent)
 
+  // Lista de todas as categorias distintas disponíveis para vínculo
+  // Inclui categorias cadastradas + nomes de categorias encontrados nas transações
+  const availableCategoriesForLinking = useMemo(() => {
+    const map = new Map<string, { name: string; id?: string; color?: string; icon?: string }>()
+
+    // Categorias padrão e cadastradas
+    categories.forEach((c) => {
+      const key = c.name.trim().toLowerCase()
+      if (key && !map.has(key)) {
+        map.set(key, { name: c.name.trim(), id: c.id, color: c.color, icon: c.icon })
+      }
+    })
+
+    // Categorias presentes em transações (inclusive notas semânticas como Alimentação Essencial)
+    transactions.forEach((tx) => {
+      if (tx.note) {
+        // Se a nota tiver formato "Categoria | Sub" ou apenas texto
+        const noteParts = tx.note.split('|').map((p) => p.trim())
+        noteParts.forEach((part) => {
+          if (part.length >= 3 && !part.startsWith('R$')) {
+            const key = part.toLowerCase()
+            if (!map.has(key)) {
+              map.set(key, { name: part })
+            }
+          }
+        })
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  }, [categories, transactions])
+
   const handleOpenCreate = () => {
     setEditingBudget(null)
+    setModalTab('geral')
     const expenseCats = categories.filter((c) => c.type === 'despesa')
     setCreationMode('custom')
     setCustomName('')
@@ -155,11 +200,13 @@ export const Budgets: React.FC = () => {
     setCatId(expenseCats[0]?.id || '')
     setAmountStr('')
     setMonthInput(selectedMonth)
+    setSelectedLinkedCatNames([])
     setModalOpen(true)
   }
 
   const handleOpenEdit = (b: Budget) => {
     setEditingBudget(b)
+    setModalTab('geral')
     setCreationMode('existing')
     setCatId(b.category)
 
@@ -191,7 +238,23 @@ export const Budgets: React.FC = () => {
       }),
     )
     setMonthInput(b.month)
+
+    // Carrega os vínculos existentes para esta caixinha
+    const existingLinks = userLinks.filter((l) => l.budget === b.id && l.active)
+    setSelectedLinkedCatNames(existingLinks.map((l) => l.category_name.trim().toLowerCase()))
+
     setModalOpen(true)
+  }
+
+  const handleToggleLinkedCategory = (catName: string) => {
+    const key = catName.trim().toLowerCase()
+    setSelectedLinkedCatNames((prev) => {
+      if (prev.includes(key)) {
+        return prev.filter((k) => k !== key)
+      } else {
+        return [...prev, key]
+      }
+    })
   }
 
   // Ao trocar de categoria durante edição ou criação por categoria existente, sincroniza nome, ícone e cor
@@ -286,19 +349,47 @@ export const Budgets: React.FC = () => {
           amount: cents,
           month: monthInput,
         })
+
+        // Sincroniza vínculos de categorias
+        const payloadLinks = selectedLinkedCatNames.map((nameKey) => {
+          const matched = availableCategoriesForLinking.find(
+            (c) => c.name.toLowerCase() === nameKey,
+          )
+          return {
+            name: matched ? matched.name : nameKey,
+            id: matched?.id,
+          }
+        })
+        await categoryCaixinhaLinksService.syncBudgetLinks(editingBudget.id, payloadLinks)
+
         toast({
           title: 'Caixinha atualizada com sucesso! ✨',
-          description: 'Ícone, nome, cor e teto salvos com sucesso.',
+          description: 'Ícone, nome, cor, teto e categorias vinculadas salvos com sucesso.',
         })
       } else {
-        await budgetsService.create({
+        const createdBudget = await budgetsService.create({
           category: finalCategoryId,
           amount: cents,
           month: monthInput,
         })
+
+        // Sincroniza vínculos caso selecionados
+        if (selectedLinkedCatNames.length > 0) {
+          const payloadLinks = selectedLinkedCatNames.map((nameKey) => {
+            const matched = availableCategoriesForLinking.find(
+              (c) => c.name.toLowerCase() === nameKey,
+            )
+            return {
+              name: matched ? matched.name : nameKey,
+              id: matched?.id,
+            }
+          })
+          await categoryCaixinhaLinksService.syncBudgetLinks(createdBudget.id, payloadLinks)
+        }
+
         toast({
           title: 'Caixinha criada com sucesso! 🎯',
-          description: 'Seu teto de gastos foi configurado.',
+          description: 'Seu teto de gastos e vínculos foram configurados.',
         })
       }
       setModalOpen(false)
@@ -511,7 +602,9 @@ export const Budgets: React.FC = () => {
                     {/* Lançamentos vinculados a esta caixinha */}
                     {(() => {
                       const matchedTxs = transactions
-                        .filter((t) => isTransactionInBudget(t, item.budget, categories, budgets))
+                        .filter((t) =>
+                          isTransactionInBudget(t, item.budget, categories, budgets, userLinks),
+                        )
                         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
                       if (matchedTxs.length === 0) return null
@@ -562,379 +655,492 @@ export const Budgets: React.FC = () => {
           <DialogHeader>
             <DialogTitle>{editingBudget ? 'Editar Caixinha' : 'Nova Caixinha'}</DialogTitle>
             <DialogDescription>
-              Defina o teto mensal para organizar seus custos nesta caixinha.
+              Personalize o teto, dados visuais e quais categorias alimentam esta caixinha.
             </DialogDescription>
           </DialogHeader>
 
+          {/* Abas do Modal: Dados da Caixinha vs Categorias Vinculadas */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setModalTab('geral')}
+              className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                modalTab === 'geral'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              Teto e Aparência
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab('categorias')}
+              className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                modalTab === 'categorias'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-pink-500" />
+              Categorias Vinculadas
+              {selectedLinkedCatNames.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-indigo-100 text-indigo-700 rounded-full text-[10px]">
+                  {selectedLinkedCatNames.length}
+                </span>
+              )}
+            </button>
+          </div>
+
           <form onSubmit={handleSave} className="space-y-4 pt-2">
-            {/* Toggle Mode: Create brand new custom caixinha vs use existing category */}
-            {!editingBudget && (
-              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setCreationMode('custom')}
-                  className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
-                    creationMode === 'custom'
-                      ? 'bg-white text-indigo-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-500" />
-                  Nome Personalizado
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreationMode('existing')}
-                  className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
-                    creationMode === 'existing'
-                      ? 'bg-white text-indigo-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                  Categoria Existente
-                </button>
-              </div>
-            )}
+            {modalTab === 'geral' ? (
+              <>
+                {/* Toggle Mode: Create brand new custom caixinha vs use existing category */}
+                {!editingBudget && (
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setCreationMode('custom')}
+                      className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                        creationMode === 'custom'
+                          ? 'bg-white text-indigo-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+                      Nome Personalizado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreationMode('existing')}
+                      className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                        creationMode === 'existing'
+                          ? 'bg-white text-indigo-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                      Categoria Existente
+                    </button>
+                  </div>
+                )}
 
-            {/* Modo edição: permite trocar a categoria vinculada E customizar nome, ícone (3 abas) e cor */}
-            {editingBudget ? (
-              <div className="space-y-3.5">
-                {/* Seletor de Categoria da Caixinha */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
-                    Categoria da Caixinha *
-                  </Label>
-                  <Select value={catId} onValueChange={handleCategoryChange}>
-                    <SelectTrigger id="bCat" className="bg-white">
-                      <SelectValue placeholder="Selecione a categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => {
-                        return (
-                          <SelectItem key={c.id} value={c.id}>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
-                                style={{ backgroundColor: c.color }}
+                {/* Modo edição: permite trocar a categoria vinculada E customizar nome, ícone (3 abas) e cor */}
+                {editingBudget ? (
+                  <div className="space-y-3.5">
+                    {/* Seletor de Categoria da Caixinha */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
+                        Categoria da Caixinha *
+                      </Label>
+                      <Select value={catId} onValueChange={handleCategoryChange}>
+                        <SelectTrigger id="bCat" className="bg-white">
+                          <SelectValue placeholder="Selecione a categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((c) => {
+                            return (
+                              <SelectItem key={c.id} value={c.id}>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                                    style={{ backgroundColor: c.color }}
+                                  >
+                                    {renderCaixinhaIcon(c.icon, 'w-3 h-3 text-xs')}
+                                  </span>
+                                  <span>{c.name}</span>
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Box de Personalização de Nome, Figurinha/Ícone e Cor */}
+                    <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                      {/* Nome da Caixinha */}
+                      <div className="space-y-1.5">
+                        <Label htmlFor="editCatName" className="text-xs font-medium text-slate-700">
+                          Nome da Caixinha *
+                        </Label>
+                        <Input
+                          id="editCatName"
+                          placeholder="Ex: Alimentação - VA, Viagem a Paris, Pet..."
+                          value={customName}
+                          onChange={(e) => setCustomName(e.target.value)}
+                          className="bg-white"
+                          required
+                        />
+                      </div>
+
+                      {/* Seletor de Figurinha / Ícone com 3 abas */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Label className="text-xs font-medium text-slate-700">
+                              Figurinha / Ícone
+                            </Label>
+                            <span
+                              className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                              style={{ backgroundColor: customColor }}
+                            >
+                              {renderCaixinhaIcon(customIcon, 'w-3 h-3 text-xs')}
+                            </span>
+                          </div>
+                          <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => setIconTab('geral')}
+                              className={`px-2 py-0.5 rounded transition-all font-medium ${
+                                iconTab === 'geral'
+                                  ? 'bg-white text-indigo-700 shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              Ícones
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIconTab('emoji')}
+                              className={`px-2 py-0.5 rounded transition-all font-medium ${
+                                iconTab === 'emoji'
+                                  ? 'bg-white text-indigo-700 shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              Emojis
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIconTab('bichinho')}
+                              className={`px-2 py-0.5 rounded transition-all font-medium ${
+                                iconTab === 'bichinho'
+                                  ? 'bg-white text-indigo-700 shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              🐱 Bichinhos
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                          {(iconTab === 'bichinho'
+                            ? BICHINHO_ICONS
+                            : iconTab === 'emoji'
+                              ? EMOJI_ICONS
+                              : GERAL_ICONS
+                          ).map((opt) => {
+                            const isSelected = customIcon === opt.id
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setCustomIcon(opt.id)}
+                                title={opt.label}
+                                className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
+                                  isSelected
+                                    ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
+                                    : 'text-slate-700 hover:bg-slate-100'
+                                }`}
                               >
-                                {renderCaixinhaIcon(c.icon, 'w-3 h-3 text-xs')}
-                              </span>
-                              <span>{c.name}</span>
-                            </div>
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
+                                {opt.emoji ? (
+                                  <span className="text-lg leading-none">{opt.emoji}</span>
+                                ) : opt.icon ? (
+                                  <opt.icon className="w-4 h-4" />
+                                ) : null}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
 
-                {/* Box de Personalização de Nome, Figurinha/Ícone e Cor */}
-                <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
-                  {/* Nome da Caixinha */}
+                      {/* Seletor de Cor */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-slate-700">
+                          Cor da Caixinha
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          {CAIXINHA_COLORS.map((hex) => (
+                            <button
+                              key={hex}
+                              type="button"
+                              onClick={() => setCustomColor(hex)}
+                              style={{ backgroundColor: hex }}
+                              className={`w-6 h-6 rounded-full transition-transform ${
+                                customColor === hex
+                                  ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
+                                  : 'hover:scale-105'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : creationMode === 'custom' ? (
+                  /* Criação: Modo customizado com nome, ícone (3 abas) e cor */
+                  <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="customCatName" className="text-xs font-medium text-slate-700">
+                        Nome da Caixinha *
+                      </Label>
+                      <Input
+                        id="customCatName"
+                        placeholder="Ex: Viagem a Paris, Casamento, Reforma..."
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        className="bg-white"
+                        required
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        Dê um nome livre para sua meta de gastos ou viagem.
+                      </p>
+                    </div>
+
+                    {/* Icon picker com 3 abas: Ícones, Emojis e Bichinhos */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Label className="text-xs font-medium text-slate-700">
+                            Figurinha / Ícone
+                          </Label>
+                          <span
+                            className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                            style={{ backgroundColor: customColor }}
+                          >
+                            {renderCaixinhaIcon(customIcon, 'w-3 h-3 text-xs')}
+                          </span>
+                        </div>
+                        <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setIconTab('geral')}
+                            className={`px-2 py-0.5 rounded transition-all font-medium ${
+                              iconTab === 'geral'
+                                ? 'bg-white text-indigo-700 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Ícones
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIconTab('emoji')}
+                            className={`px-2 py-0.5 rounded transition-all font-medium ${
+                              iconTab === 'emoji'
+                                ? 'bg-white text-indigo-700 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Emojis
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIconTab('bichinho')}
+                            className={`px-2 py-0.5 rounded transition-all font-medium ${
+                              iconTab === 'bichinho'
+                                ? 'bg-white text-indigo-700 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            🐱 Bichinhos
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                        {(iconTab === 'bichinho'
+                          ? BICHINHO_ICONS
+                          : iconTab === 'emoji'
+                            ? EMOJI_ICONS
+                            : GERAL_ICONS
+                        ).map((opt) => {
+                          const isSelected = customIcon === opt.id
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setCustomIcon(opt.id)}
+                              title={opt.label}
+                              className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
+                                isSelected
+                                  ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
+                                  : 'text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt.emoji ? (
+                                <span className="text-lg leading-none">{opt.emoji}</span>
+                              ) : opt.icon ? (
+                                <opt.icon className="w-4 h-4" />
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Color picker */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-700">Cor</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {CAIXINHA_COLORS.map((hex) => (
+                          <button
+                            key={hex}
+                            type="button"
+                            onClick={() => setCustomColor(hex)}
+                            style={{ backgroundColor: hex }}
+                            className={`w-6 h-6 rounded-full transition-transform ${
+                              customColor === hex
+                                ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
+                                : 'hover:scale-105'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Criação: Seleção de categoria existente */
                   <div className="space-y-1.5">
-                    <Label htmlFor="editCatName" className="text-xs font-medium text-slate-700">
-                      Nome da Caixinha *
+                    <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
+                      Categoria da Caixinha *
+                    </Label>
+                    <Select value={catId} onValueChange={setCatId}>
+                      <SelectTrigger id="bCat">
+                        <SelectValue placeholder="Selecione a categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((c) => {
+                          return (
+                            <SelectItem key={c.id} value={c.id}>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                                  style={{ backgroundColor: c.color }}
+                                >
+                                  {renderCaixinhaIcon(c.icon, 'w-3 h-3 text-xs')}
+                                </span>
+                                <span>{c.name}</span>
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bVal" className="text-xs font-medium text-slate-700">
+                      Teto da Caixinha (R$) *
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">
+                        R$
+                      </span>
+                      <Input
+                        id="bVal"
+                        placeholder="0,00"
+                        value={amountStr}
+                        onChange={(e) => setAmountStr(maskCurrencyInput(e.target.value))}
+                        className="pl-9 font-semibold"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bMonth" className="text-xs font-medium text-slate-700">
+                      Mês de Referência *
                     </Label>
                     <Input
-                      id="editCatName"
-                      placeholder="Ex: Alimentação - VA, Viagem a Paris, Pet..."
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      className="bg-white"
+                      id="bMonth"
+                      type="month"
+                      value={monthInput}
+                      onChange={(e) => setMonthInput(e.target.value)}
                       required
                     />
                   </div>
-
-                  {/* Seletor de Figurinha / Ícone com 3 abas */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Label className="text-xs font-medium text-slate-700">
-                          Figurinha / Ícone
-                        </Label>
-                        <span
-                          className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
-                          style={{ backgroundColor: customColor }}
-                        >
-                          {renderCaixinhaIcon(customIcon, 'w-3 h-3 text-xs')}
-                        </span>
-                      </div>
-                      <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => setIconTab('geral')}
-                          className={`px-2 py-0.5 rounded transition-all font-medium ${
-                            iconTab === 'geral'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          Ícones
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIconTab('emoji')}
-                          className={`px-2 py-0.5 rounded transition-all font-medium ${
-                            iconTab === 'emoji'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          Emojis
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIconTab('bichinho')}
-                          className={`px-2 py-0.5 rounded transition-all font-medium ${
-                            iconTab === 'bichinho'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          🐱 Bichinhos
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
-                      {(iconTab === 'bichinho'
-                        ? BICHINHO_ICONS
-                        : iconTab === 'emoji'
-                          ? EMOJI_ICONS
-                          : GERAL_ICONS
-                      ).map((opt) => {
-                        const isSelected = customIcon === opt.id
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => setCustomIcon(opt.id)}
-                            title={opt.label}
-                            className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
-                              isSelected
-                                ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
-                                : 'text-slate-700 hover:bg-slate-100'
-                            }`}
-                          >
-                            {opt.emoji ? (
-                              <span className="text-lg leading-none">{opt.emoji}</span>
-                            ) : opt.icon ? (
-                              <opt.icon className="w-4 h-4" />
-                            ) : null}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Seletor de Cor */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-slate-700">Cor da Caixinha</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {CAIXINHA_COLORS.map((hex) => (
-                        <button
-                          key={hex}
-                          type="button"
-                          onClick={() => setCustomColor(hex)}
-                          style={{ backgroundColor: hex }}
-                          className={`w-6 h-6 rounded-full transition-transform ${
-                            customColor === hex
-                              ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
-                              : 'hover:scale-105'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
                 </div>
-              </div>
-            ) : creationMode === 'custom' ? (
-              /* Criação: Modo customizado com nome, ícone (3 abas) e cor */
-              <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
-                <div className="space-y-1.5">
-                  <Label htmlFor="customCatName" className="text-xs font-medium text-slate-700">
-                    Nome da Caixinha *
-                  </Label>
-                  <Input
-                    id="customCatName"
-                    placeholder="Ex: Viagem a Paris, Casamento, Reforma..."
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    className="bg-white"
-                    required
-                  />
-                  <p className="text-[11px] text-slate-500">
-                    Dê um nome livre para sua meta de gastos ou viagem.
+              </>
+            ) : (
+              /* Aba: Categorias Vinculadas */
+              <div className="space-y-3">
+                <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-900 space-y-1">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    Parametrização personalizada de gastos
+                  </p>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Marque quais categorias alimentam esta caixinha. Transações ativas de uma
+                    categoria vinculada somam automaticamente no consumo desta caixinha.
+                  </p>
+                  <p className="text-[11px] text-indigo-700 font-medium pt-0.5">
+                    💡 <strong>Flexibilidade total:</strong> uma mesma categoria (ex.:{' '}
+                    <em>Alimentação Essencial</em>) pode ser vinculada a mais de uma caixinha (ex.:{' '}
+                    <em>Alimentação VA</em> e <em>Alimentação VR</em>), somando em ambas conforme
+                    sua parametrização.
                   </p>
                 </div>
 
-                {/* Icon picker com 3 abas: Ícones, Emojis e Bichinhos */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Label className="text-xs font-medium text-slate-700">
-                        Figurinha / Ícone
-                      </Label>
-                      <span
-                        className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
-                        style={{ backgroundColor: customColor }}
-                      >
-                        {renderCaixinhaIcon(customIcon, 'w-3 h-3 text-xs')}
-                      </span>
-                    </div>
-                    <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-md text-[11px]">
-                      <button
-                        type="button"
-                        onClick={() => setIconTab('geral')}
-                        className={`px-2 py-0.5 rounded transition-all font-medium ${
-                          iconTab === 'geral'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Ícones
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIconTab('emoji')}
-                        className={`px-2 py-0.5 rounded transition-all font-medium ${
-                          iconTab === 'emoji'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Emojis
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIconTab('bichinho')}
-                        className={`px-2 py-0.5 rounded transition-all font-medium ${
-                          iconTab === 'bichinho'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        🐱 Bichinhos
-                      </button>
-                    </div>
-                  </div>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  <Label className="text-xs font-medium text-slate-700">
+                    Selecione as categorias que somam nesta caixinha:
+                  </Label>
 
-                  <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 p-2 bg-white rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
-                    {(iconTab === 'bichinho'
-                      ? BICHINHO_ICONS
-                      : iconTab === 'emoji'
-                        ? EMOJI_ICONS
-                        : GERAL_ICONS
-                    ).map((opt) => {
-                      const isSelected = customIcon === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setCustomIcon(opt.id)}
-                          title={opt.label}
-                          className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
-                            isSelected
-                              ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
-                              : 'text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          {opt.emoji ? (
-                            <span className="text-lg leading-none">{opt.emoji}</span>
-                          ) : opt.icon ? (
-                            <opt.icon className="w-4 h-4" />
-                          ) : null}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+                  {availableCategoriesForLinking.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-3 text-center">
+                      Nenhuma categoria encontrada.
+                    </p>
+                  ) : (
+                    <div className="space-y-1 pt-1">
+                      {availableCategoriesForLinking.map((cat) => {
+                        const isChecked = selectedLinkedCatNames.includes(cat.name.toLowerCase())
+                        return (
+                          <label
+                            key={cat.name}
+                            className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                              isChecked
+                                ? 'bg-indigo-50/60 border-indigo-200 text-indigo-950 font-medium'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleLinkedCategory(cat.name)}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                              />
+                              <div className="flex items-center gap-1.5">
+                                {cat.icon && (
+                                  <span
+                                    className="w-4 h-4 rounded flex items-center justify-center text-white text-[10px]"
+                                    style={{ backgroundColor: cat.color || '#64748b' }}
+                                  >
+                                    {renderCaixinhaIcon(cat.icon, 'w-2.5 h-2.5')}
+                                  </span>
+                                )}
+                                <span>{cat.name}</span>
+                              </div>
+                            </div>
 
-                {/* Color picker */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-slate-700">Cor</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {CAIXINHA_COLORS.map((hex) => (
-                      <button
-                        key={hex}
-                        type="button"
-                        onClick={() => setCustomColor(hex)}
-                        style={{ backgroundColor: hex }}
-                        className={`w-6 h-6 rounded-full transition-transform ${
-                          customColor === hex
-                            ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
-                            : 'hover:scale-105'
-                        }`}
-                      />
-                    ))}
-                  </div>
+                            {isChecked && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 font-semibold rounded">
+                                Vinculada
+                              </span>
+                            )}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              /* Criação: Seleção de categoria existente */
-              <div className="space-y-1.5">
-                <Label htmlFor="bCat" className="text-xs font-medium text-slate-700">
-                  Categoria da Caixinha *
-                </Label>
-                <Select value={catId} onValueChange={setCatId}>
-                  <SelectTrigger id="bCat">
-                    <SelectValue placeholder="Selecione a categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => {
-                      return (
-                        <SelectItem key={c.id} value={c.id}>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
-                              style={{ backgroundColor: c.color }}
-                            >
-                              {renderCaixinhaIcon(c.icon, 'w-3 h-3 text-xs')}
-                            </span>
-                            <span>{c.name}</span>
-                          </div>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
               </div>
             )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="bVal" className="text-xs font-medium text-slate-700">
-                  Teto da Caixinha (R$) *
-                </Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">
-                    R$
-                  </span>
-                  <Input
-                    id="bVal"
-                    placeholder="0,00"
-                    value={amountStr}
-                    onChange={(e) => setAmountStr(maskCurrencyInput(e.target.value))}
-                    className="pl-9 font-semibold"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="bMonth" className="text-xs font-medium text-slate-700">
-                  Mês de Referência *
-                </Label>
-                <Input
-                  id="bMonth"
-                  type="month"
-                  value={monthInput}
-                  onChange={(e) => setMonthInput(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
 
             <DialogFooter className="pt-2">
               <Button

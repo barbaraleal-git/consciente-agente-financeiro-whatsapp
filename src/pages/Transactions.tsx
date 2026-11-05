@@ -3,9 +3,11 @@ import {
   transactionsService,
   categoriesService,
   budgetsService,
+  categoryCaixinhaLinksService,
   type Transaction,
   type Category,
   type Budget,
+  type CategoryCaixinhaLink,
 } from '@/services/finance'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatCurrency, formatDate, formatDateTime, getSourceLabel } from '@/lib/formatters'
@@ -58,6 +60,7 @@ export const Transactions: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
+  const [userLinks, setUserLinks] = useState<CategoryCaixinhaLink[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filters
@@ -79,14 +82,16 @@ export const Transactions: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [txs, cats, bgs] = await Promise.all([
+      const [txs, cats, bgs, links] = await Promise.all([
         transactionsService.getFullList(),
         categoriesService.list(),
         budgetsService.list(),
+        categoryCaixinhaLinksService.listByUser().catch(() => [] as CategoryCaixinhaLink[]),
       ])
       setTransactions(txs)
       setCategories(cats)
       setBudgets(bgs)
+      setUserLinks(links)
     } catch (err) {
       console.error(err)
     } finally {
@@ -99,6 +104,7 @@ export const Transactions: React.FC = () => {
   }, [])
 
   useRealtime<Transaction>('transactions', () => loadData())
+  useRealtime<CategoryCaixinhaLink>('category_caixinha_links', () => loadData())
 
   // Filter and sort logic
   const filteredTransactions = useMemo(() => {
@@ -402,7 +408,7 @@ export const Transactions: React.FC = () => {
                           </td>
                           <td className="py-3.5 px-4">
                             {(() => {
-                              const eff = getEffectiveCategory(tx, categories, budgets)
+                              const eff = getEffectiveCategory(tx, categories, budgets, userLinks)
                               return (
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <div className="flex items-center gap-2">
@@ -576,7 +582,7 @@ export const Transactions: React.FC = () => {
                             )}
                           </div>
                           {(() => {
-                            const eff = getEffectiveCategory(tx, categories, budgets)
+                            const eff = getEffectiveCategory(tx, categories, budgets, userLinks)
                             return (
                               <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5 flex-wrap">
                                 <span

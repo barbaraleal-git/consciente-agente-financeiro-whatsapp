@@ -151,6 +151,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Remanejamento de Caixinha no App e Paridade WhatsApp vs. App (v0.0.57)** | **NOVO RECURSO + BUGFIX**: O cliente pode editar qualquer transação existente de despesa em \`/transactions\` e remanejar para qualquer caixinha do mês (ou desvincular para "Automático / Sem caixinha fixa"). Ao salvar, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, mantendo zero duplicação e exclusão de cancelados. Corrigida a paridade de visualização de caixinhas entre o App (\`/budgets\`) e o resumo do WhatsApp adicionando os vínculos reativos de \`userLinks\` nas dependências do \`useMemo\` de \`budgetStats\` em \`Budgets.tsx\` e \`Dashboard.tsx\`. | **Concluído** |
 | **Persistência Obrigatória de Budget no WhatsApp e Paridade Total App × WhatsApp (v0.0.58)** | **BUGFIX CRÍTICO DE PARIDADE**: Corrigida a causa raiz da divergência entre a resposta conversacional do WhatsApp e a tela \`/budgets\` do App. Em todos os caminhos de criação no WhatsApp (texto, áudio, fluxo conversacional de desambiguação e hook \`transactions_integrity.js\`), a caixinha decidida/anunciada é imediatamente persistida no campo \`budget\` de \`transactions\`. Backfill idempotente executado (migração 0031) garantindo que transações ativas antigas com budget vazio tenham o campo preenchido fielmente pelo resolver determinístico único, corrigindo os lançamentos Mercado Violeta e Rascal para 100% de paridade e mantendo isolamento de cancelados. | **Concluído** |
 | **Desacoplamento e Autonomia Total das Caixinhas (v0.0.59)** | **AUTONOMIA TOTAL DAS CAIXINHAS**: Remoção completa do conceito de "categoria da caixinha" (\`category\` em \`budgets\`). Caixinhas passam a ser 100% autônomas com nome, figurinha (ícones, emojis ou bichinhos), cor e teto próprios. O modal de criar e editar caixinha (\`/budgets\`) foi totalmente limpo, eliminando seletor de categoria e ramificações. Gastos alimentam a caixinha unicamente via campo gravado \`budget\`, vínculos parametrizados (\`category_caixinha_links\`) ou matching inteligente. Zero regressão na regra de ouro (cada lançamento conta em no máximo 1 caixinha e cancelados são excluídos). | **Concluído** |
+| **Resumo de Caixinhas no WhatsApp 100% Determinístico da Base (v0.0.62)** | **BUGFIX DE PARIDADE E ANTI-ALUCINAÇÃO**: O comando de resumo no WhatsApp é interceptado ANTES de qualquer chamada ao \`$ai.agent\` e gerado 100% deterministicamente direto da base de dados (\`caixinhas_summary_helper.js\`). Elimina o bug onde o histórico/memória do agente ressuscitava caixinha excluída (ex.: *"Alimentação - Crédito"*) ou gerava rodapé aritmético inconsistente com os itens listados. Nas demais mensagens que seguem para a IA, é injetado contexto fresco e instrução explícita proibindo citar caixinhas fora da lista ativa da base. | **Concluído** |
 
 ---
 
@@ -801,4 +802,39 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 5. **Cenário 4 — Exclusão Estrita de Cancelados e Zero Duplicidade**:
    - Cancele um lançamento vinculado via WhatsApp ou altere para \`cancelled\`.
    - O consumo da caixinha é recalculado imediatamente sem o valor cancelado.
+
+---
+
+## AH) Resumo do WhatsApp 100% Determinístico da Base — Caixinha Excluída Some na Hora e Totais Batem com o App (v0.0.62)
+
+1. **Objetivo do Teste**:
+   - Garantir que o resumo de caixinhas exibido no WhatsApp seja 100% determinístico, calculado diretamente da base de dados no exato momento da solicitação e NUNCA gerado pelo agente de IA.
+   - Eliminar qualquer possibilidade de a memória da conversa ressuscitar caixinhas deletadas ou gerar rodapé aritmético discrepante dos itens listados.
+   - Garantir que as mensagens enviadas para a IA em outros contextos recebam a lista fresca de caixinhas ativas com instrução anti-alucinação.
+
+2. **Cenário 1 — Solicitação de "Resumo" no WhatsApp (Bypass da IA)**:
+   - Com o cliente autenticado e com caixinhas ativas, envie a mensagem "Resumo", "resumo" ou "quais são minhas caixinhas" no WhatsApp.
+   - **Comportamento Esperado**:
+     - A resposta é montada e devolvida diretamente pelo helper determinístico (\`caixinhas_summary_helper.js\`), sem passar pelo \`$ai.agent\`.
+     - O visual traz cada caixinha ativa existente na base (nome, ícone, barra \`▓░\`, percentual, gasto/teto e saldo restante).
+     - Nenhuma caixinha excluída (ex.: *"Alimentação - Crédito"*) é exibida.
+     - O rodapé com "Total Gasto no Mês", "Total dos Tetos" e "Saldo Restante no Mês" é somado estritamente dos ITENS LISTADOS na mensagem (consistência matemática absoluta centavo a centavo).
+     - Os números e percentuais batem 100% com a tela \`/budgets\` do aplicativo.
+
+3. **Cenário 2 — Caixinha Deletada Some Imediatamente do Resumo do WhatsApp**:
+   - Exclua uma caixinha no aplicativo (tela \`/budgets\`).
+   - Envie imediatamente "resumo" no WhatsApp.
+   - **Comportamento Esperado**:
+     - A caixinha excluída não aparece no resumo do WhatsApp em nenhuma hipótese.
+     - Os totais de tetos e gastos refletem na hora a nova composição da base de dados.
+
+4. **Cenário 3 — Demais Mensagens Enviadas para a IA com Contexto Fresco**:
+   - Envie uma mensagem conversacional ou lançamento financeiro (ex.: "almoço 35 reais" ou "onde posso economizar?").
+   - A requisição segue para o \`$ai.agent\`.
+   - **Comportamento Esperado**:
+     - O prompt do agente recebe a injeção do estado oficial e fresco de caixinhas ativas da base de dados daquele mês.
+     - O agente respeita a instrução explícita de não citar caixinhas excluídas e não tenta calcular totais ou saldos por conta própria.
+
+5. **Cenário 4 — Resiliência com Mensagem Honesta de Erro**:
+   - Em caso improvável de falha de conexão com a base na montagem do resumo, o sistema retorna uma mensagem honesta e transparente convidando a consultar o app, JAMAIS caindo em fallback para o \`$ai.agent\` gerar números fictícios.
 `

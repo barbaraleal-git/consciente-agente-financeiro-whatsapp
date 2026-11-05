@@ -1095,12 +1095,20 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             }
 
             // Verificação de intenção padronizada: Resumo Visual das Caixinhas
-            // Se o usuário está cadastrado e pede a visão geral de suas caixinhas,
-            // geramos diretamente o resumo visual padronizado com barras em blocos ▓░,
-            // percentuais, alertas e linha de resumo no rodapé.
-            // Helper de resumo das caixinhas carregado no boot (seção 1.5), sem require em runtime.
-            const caixinhasHelper =
+            // REGRA INVIOLÁVEL: O resumo de caixinhas no WhatsApp é 100% DETERMINÍSTICO da base de dados.
+            // NUNCA passa pelo $ai.agent (evita alucinação de caixinhas deletadas ou números inconsistentes).
+            // Helper de resumo das caixinhas carregado no boot (seção 1.5), com fallback inline de segurança.
+            let caixinhasHelper =
               typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
+            if (!caixinhasHelper) {
+              try {
+                caixinhasHelper = require('./caixinhas_summary_helper.js')
+              } catch (_) {
+                try {
+                  caixinhasHelper = require(`${__hooks}/caixinhas_summary_helper.js`)
+                } catch (_) {}
+              }
+            }
 
             const isCaixinhasOverview =
               isRegistered &&
@@ -1111,7 +1119,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
             if (isCaixinhasOverview) {
               console.log(
-                `[whatsapp_bridge] Intenção de visão geral de caixinhas detectada para usuário ${activeUserId}. Montando resumo visual padronizado...`,
+                `[whatsapp_bridge] Intenção de visão geral de caixinhas interceptada determinística para usuário ${activeUserId}. Montando resumo direto da base (SEM IA)...`,
               )
               try {
                 const summary = caixinhasHelper.buildCaixinhasSummaryForUser(
@@ -1122,14 +1130,20 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 if (summary) {
                   agentReply = summary
                   console.log(
-                    `[whatsapp_bridge] Resumo visual das caixinhas montado com sucesso (tamanho=${agentReply.length}).`,
+                    `[whatsapp_bridge] Resumo visual determinístico montado com sucesso (tamanho=${agentReply.length}).`,
                   )
+                } else {
+                  agentReply =
+                    'Não consegui carregar suas caixinhas no momento. Por favor, tente novamente em alguns instantes ou consulte pelo app!'
                 }
               } catch (sumErr) {
-                console.log(
-                  '[whatsapp_bridge] Falha ao construir resumo visual das caixinhas (fallback para agente):',
+                console.error(
+                  '[whatsapp_bridge] Erro ao construir resumo determinístico de caixinhas:',
                   sumErr,
                 )
+                // Mensagem honesta de erro — NUNCA cair no $ai.agent para resumo!
+                agentReply =
+                  'Ocorreu uma instabilidade ao consultar suas caixinhas na base de dados agora. Por favor, tente novamente em alguns instantes ou acesse pelo app!'
               }
             }
 
@@ -1145,6 +1159,31 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
             // Executa o agente se tivermos activeUserId válido e ainda não temos resposta pronta
             if (activeUserId && !agentReply) {
+              // INJEÇÃO DE CONTEXTO DETERMINÍSTICO DE CAIXINHAS ATIVAS (Anti-alucinação):
+              // Para mensagens que seguem para o $ai.agent, injeta no prompt a lista fresca
+              // das caixinhas ativas lidas da base de dados neste exato momento.
+              // Instrução explícita: PROIBIDO inventar/citar caixinha fora da lista.
+              if (
+                isRegistered &&
+                caixinhasHelper &&
+                typeof caixinhasHelper.buildCaixinhasContextPrompt === 'function'
+              ) {
+                try {
+                  const caixinhasContext = caixinhasHelper.buildCaixinhasContextPrompt(
+                    $app,
+                    activeUserId,
+                    todayStr.slice(0, 7),
+                  )
+                  if (caixinhasContext) {
+                    promptForAgent = `${caixinhasContext}\n\n${promptForAgent}`
+                  }
+                } catch (ctxErr) {
+                  console.log(
+                    '[whatsapp_bridge] Erro ao injetar contexto fresco de caixinhas no prompt:',
+                    ctxErr,
+                  )
+                }
+              }
               // Suporte a reemissão periódica de typing a cada ~12s caso a resposta demore,
               // com limite estrito de no máximo 3 reemissões para não martelar a Meta.
               let typingIntervalId = null
@@ -2178,9 +2217,18 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       }
 
       // Verificação de intenção padronizada: Resumo Visual das Caixinhas no simulate
-      // Helper de resumo das caixinhas carregado no boot (seção 1.5), sem require em runtime.
-      const caixinhasHelperSim =
+      // REGRA INVIOLÁVEL: 100% determinístico, nunca passa pelo agente.
+      let caixinhasHelperSim =
         typeof globalThis !== 'undefined' ? globalThis.__caixinhasSummaryHelper : null
+      if (!caixinhasHelperSim) {
+        try {
+          caixinhasHelperSim = require('./caixinhas_summary_helper.js')
+        } catch (_) {
+          try {
+            caixinhasHelperSim = require(`${__hooks}/caixinhas_summary_helper.js`)
+          } catch (_) {}
+        }
+      }
 
       const isCaixinhasOverview =
         isRegistered &&
@@ -2191,7 +2239,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
       if (isCaixinhasOverview) {
         console.log(
-          `[whatsapp_bridge] [simulate] Intenção de visão geral de caixinhas detectada para usuário ${activeUserId}. Montando resumo visual padronizado...`,
+          `[whatsapp_bridge] [simulate] Intenção de visão geral de caixinhas detectada determinística para usuário ${activeUserId}. Montando resumo direto da base (SEM IA)...`,
         )
         try {
           const summary = caixinhasHelperSim.buildCaixinhasSummaryForUser(
@@ -2204,12 +2252,17 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             console.log(
               `[whatsapp_bridge] [simulate] Resumo visual das caixinhas montado com sucesso (tamanho=${agentReply.length}).`,
             )
+          } else {
+            agentReply =
+              'Não consegui carregar suas caixinhas no momento. Por favor, tente novamente em alguns instantes ou consulte pelo app!'
           }
         } catch (sumErr) {
-          console.log(
-            '[whatsapp_bridge] [simulate] Falha ao construir resumo visual das caixinhas (fallback para agente):',
+          console.error(
+            '[whatsapp_bridge] [simulate] Falha ao construir resumo visual das caixinhas:',
             sumErr,
           )
+          agentReply =
+            'Ocorreu uma instabilidade ao consultar suas caixinhas na base de dados agora. Por favor, tente novamente em alguns instantes ou acesse pelo app!'
         }
       }
 
@@ -2224,6 +2277,28 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       }
 
       if (activeUserId && !agentReply) {
+        // INJEÇÃO DE CONTEXTO DETERMINÍSTICO DE CAIXINHAS ATIVAS (Anti-alucinação) no simulate:
+        if (
+          isRegistered &&
+          caixinhasHelperSim &&
+          typeof caixinhasHelperSim.buildCaixinhasContextPrompt === 'function'
+        ) {
+          try {
+            const caixinhasContext = caixinhasHelperSim.buildCaixinhasContextPrompt(
+              $app,
+              activeUserId,
+              todayStr.slice(0, 7),
+            )
+            if (caixinhasContext) {
+              promptForAgent = `${caixinhasContext}\n\n${promptForAgent}`
+            }
+          } catch (ctxErr) {
+            console.log(
+              '[whatsapp_bridge] [simulate] Erro ao injetar contexto fresco de caixinhas no prompt:',
+              ctxErr,
+            )
+          }
+        }
         const maxSimAttempts = 3
         let simAttempt = 0
         let currentConvIdForSim = existingConvId

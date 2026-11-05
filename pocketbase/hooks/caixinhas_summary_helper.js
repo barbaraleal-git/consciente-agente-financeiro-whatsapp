@@ -177,21 +177,30 @@ function isCaixinhasOverviewIntent(text) {
     }
   }
 
-  // Padrões diretos de consulta de caixinhas
+  // Padrões diretos de consulta de caixinhas e resumo
   const patterns = [
-    /quais\s+(sao\s+)?(as\s+)?minhas\s+caixinhas/,
+    /quais\s+(sao\s+)?(as\s+)?(minhas\s+)?caixinhas/,
     /minhas\s+caixinhas/,
-    /ver\s+caixinhas/,
-    /ver\s+minhas\s+caixinhas/,
+    /ver\s+(as\s+)?(minhas\s+)?caixinhas/,
+    /ver\s+resumo/,
+    /meu\s+resumo/,
     /resumo\s+d(as|e)\s+caixinhas/,
     /resumo\s+das\s+minhas\s+caixinhas/,
+    /resumo\s+d(o|e)\s+m[eê]s/,
+    /resumo\s+mensal/,
+    /resumo\s+geral/,
+    /resumo\s+financeiro/,
+    /^resumo\b/,
     /como\s+estao\s+(as\s+)?(minhas\s+)?caixinhas/,
     /status\s+d(as|e)\s+caixinhas/,
     /visao\s+geral\s+d(as|e)\s+caixinhas/,
     /visao\s+geral/,
     /saldo\s+d(as|e)\s+caixinhas/,
+    /saldo\s+das\s+minhas\s+caixinhas/,
     /quanto\s+(ja\s+)?gastei\s+n(as|a)\s+caixinha/,
     /quanto\s+resta\s+n(as|a)\s+caixinha/,
+    /quanto\s+(ja\s+)?gastei\s+no\s+m[eê]s/,
+    /quanto\s+(ja\s+)?gastei/,
     /listar\s+(as\s+)?caixinhas/,
     /lista\s+d(as|e)\s+caixinhas/,
     /meus\s+orcamentos/,
@@ -204,8 +213,20 @@ function isCaixinhasOverviewIntent(text) {
     if (patterns[i].test(t)) return true
   }
 
-  // Caso curto: apenas "caixinhas" ou "caixinha"
-  if (t === 'caixinhas' || t === 'caixinha' || t === 'orcamentos') return true
+  // Casos curtos: "resumo", "caixinhas", "caixinha", "orcamentos", "saldo"
+  if (
+    t === 'resumo' ||
+    t === 'resumo.' ||
+    t === 'resumo!' ||
+    t === 'caixinhas' ||
+    t === 'caixinha' ||
+    t === 'orcamentos' ||
+    t === 'orcamento' ||
+    t === 'saldo' ||
+    t === 'extrato'
+  ) {
+    return true
+  }
 
   return false
 }
@@ -492,6 +513,8 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   }
 
   // 5. Monta a lista consolidada das caixinhas direto de budgetsList
+  // ATENÇÃO: Apenas caixinhas existentes nesta lista são incluídas.
+  // Totais do rodapé são somados estritamente dos ITENS LISTADOS (nunca independentes).
   const list = []
   let totalSpentCents = 0
   let totalBudgetCents = 0
@@ -587,10 +610,88 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   return output.trim()
 }
 
+/**
+ * Constrói o bloco de contexto FRESCO das caixinhas ativas para injeção no prompt do $ai.agent.
+ * NUNCA permite que o agente alucine caixinhas excluídas ou gere números do próprio imaginário.
+ */
+function buildCaixinhasContextPrompt(app, userId, targetMonthStr) {
+  if (!app || !userId) return ''
+
+  const now = new Date()
+  const monthStr = targetMonthStr || now.toISOString().slice(0, 7) // 'YYYY-MM'
+
+  let budgets = []
+  try {
+    budgets = app.findRecordsByFilter(
+      'budgets',
+      `owner = '${userId}' && month = '${monthStr}'`,
+      '-created',
+      100,
+      0,
+    )
+  } catch (_) {}
+
+  if (budgets.length === 0) {
+    try {
+      budgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-month,-created', 100, 0)
+    } catch (_) {}
+  }
+
+  if (budgets.length === 0) {
+    return `[CAIXINHAS ATIVAS DO USUÁRIO NO MÊS ${monthStr}: Nenhuma caixinha cadastrada no momento. É terminantemente PROIBIDO citar ou inventar nomes de caixinhas.]`
+  }
+
+  // Busca gastos das transações ativas do mês
+  const startOfMonth = `${monthStr}-01`
+  const endOfMonth = `${monthStr}-31`
+  let transactions = []
+  try {
+    transactions = app.findRecordsByFilter(
+      'transactions',
+      `owner = '${userId}' && type = 'despesa' && date >= '${startOfMonth}' && date <= '${endOfMonth}' && (status = 'active' || status = '' || status = null)`,
+      'date',
+      1000,
+      0,
+    )
+  } catch (_) {}
+
+  // Mapeia gastos por id direto de budget
+  const spentByBudgetId = {}
+  for (let b = 0; b < budgets.length; b++) {
+    spentByBudgetId[budgets[b].id] = 0
+  }
+  for (let t = 0; t < transactions.length; t++) {
+    const directBid = transactions[t].getString('budget')
+    if (directBid && typeof spentByBudgetId[directBid] === 'number') {
+      spentByBudgetId[directBid] += transactions[t].getInt('amount') || 0
+    }
+  }
+
+  const items = []
+  for (let b = 0; b < budgets.length; b++) {
+    const bg = budgets[b]
+    const bName = bg.getString('name') || 'Caixinha'
+    const bAmt = bg.getInt('amount') || 0
+    const bSpent = spentByBudgetId[bg.id] || 0
+    const tetoFmt = bAmt > 0 ? formatCentsToBrl(bAmt) : 'Sem teto'
+    const gastoFmt = formatCentsToBrl(bSpent)
+    items.push(`- "${bName}" (Teto: ${tetoFmt}, Gasto atual: ${gastoFmt})`)
+  }
+
+  return (
+    `[ESTADO OFICIAL E FRESCO DAS CAIXINHAS ATIVAS DA BASE DE DADOS (${monthStr}):\n` +
+    items.join('\n') +
+    `\nREGRAS CRÍTICAS E OBRIGATÓRIAS:\n` +
+    `1. Esta é a ÚNICA lista de caixinhas que existem hoje na base. Qualquer caixinha não listada acima foi EXCLUÍDA pelo usuário e é TERMINANTEMENTE PROIBIDO citá-la, sugeri-la ou ressuscitá-la.\n` +
+    `2. Resumos visuais e cálculos oficiais de caixinhas são gerados automaticamente pelo sistema via comando "resumo". NUNCA gere números de caixinhas, totais ou saldos por conta própria.]`
+  )
+}
+
 // Exporta tanto em module.exports quanto no globalThis (PocketBase JSVM)
 const caixinhasSummaryExports = {
   isCaixinhasOverviewIntent,
   buildCaixinhasSummaryForUser,
+  buildCaixinhasContextPrompt,
   formatCentsToBrl,
   makeProgressBar,
   resolveCaixinhaEmoji,

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T22:55:37.708Z",
+  "generatedAt": "2026-11-05T23:23:57.988Z",
   "collections": [
     {
       "name": "users",
@@ -606,6 +606,12 @@
         },
         {
           "name": "pending_caixinha",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pending_category",
           "type": "json",
           "required": false,
           "system": false

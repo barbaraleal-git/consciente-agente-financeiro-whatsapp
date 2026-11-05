@@ -1052,6 +1052,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                   textContent,
                   contact,
                   todayStr,
+                  msgSource,
                 )
                 if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
                   agentReply = caixinhaRes.reply
@@ -2089,6 +2090,70 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
           console.log(
             '[whatsapp_bridge] [simulate] Erro no fluxo de cancelamento seguro:',
             cFlowErr,
+          )
+        }
+      }
+
+      // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha no simulate (Item 29 / v0.0.56)
+      if (
+        !agentReply &&
+        isRegistered &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.handleCaixinhaFlow === 'function'
+      ) {
+        try {
+          const caixinhaRes = reliabilityHelperSim.handleCaixinhaFlow(
+            $app,
+            activeUserId,
+            message,
+            contact,
+            todayStr,
+            'whatsapp_text',
+          )
+          if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
+            agentReply = caixinhaRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha executado:',
+              agentReply,
+            )
+          }
+        } catch (cxFlowErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha:',
+            cxFlowErr,
+          )
+        }
+      }
+
+      // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha (Item 29) no simulate
+      if (
+        !agentReply &&
+        isRegistered &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.handleCaixinhaFlow === 'function'
+      ) {
+        try {
+          const caixinhaSimRes = reliabilityHelperSim.handleCaixinhaFlow(
+            $app,
+            activeUserId,
+            message,
+            contact,
+            todayStr,
+            'whatsapp_text',
+          )
+          if (caixinhaSimRes && caixinhaSimRes.handled && caixinhaSimRes.reply) {
+            agentReply = caixinhaSimRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha executado com resposta:',
+              agentReply,
+            )
+          }
+        } catch (cxSimErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha:',
+            cxSimErr,
           )
         }
       }

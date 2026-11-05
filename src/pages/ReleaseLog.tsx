@@ -25,11 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.58',
+    date: '05/11/2026',
+    title:
+      'Persistência Obrigatória de Caixinha (Budget) no Registro via WhatsApp e Paridade 100% com o App',
+    tag: 'Atual',
+    highlights: [
+      'Persistência da Caixinha no Registro: Em todos os caminhos de criação de transação no WhatsApp (mensagens de texto, áudio transcrito, fluxo de desambiguação de pendência e hook de integridade), a caixinha decidida é imediatamente gravada no campo budget da coleção transactions.',
+      'Paridade Total de Visão WhatsApp × App: O resumo visual do WhatsApp e a tela /budgets do aplicativo refletem exatamente a mesma alocação centavo por centavo, resolvendo a divergência reportada nas transações Mercado Violeta (R$ 214,56) e Rascal (R$ 190,00).',
+      'Resumo Exclusivamente Determinístico: A visão geral de caixinhas no WhatsApp ("quais são minhas caixinhas?", "resumo") é gerada estritamente pelo helper determinístico (caixinhas_summary_helper.js / resolveTxBudget), impedindo que a LLM invente valores ou calcule caixinhas por conta própria.',
+      'Backfill Idempotente Permanente: Migração 0031 preenche o campo budget de transações ativas antigas com budget vazio utilizando a regra única determinística (budget > vínculo único > desempate > fallback), preservando o isolamento de cancelados/deletados.',
+    ],
+    details: [
+      'Migração pocketbase/migrations/0031_backfill_transaction_budgets.js criada e aplicada com sucesso.',
+      'Atualizados pocketbase/hooks/transactions_integrity.js, pocketbase/hooks/reliability_helper.js, pocketbase/hooks/whatsapp_bridge.js e pocketbase/hooks/caixinhas_summary_helper.js.',
+      'Roteiro de Testes Regressivos (Cenário AF) e Backlog atualizados em src/data/docsContent.ts.',
+    ],
+  },
+  {
     version: '0.0.57',
     date: '05/11/2026',
     title:
       'Remanejamento de Transação entre Caixinhas no App e Unificação de Visão WhatsApp vs. App',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Remanejamento de Caixinha no App: Na tela de transações, ao editar qualquer despesa (manual ou recebida via WhatsApp), a/o cliente pode alterar para qual caixinha o gasto é alocado ou retornar para "Automático / Sem caixinha fixa".',
       'Atualização Imediata dos Totais: Ao salvar a edição com nova caixinha, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, contando exatamente uma única vez (zero duplicação e sem afetar cancelados).',

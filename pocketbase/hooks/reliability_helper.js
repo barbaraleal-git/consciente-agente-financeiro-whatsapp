@@ -1024,13 +1024,14 @@ function getNumberEmoji(index) {
 /**
  * Fluxo de desambiguação e seleção de caixinha quando há pendência ou novo gasto.
  */
-function handleCaixinhaFlow(app, userId, text, contactRecord, referenceDateYmd) {
+function handleCaixinhaFlow(app, userId, text, contactRecord, referenceDateYmd, sourceOverride) {
   if (!app || !userId || !text) {
     return { handled: false, reply: '' }
   }
 
   const cleanText = String(text).trim()
   const todayStr = referenceDateYmd || new Date().toISOString().slice(0, 10)
+  const txSource = sourceOverride || 'whatsapp_text'
 
   // 1. VERIFICA SE EXISTE PENDÊNCIA AGUARDANDO RESPOSTA (pending_caixinha)
   let pendingData = null
@@ -1104,7 +1105,7 @@ function handleCaixinhaFlow(app, userId, text, contactRecord, referenceDateYmd) 
         newTx.set('date', pendingData.date)
         newTx.set('category', pendingData.category_id)
         newTx.set('type', 'despesa')
-        newTx.set('source', 'whatsapp_text')
+        newTx.set('source', pendingData.source || txSource)
         newTx.set('status', 'active')
         newTx.set('is_retroactive', pendingData.is_retroactive || false)
         newTx.set('budget', chosenBudget.id)
@@ -1174,6 +1175,7 @@ function handleCaixinhaFlow(app, userId, text, contactRecord, referenceDateYmd) 
           date: parsedExpense.date,
           is_retroactive: parsedExpense.isRetroactive,
           candidate_budgets: candidates,
+          source: txSource,
           created_at: new Date().toISOString(),
         }),
       )
@@ -1211,7 +1213,7 @@ function handleCaixinhaFlow(app, userId, text, contactRecord, referenceDateYmd) 
       newTx.set('date', parsedExpense.date)
       newTx.set('category', parsedExpense.categoryId)
       newTx.set('type', 'despesa')
-      newTx.set('source', 'whatsapp_text')
+      newTx.set('source', txSource)
       newTx.set('status', 'active')
       newTx.set('is_retroactive', parsedExpense.isRetroactive || false)
       newTx.set('budget', singleBudget.id)

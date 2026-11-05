@@ -227,7 +227,7 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   try {
     categories = app.findRecordsByFilter(
       'categories',
-      `user = '${userId}' && type = 'despesa'`,
+      `(owner = '${userId}' || owner = '' || owner = null) && type = 'despesa'`,
       'name',
       100,
       0,
@@ -241,7 +241,7 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   try {
     budgets = app.findRecordsByFilter(
       'budgets',
-      `user = '${userId}' && month = '${monthStr}'`,
+      `owner = '${userId}' && month = '${monthStr}'`,
       '-created',
       100,
       0,
@@ -253,7 +253,7 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   // Se não tiver budget no mês atual, busca os budgets mais recentes do usuário para reaproveitar os tetos definidos
   if (budgets.length === 0) {
     try {
-      budgets = app.findRecordsByFilter('budgets', `user = '${userId}'`, '-month,-created', 100, 0)
+      budgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-month,-created', 100, 0)
     } catch (_) {}
   }
 
@@ -299,7 +299,7 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
   try {
     transactions = app.findRecordsByFilter(
       'transactions',
-      `user = '${userId}' && type = 'despesa' && date >= '${startOfMonth}' && date <= '${endOfMonth}' && (status = 'active' || status = '')`,
+      `owner = '${userId}' && type = 'despesa' && date >= '${startOfMonth}' && date <= '${endOfMonth}' && (status = 'active' || status = '' || status = null)`,
       'date',
       1000,
       0,
@@ -333,13 +333,13 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
       .trim()
   }
 
-  // Mapa de vínculos explícitos
+  // Mapa de vínculos explícitos (category_id em category_caixinha_links)
   const activeLinks = []
   for (let l = 0; l < userLinks.length; l++) {
     const lk = userLinks[l]
     const bId = lk.getString('budget')
     const cName = norm(lk.getString('category_name'))
-    const cId = lk.getString('category')
+    const cId = lk.getString('category_id') || lk.getString('category')
     activeLinks.push({ bId, cName, cId })
   }
 

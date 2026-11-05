@@ -165,7 +165,7 @@ export const Dashboard: React.FC = () => {
       ...item,
       percentage: Math.round((item.amount / total) * 100),
     }))
-  }, [monthlyMetrics, categories, budgets])
+  }, [monthlyMetrics, categories, budgets, userLinks])
 
   // Last 6 months evolution data (somente transações ativas)
   const evolutionData = useMemo(() => {

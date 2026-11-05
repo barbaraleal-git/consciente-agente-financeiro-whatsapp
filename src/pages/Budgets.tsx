@@ -150,7 +150,7 @@ export const Budgets: React.FC = () => {
         percentage,
       }
     })
-  }, [budgets, categories, transactions])
+  }, [budgets, categories, transactions, userLinks])
 
   const totalDefined = budgetStats.reduce((sum, s) => sum + s.budgetAmount, 0)
   const totalSpent = budgetStats.reduce((sum, s) => sum + s.spentAmount, 0)
@@ -621,20 +621,29 @@ export const Budgets: React.FC = () => {
                             {matchedTxs.map((tx) => (
                               <div
                                 key={tx.id}
-                                className="text-xs flex items-center justify-between py-1 px-1.5 rounded bg-white border border-slate-100 text-slate-700 hover:bg-slate-50"
+                                className="text-xs flex items-center justify-between py-1 px-1.5 rounded bg-white border border-slate-100 text-slate-700 hover:bg-slate-50 group"
                               >
                                 <div className="min-w-0 pr-2">
-                                  <span className="font-medium truncate block text-slate-900">
-                                    {tx.description}
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium truncate block text-slate-900">
+                                      {tx.description}
+                                    </span>
+                                    {tx.budget === item.budget.id && (
+                                      <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded shrink-0">
+                                        Fixada
+                                      </span>
+                                    )}
+                                  </div>
                                   <span className="text-[10px] text-slate-400">
                                     {formatDate(tx.date)}
                                     {tx.note ? ` • ${tx.note}` : ''}
                                   </span>
                                 </div>
-                                <span className="font-semibold tabular-nums shrink-0 text-slate-900 text-xs">
-                                  {formatCurrency(tx.amount)}
-                                </span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="font-semibold tabular-nums text-slate-900 text-xs">
+                                    {formatCurrency(tx.amount)}
+                                  </span>
+                                </div>
                               </div>
                             ))}
                           </div>

@@ -148,6 +148,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Match e Alinhamento de Caixinhas App × WhatsApp (Fonte Única de Verdade)** | Resolução da inconsistência reportada pela usuária em que caixinhas de alimentação apareciam com os gastos corretos no WhatsApp mas zeradas no App. Implementação de lógica unificada em \`caixinhaMatcher.ts\` e \`caixinhas_summary_helper.js\`: além da igualdade estrita de ID de categoria, o sistema suporta associação semântica via \`note\` (ex.: *"caixinha Alimentação - VA"* ou *"VR"*), sufixos característicos e subcategorias contidas no nome da caixinha. Dashboard, Caixinhas e Extrato refletem com precisão os lançamentos vinculados e badges de sub-classificação (*"Essencial"* / *"Não Essencial"*), mantendo isolamento absoluto de lançamentos cancelados/excluídos. | **Concluído** |
 | **Parametrização Categoria↔Caixinhas por Cliente (Vínculos N:N Personalizados)** | Atendimento ao pedido da usuária: o próprio cliente define quais categorias de lançamentos podem ser consideradas em quais caixinhas (ex.: *"Alimentação Essencial"* alimentando tanto a caixinha *Alimentação VR* quanto *Alimentação VA*; *"Alimentação Não Essencial"* em *VR* e em *Lazer*). Modelada nova coleção idempotente \`category_caixinha_links\`, aba *"Categorias Vinculadas"* no modal de edição de caixinhas (\`/budgets\`), matcher unificado (\`caixinhaMatcher.ts\` e \`caixinhas_summary_helper.js\`) com fallback retrocompatível de zero regressão para clientes sem vínculos e isolamento total de cancelados. | **Concluído** |
 | **Escolha Obrigatória de Caixinha / Regra de Não Duplicação (v0.0.56)** | **REGRA DE OURO ATENDIDA**: Cada transação ativa soma em exatamente UMA única caixinha, nunca duplicando valores no histórico nem em novos gastos. Se a categoria tem múltiplas caixinhas vinculadas: no WhatsApp, a IA suspende a gravação, pergunta em qual caixinha deseja registrar numerando as opções amigavelmente e grava na caixinha escolhida após a resposta do cliente; no App (\`TransactionModal.tsx\`), o sistema exige a seleção obrigatória da caixinha antes de salvar. Se houver vínculo único, grava direto e informa. Se não houver vínculos, mantém fallback retrocompatível estável. Campo \`budget\` em \`transactions\` e \`pending_caixinha\` em \`whatsapp_contacts\`. | **Concluído** |
+| **Remanejamento de Caixinha no App e Paridade WhatsApp vs. App (v0.0.57)** | **NOVO RECURSO + BUGFIX**: O cliente pode editar qualquer transação existente de despesa em \`/transactions\` e remanejar para qualquer caixinha do mês (ou desvincular para "Automático / Sem caixinha fixa"). Ao salvar, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, mantendo zero duplicação e exclusão de cancelados. Corrigida a paridade de visualização de caixinhas entre o App (\`/budgets\`) e o resumo do WhatsApp adicionando os vínculos reativos de \`userLinks\` nas dependências do \`useMemo\` de \`budgetStats\` em \`Budgets.tsx\` e \`Dashboard.tsx\`. | **Concluído** |
 
 ---
 
@@ -696,4 +697,37 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - O matcher continua aplicando o fallback histórico (matching semântico por categoria / anotação / sufixos) resolvendo para uma única caixinha estável sem quebrar nem exigir fluxo adicional.
 
 6. **Cenário 5 — Isolamento Estrito de Transações Canceladas**:
-   - Transações com status \`cancelled\` ou \`deleted\` continuam excluídas de qualquer soma de caixinha, dashboard ou resumo de WhatsApp.`
+   - Transações com status \`cancelled\` ou \`deleted\` continuam excluídas de qualquer soma de caixinha, dashboard ou resumo de WhatsApp.
+
+---
+
+## AE) Remanejamento de Transação entre Caixinhas no App e Paridade com WhatsApp (v0.0.57)
+
+1. **Objetivo do Teste**:
+   - Validar que o cliente consegue editar uma transação existente no painel web, alterar a caixinha efetiva para a qual o gasto está alocado e visualizar a atualização imediata dos totais de teto vs. realizado em \`/budgets\`, mantendo paridade exata com o resumo do WhatsApp.
+
+2. **Cenário 1 — Remanejamento de Caixinha na Edição da Transação**:
+   - Acesse a tela de **Transações** (\`/transactions\`).
+   - Localize uma transação existente de despesa (ex.: *"Mercado Violeta"* ou *"Rascal"*).
+   - Clique em **Editar**.
+   - No modal de edição (\`TransactionModal\`), localize a seção **"Caixinha do Gasto"**.
+   - Escolha outra caixinha ativa disponível (ex.: altere de *"Alimentação - Crédito"* para *"Alimentação - VA"* ou *"Alimentação - VR"*).
+   - Clique em **Salvar Lançamento**.
+   - **Comportamento Esperado**:
+     - O lançamento é atualizado com sucesso.
+     - O badge e ícone da categoria efetiva no extrato refletem a caixinha escolhida.
+     - Na tela **Caixinhas** (\`/budgets\`), o valor gasto da caixinha de origem diminui instantaneamente e o valor da nova caixinha aumenta exatamente pelo mesmo valor.
+     - A transação continua contando em **UMA única caixinha**, sem duplicações.
+     - No card da caixinha em \`/budgets\`, o lançamento é exibido na lista de lançamentos vinculados com o indicador *"Fixada"*.
+
+3. **Cenário 2 — Opção de Desvincular para Automático / Sem Caixinha Fixa**:
+   - Abra novamente a transação editada e selecione *"Automático / Sem caixinha fixa"*.
+   - Salve. O campo \`budget\` é limpo (\`null\`), permitindo que a regra automática por categoria ou vínculos N:N atue normalmente.
+
+4. **Cenário 3 — Paridade Exata de Valores entre App e WhatsApp**:
+   - No WhatsApp, envie *"resumo"* para receber o comparativo visual das caixinhas.
+   - Abra a tela \`/budgets\` do App no mesmo mês.
+   - **Comportamento Esperado**:
+     - Os valores de **Gasto Realizado**, **Teto Planejado** e **Percentual** de cada caixinha no App coincidem **exatamente centavo por centavo** com os valores enviados no WhatsApp.
+     - Nenhuma caixinha apresenta lançamentos de outra caixinha fixada.
+`

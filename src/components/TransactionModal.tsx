@@ -145,10 +145,19 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     return budgets.filter((b) => matchedBudgetIds.has(b.id))
   }, [type, categoryId, links, normSelectedCatName, budgets])
 
-  // Atualiza automaticamente o budgetId quando há exatamente 1 caixinha candidata
+  // Atualiza automaticamente o budgetId quando há exatamente 1 caixinha candidata e não estamos editando com outra escolha
   useEffect(() => {
     if (type !== 'despesa') {
       setBudgetId('')
+      return
+    }
+    // Se estivermos editando uma transação existente, preserva o budgetId já gravado se o usuário não trocou a categoria
+    if (
+      initialTransaction &&
+      initialTransaction.budget &&
+      initialTransaction.category === categoryId
+    ) {
+      setBudgetId(initialTransaction.budget)
       return
     }
     if (candidateBudgets.length === 1) {
@@ -164,7 +173,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setBudgetId('')
       }
     }
-  }, [candidateBudgets, type, initialTransaction])
+  }, [candidateBudgets, type, categoryId, initialTransaction])
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const masked = maskCurrencyInput(e.target.value)
@@ -219,7 +228,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           date,
           category: categoryId,
           type,
-          budget: budgetId || undefined,
+          budget: type === 'despesa' ? budgetId || null : null,
           note: note.trim() || undefined,
         })
         toast({ title: 'Lançamento atualizado', description: 'Alterações salvas com sucesso.' })
@@ -395,67 +404,134 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </Select>
           </div>
 
-          {/* Seção de Caixinha Vinculada: Obrigatória quando >1 candidatas, automática se única */}
-          {type === 'despesa' && candidateBudgets.length > 1 && (
-            <div className="space-y-1.5 p-3 rounded-lg border border-amber-200 bg-amber-50/70">
+          {/* Seção de Caixinha Efetiva (Remanejamento / Escolha): para despesas, permite escolher em qual caixinha alocar */}
+          {type === 'despesa' && (
+            <div className="space-y-1.5 p-3 rounded-lg border border-slate-200 bg-slate-50/70">
               <div className="flex items-center justify-between">
                 <Label
                   htmlFor="budget-select"
-                  className="text-xs font-semibold text-amber-900 flex items-center gap-1.5"
+                  className="text-xs font-semibold text-slate-800 flex items-center gap-1.5"
                 >
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                  Selecione a Caixinha *
+                  {candidateBudgets.length > 1 ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+                  )}
+                  Caixinha do Gasto {candidateBudgets.length > 1 && '*'}
                 </Label>
-                <span className="text-[10px] text-amber-700 font-medium">Obrigatório</span>
+                {candidateBudgets.length > 1 ? (
+                  <span className="text-[10px] text-amber-700 font-semibold bg-amber-100 px-1.5 py-0.5 rounded">
+                    Obrigatório
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-500 font-normal">Remanejável</span>
+                )}
               </div>
-              <p className="text-[11px] text-amber-800">
-                Esta categoria está vinculada a {candidateBudgets.length} caixinhas. Escolha em qual
-                delas esse gasto deve entrar:
-              </p>
-              <Select value={budgetId} onValueChange={setBudgetId}>
-                <SelectTrigger id="budget-select" className="w-full bg-white border-amber-300">
-                  <SelectValue placeholder="Escolha a caixinha deste gasto..." />
+
+              {candidateBudgets.length > 1 ? (
+                <p className="text-[11px] text-amber-800">
+                  Esta categoria está vinculada a {candidateBudgets.length} caixinhas. Escolha em
+                  qual delas esse gasto deve ser registrado:
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-500">
+                  Você pode remanejar este gasto para qualquer caixinha ativa do mês ou usar a
+                  vinculação automática da categoria.
+                </p>
+              )}
+
+              <Select
+                value={budgetId || '__none__'}
+                onValueChange={(val) => setBudgetId(val === '__none__' ? '' : val)}
+              >
+                <SelectTrigger
+                  id="budget-select"
+                  className={`w-full bg-white ${
+                    candidateBudgets.length > 1 && !budgetId
+                      ? 'border-amber-400 focus:ring-amber-400'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  <SelectValue placeholder="Selecione a caixinha..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {candidateBudgets.map((b) => {
-                    const bCat = categories.find((c) => c.id === b.category) || b.expand?.category
-                    const bName = bCat?.name || 'Caixinha'
-                    const bIcon = bCat?.icon || 'wallet'
-                    const bColor = bCat?.color || '#0284c7'
+                  {/* Opção sem caixinha fixa / automática quando não for obrigatório ter caixinha vinculada múltipla */}
+                  {candidateBudgets.length <= 1 && (
+                    <SelectItem value="__none__">
+                      <span className="text-slate-500 italic text-xs">
+                        Automático / Sem caixinha fixa
+                      </span>
+                    </SelectItem>
+                  )}
+
+                  {/* Grupo de Caixinhas Candidatas Vinculadas (se houver) */}
+                  {candidateBudgets.length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Caixinhas Vinculadas à Categoria
+                      </div>
+                      {candidateBudgets.map((b) => {
+                        const bCat =
+                          categories.find((c) => c.id === b.category) || b.expand?.category
+                        const bName = bCat?.name || 'Caixinha'
+                        const bIcon = bCat?.icon || 'wallet'
+                        const bColor = bCat?.color || '#0284c7'
+                        return (
+                          <SelectItem key={b.id} value={b.id}>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                                style={{ backgroundColor: bColor }}
+                              >
+                                {renderCaixinhaIcon(bIcon, 'w-3 h-3 text-xs')}
+                              </span>
+                              <span className="font-medium text-slate-900">{bName}</span>
+                              <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 px-1 py-0.2 rounded ml-auto">
+                                Vinculada
+                              </span>
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                    </>
+                  )}
+
+                  {/* Demais Caixinhas Ativas do Usuário para remanejamento livre */}
+                  {(() => {
+                    const candidateIds = new Set(candidateBudgets.map((b) => b.id))
+                    const otherBudgets = budgets.filter((b) => !candidateIds.has(b.id))
+                    if (otherBudgets.length === 0) return null
+
                     return (
-                      <SelectItem key={b.id} value={b.id}>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
-                            style={{ backgroundColor: bColor }}
-                          >
-                            {renderCaixinhaIcon(bIcon, 'w-3 h-3 text-xs')}
-                          </span>
-                          <span className="font-medium">{bName}</span>
+                      <>
+                        <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1 border-t border-slate-100">
+                          Outras Caixinhas Disponíveis
                         </div>
-                      </SelectItem>
+                        {otherBudgets.map((b) => {
+                          const bCat =
+                            categories.find((c) => c.id === b.category) || b.expand?.category
+                          const bName = bCat?.name || 'Caixinha'
+                          const bIcon = bCat?.icon || 'wallet'
+                          const bColor = bCat?.color || '#64748b'
+                          return (
+                            <SelectItem key={b.id} value={b.id}>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs"
+                                  style={{ backgroundColor: bColor }}
+                                >
+                                  {renderCaixinhaIcon(bIcon, 'w-3 h-3 text-xs')}
+                                </span>
+                                <span className="text-slate-800">{bName}</span>
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
+                      </>
                     )
-                  })}
+                  })()}
                 </SelectContent>
               </Select>
-            </div>
-          )}
-
-          {type === 'despesa' && candidateBudgets.length === 1 && (
-            <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/70 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <div className="text-xs text-emerald-900">
-                <span className="font-medium">Caixinha vinculada: </span>
-                {(() => {
-                  const b = candidateBudgets[0]
-                  const bCat = categories.find((c) => c.id === b.category) || b.expand?.category
-                  return (
-                    <span className="font-semibold text-emerald-950">
-                      {bCat?.name || 'Caixinha'}
-                    </span>
-                  )
-                })()}
-              </div>
             </div>
           )}
 

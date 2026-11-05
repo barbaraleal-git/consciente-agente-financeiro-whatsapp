@@ -25,11 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.57',
+    date: '05/11/2026',
+    title:
+      'Remanejamento de Transação entre Caixinhas no App e Unificação de Visão WhatsApp vs. App',
+    tag: 'Atual',
+    highlights: [
+      'Remanejamento de Caixinha no App: Na tela de transações, ao editar qualquer despesa (manual ou recebida via WhatsApp), a/o cliente pode alterar para qual caixinha o gasto é alocado ou retornar para "Automático / Sem caixinha fixa".',
+      'Atualização Imediata dos Totais: Ao salvar a edição com nova caixinha, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, contando exatamente uma única vez (zero duplicação e sem afetar cancelados).',
+      'Unificação da Visão App e WhatsApp: Corrigida a reatividade do useMemo em Budgets.tsx e Dashboard.tsx que dependia dos vínculos category_caixinha_links. Agora a tela /budgets e o resumo do WhatsApp refletem exatamente a mesma agregação.',
+      'Indicação Visual na Lista de Lançamentos: Os lançamentos vinculados no card da caixinha exibem a tag "Fixada" quando foram alocados explicitamente para aquela caixinha pelo cliente.',
+    ],
+    details: [
+      'Atualizado src/components/TransactionModal.tsx para permitir remanejamento livre entre caixinhas ativas com campo budget persistido e suporte a desvinculação.',
+      'Atualizado src/pages/Budgets.tsx e src/pages/Dashboard.tsx incluindo userLinks nas dependências do useMemo de budgetStats e tag visual de caixinha fixada.',
+      'Atualizados src/data/docsContent.ts e Roteiro de Testes Regressivos (Cenário AE).',
+    ],
+  },
+  {
     version: '0.0.56',
     date: '05/11/2026',
     title:
       'Escolha Obrigatória de Caixinha no WhatsApp e no App (Regra de Não Duplicação de Gastos)',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Regra de Ouro Atendida: Cada transação ativa soma em exatamente UMA única caixinha, eliminando duplicidade no histórico e em novos gastos.',
       'Fluxo de Desambiguação no WhatsApp: Quando a categoria do gasto possui múltiplos vínculos de caixinhas (ex.: Alimentação VA e VR), a IA suspende o registro imediato, salva a pendência em pending_caixinha e pergunta ao cliente em lista numerada qual caixinha usar. Ao responder, a transação é criada com o campo budget vinculado e confirmada.',

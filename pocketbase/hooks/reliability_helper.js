@@ -396,7 +396,18 @@ function formatCentsToBrl(cents) {
  * Processa intenções de cancelamento de transação para um usuário.
  * Retorna { handled: boolean, reply: string }
  */
-function handleCancellationFlow(app, userId, text, contactRecord) {
+function handleCancellationFlow(app, userId, arg3, arg4) {
+  // Suporta tanto (app, userId, contactRecord, text) quanto (app, userId, text, contactRecord)
+  let text = ''
+  let contactRecord = null
+  if (typeof arg3 === 'string') {
+    text = arg3
+    contactRecord = arg4 || null
+  } else {
+    contactRecord = arg3 || null
+    text = typeof arg4 === 'string' ? arg4 : ''
+  }
+
   if (!app || !userId || !text) {
     return { handled: false, reply: '' }
   }
@@ -746,6 +757,485 @@ function buildGracefulFallbackReply(text, isAudio) {
   return 'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea e não consegui interpretar sua mensagem agora. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
 }
 
+/**
+ * Normaliza string para comparação sem acentos e minúscula.
+ */
+function normalizeStr(str) {
+  return String(str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+}
+
+/**
+ * Tenta extrair detalhes de um gasto a partir de uma mensagem de texto:
+ * { amount: number (cents), description: string, categoryId: string, categoryName: string, date: string, isRetroactive: boolean, matchedPhrase?: string } ou null.
+ */
+function tryParseSpendingExpense(app, userId, text, referenceDateYmd) {
+  if (!app || !userId || !text) return null
+  const raw = String(text).trim()
+  if (!isSpendingExpenseMessage(raw)) return null
+
+  // 1. Extração do valor em centavos
+  // Padrões como: R$ 190,00, R$190, 190 reais, 190,50, 190
+  const norm = normalizeStr(raw)
+  let cents = 0
+
+  // Regex para valor: busca "r$ X", "X reais" ou apenas número isolado
+  const valMatch =
+    raw.match(/r\$\s*(\d+(?:[.,]\d{1,2})?)/i) ||
+    raw.match(/(\d+(?:[.,]\d{1,2})?)\s*reais/i) ||
+    raw.match(/\b(\d+(?:[.,]\d{1,2})?)\b/)
+
+  if (!valMatch) return null
+
+  const numStr = valMatch[1].replace(',', '.')
+  const floatVal = parseFloat(numStr)
+  if (isNaN(floatVal) || floatVal <= 0) return null
+  cents = Math.round(floatVal * 100)
+
+  // 2. Data (retroativa ou hoje)
+  let dateYmd = referenceDateYmd || new Date().toISOString().slice(0, 10)
+  let isRetroactive = false
+  let matchedPhrase = ''
+  const retro = parseRetroactiveDate(raw, dateYmd)
+  if (retro && retro.isRetroactive && retro.targetDateStr) {
+    dateYmd = retro.targetDateStr
+    isRetroactive = true
+    matchedPhrase = retro.matchedPhrase
+  }
+
+  // 3. Busca categorias de despesa do usuário (ou globais)
+  let userCategories = []
+  try {
+    userCategories = app.findRecordsByFilter(
+      'categories',
+      `(owner = '${userId}' || owner = '' || owner = null) && type = 'despesa'`,
+      '-created',
+      100,
+      0,
+    )
+  } catch (_) {}
+
+  if (userCategories.length === 0) {
+    try {
+      userCategories = app.findRecordsByFilter('categories', `type = 'despesa'`, '-created', 100, 0)
+    } catch (_) {}
+  }
+
+  // 4. Mapeamento de intenção/palavras-chave para achar a categoria
+  let matchedCategory = null
+  let matchedCategoryScore = 0
+
+  // Remove valor e palavras comuns para isolar o termo descritivo
+  let cleanedTerm = norm
+    .replace(valMatch[0].toLowerCase(), '')
+    .replace(
+      /\b(gastei|comprei|paguei|custou|no|na|de|em|para|com|reais|r\$|ontem|anteontem)\b/g,
+      ' ',
+    )
+    .trim()
+
+  for (let c = 0; c < userCategories.length; c++) {
+    const cat = userCategories[c]
+    const cName = normalizeStr(cat.getString('name'))
+    let score = 0
+
+    if (norm.includes(cName)) {
+      score = 100
+    } else if (
+      cName.includes('alimenta') &&
+      (norm.includes('almo') ||
+        norm.includes('jantar') ||
+        norm.includes('lanche') ||
+        norm.includes('comida') ||
+        norm.includes('restaurante') ||
+        norm.includes('mercado') ||
+        norm.includes('padaria') ||
+        norm.includes('ifood') ||
+        norm.includes('pizza') ||
+        norm.includes('cafe'))
+    ) {
+      score = 80
+    } else if (
+      cName.includes('transporte') &&
+      (norm.includes('uber') ||
+        norm.includes('gasolina') ||
+        norm.includes('combustivel') ||
+        norm.includes('onibus') ||
+        norm.includes('metro') ||
+        norm.includes('estacionamento') ||
+        norm.includes('pedagio'))
+    ) {
+      score = 80
+    } else if (
+      cName.includes('saude') &&
+      (norm.includes('farmacia') ||
+        norm.includes('remedio') ||
+        norm.includes('medico') ||
+        norm.includes('consulta') ||
+        norm.includes('dentista'))
+    ) {
+      score = 80
+    } else if (
+      cName.includes('moradia') &&
+      (norm.includes('aluguel') ||
+        norm.includes('condominio') ||
+        norm.includes('luz') ||
+        norm.includes('agua') ||
+        norm.includes('internet'))
+    ) {
+      score = 80
+    } else if (
+      cName.includes('lazer') &&
+      (norm.includes('cinema') ||
+        norm.includes('show') ||
+        norm.includes('passeio') ||
+        norm.includes('viagem') ||
+        norm.includes('bar'))
+    ) {
+      score = 80
+    }
+
+    if (score > matchedCategoryScore) {
+      matchedCategoryScore = score
+      matchedCategory = cat
+    }
+  }
+
+  // Se não achou categoria com score alto, busca a primeira de despesa ou com nome 'Outros'/'Alimentação'
+  if (!matchedCategory && userCategories.length > 0) {
+    matchedCategory =
+      userCategories.find((c) => normalizeStr(c.getString('name')).includes('outros')) ||
+      userCategories[0]
+  }
+
+  if (!matchedCategory) return null
+
+  // Descrição amigável
+  let desc = cleanedTerm
+    ? cleanedTerm.charAt(0).toUpperCase() + cleanedTerm.slice(1)
+    : matchedCategory.getString('name')
+
+  // Se a descrição ficou muito curta ou genérica, usa o nome da categoria
+  if (desc.length < 3) {
+    desc = matchedCategory.getString('name')
+  }
+
+  return {
+    amount: cents,
+    description: desc,
+    categoryId: matchedCategory.id,
+    categoryName: matchedCategory.getString('name'),
+    date: dateYmd,
+    isRetroactive,
+    matchedPhrase,
+  }
+}
+
+/**
+ * Busca as caixinhas candidatas vinculadas a uma categoria em category_caixinha_links.
+ * Retorna Array<{ id: string, name: string, icon: string, amount: number }>
+ */
+function getCandidateBudgetsForCategory(app, userId, categoryId, categoryName, currentMonth) {
+  const normCatName = normalizeStr(categoryName)
+  let links = []
+  try {
+    links = app.findRecordsByFilter(
+      'category_caixinha_links',
+      `user = '${userId}' && active = true`,
+      '-created',
+      100,
+      0,
+    )
+  } catch (_) {}
+
+  if (links.length === 0) return []
+
+  // Filtra links que combinam com categoryId ou categoryName
+  const matchingBudgetIds = []
+  for (let l = 0; l < links.length; l++) {
+    const lk = links[l]
+    const lkCatId = lk.getString('category_id')
+    const lkCatName = normalizeStr(lk.getString('category_name'))
+    const bId = lk.getString('budget')
+    if (!bId) continue
+
+    if (
+      (lkCatId && lkCatId === categoryId) ||
+      (lkCatName &&
+        normCatName &&
+        (lkCatName === normCatName ||
+          lkCatName.includes(normCatName) ||
+          normCatName.includes(lkCatName)))
+    ) {
+      if (!matchingBudgetIds.includes(bId)) {
+        matchingBudgetIds.push(bId)
+      }
+    }
+  }
+
+  if (matchingBudgetIds.length === 0) return []
+
+  // Busca os budgets do usuário
+  let userBudgets = []
+  try {
+    userBudgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-created', 100, 0)
+  } catch (_) {}
+
+  // Carrega categorias para pegar nome e ícone das caixinhas
+  let allCats = []
+  try {
+    allCats = app.findRecordsByFilter('categories', '', '', 200, 0)
+  } catch (_) {}
+  const catMap = {}
+  for (let c = 0; c < allCats.length; c++) {
+    catMap[allCats[c].id] = allCats[c]
+  }
+
+  const candidates = []
+  for (let b = 0; b < userBudgets.length; b++) {
+    const bg = userBudgets[b]
+    if (matchingBudgetIds.includes(bg.id)) {
+      const bCat = catMap[bg.getString('category')]
+      const bName = bCat ? bCat.getString('name') : 'Caixinha'
+      const bIcon = bCat ? bCat.getString('icon') : ''
+      candidates.push({
+        id: bg.id,
+        name: bName,
+        icon: bIcon,
+        amount: bg.getInt('amount') || 0,
+      })
+    }
+  }
+
+  return candidates
+}
+
+/**
+ * Emite emoji numérico para listas (1️⃣, 2️⃣, etc.)
+ */
+function getNumberEmoji(index) {
+  const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
+  return emojis[index] || `${index + 1}.`
+}
+
+/**
+ * Fluxo de desambiguação e seleção de caixinha quando há pendência ou novo gasto.
+ */
+function handleCaixinhaFlow(app, userId, text, contactRecord, referenceDateYmd) {
+  if (!app || !userId || !text) {
+    return { handled: false, reply: '' }
+  }
+
+  const cleanText = String(text).trim()
+  const todayStr = referenceDateYmd || new Date().toISOString().slice(0, 10)
+
+  // 1. VERIFICA SE EXISTE PENDÊNCIA AGUARDANDO RESPOSTA (pending_caixinha)
+  let pendingData = null
+  if (contactRecord) {
+    const rawPending = contactRecord.getString('pending_caixinha')
+    if (rawPending) {
+      try {
+        pendingData = JSON.parse(rawPending)
+      } catch (_) {}
+    }
+  }
+
+  if (
+    pendingData &&
+    Array.isArray(pendingData.candidate_budgets) &&
+    pendingData.candidate_budgets.length > 0
+  ) {
+    // Se o cliente quiser desistir ou cancelar
+    if (isConfirmationNo(cleanText) || cleanText.toLowerCase() === 'cancelar') {
+      contactRecord.set('pending_caixinha', '')
+      try {
+        app.save(contactRecord)
+      } catch (_) {}
+      return {
+        handled: true,
+        reply:
+          'Tudo bem! Cancelei o registro do gasto. Seus lançamentos não foram alterados! Se precisar de algo, só me chamar. 😊',
+      }
+    }
+
+    const cands = pendingData.candidate_budgets
+    let chosenBudget = null
+
+    // Verifica se respondeu número (1, 2, ...)
+    const numIdx = parseInt(cleanText, 10)
+    if (!isNaN(numIdx) && numIdx >= 1 && numIdx <= cands.length) {
+      chosenBudget = cands[numIdx - 1]
+    } else {
+      // Verifica se respondeu pelo nome ou sufixo da caixinha (ex: "VA", "VR", "Alimentação VA")
+      const normInput = normalizeStr(cleanText)
+      for (let i = 0; i < cands.length; i++) {
+        const cName = normalizeStr(cands[i].name)
+        if (normInput === cName || cName.includes(normInput) || normInput.includes(cName)) {
+          chosenBudget = cands[i]
+          break
+        }
+        // Testa sufixos após hífen (ex.: "Alimentação - VA" -> "VA")
+        const parts = cands[i].name.split('-').map((p) => normalizeStr(p))
+        if (parts.length > 1) {
+          const suffix = parts[parts.length - 1]
+          if (suffix && (normInput === suffix || normInput.includes(suffix))) {
+            chosenBudget = cands[i]
+            break
+          }
+        }
+      }
+    }
+
+    if (chosenBudget) {
+      // Cria a transação com a caixinha escolhida!
+      let txCol = null
+      try {
+        txCol = app.findCollectionByNameOrId('transactions')
+      } catch (_) {}
+
+      if (txCol) {
+        const newTx = new Record(txCol)
+        newTx.set('owner', userId)
+        newTx.set('amount', pendingData.amount)
+        newTx.set('description', pendingData.description)
+        newTx.set('date', pendingData.date)
+        newTx.set('category', pendingData.category_id)
+        newTx.set('type', 'despesa')
+        newTx.set('source', 'whatsapp_text')
+        newTx.set('status', 'active')
+        newTx.set('is_retroactive', pendingData.is_retroactive || false)
+        newTx.set('budget', chosenBudget.id)
+        newTx.set('message_timestamp', new Date().toISOString())
+        if (pendingData.note) {
+          newTx.set('note', pendingData.note)
+        }
+        app.save(newTx)
+      }
+
+      // Limpa a pendência no contato
+      contactRecord.set('pending_caixinha', '')
+      try {
+        app.save(contactRecord)
+      } catch (_) {}
+
+      const valFmt = formatCentsToBrl(pendingData.amount)
+      let retroPhrase = ''
+      if (pendingData.is_retroactive && pendingData.date) {
+        retroPhrase = ` (contabilizado em ${formatDatePtBr(pendingData.date)})`
+      }
+
+      return {
+        handled: true,
+        reply: `Perfeito! Registrei seu gasto de *${pendingData.description}* (${valFmt}) na caixinha *${chosenBudget.name}*${retroPhrase} ✅\n\nQualquer novo gasto, só mandar!`,
+      }
+    }
+
+    // Se respondeu algo inválido, repete a pergunta gentilmente com a lista de opções
+    let repeatList = ''
+    for (let i = 0; i < cands.length; i++) {
+      repeatList += `${getNumberEmoji(i)} ${cands[i].name}\n`
+    }
+    const valFmt = formatCentsToBrl(pendingData.amount)
+    return {
+      handled: true,
+      reply: `Não entendi qual opção você escolheu para o gasto de *${valFmt}* (${pendingData.description}).\n\nPor favor, responda apenas com o número da caixinha:\n\n${repeatList}\nOu envie "cancelar" para desconsiderar.`,
+    }
+  }
+
+  // 2. SE NÃO HÁ PENDÊNCIA, ANALISA SE A MENSAGEM É UM NOVO GASTO COM VÍNCULOS DE CAIXINHA
+  const parsedExpense = tryParseSpendingExpense(app, userId, cleanText, todayStr)
+  if (!parsedExpense) {
+    return { handled: false, reply: '' }
+  }
+
+  // Busca candidatas em category_caixinha_links
+  const candidates = getCandidateBudgetsForCategory(
+    app,
+    userId,
+    parsedExpense.categoryId,
+    parsedExpense.categoryName,
+    todayStr.slice(0, 7),
+  )
+
+  // Caso 1: MAIS DE UMA CAIXINHA CANDIDATA (>1)
+  // NÃO grava a transação ainda! Salva pendência e pergunta em qual caixinha lançar.
+  if (candidates.length > 1) {
+    if (contactRecord) {
+      contactRecord.set(
+        'pending_caixinha',
+        JSON.stringify({
+          amount: parsedExpense.amount,
+          description: parsedExpense.description,
+          category_id: parsedExpense.categoryId,
+          category_name: parsedExpense.categoryName,
+          date: parsedExpense.date,
+          is_retroactive: parsedExpense.isRetroactive,
+          candidate_budgets: candidates,
+          created_at: new Date().toISOString(),
+        }),
+      )
+      try {
+        app.save(contactRecord)
+      } catch (_) {}
+    }
+
+    let optionsList = ''
+    for (let i = 0; i < candidates.length; i++) {
+      optionsList += `${getNumberEmoji(i)} ${candidates[i].name}\n`
+    }
+    const valFmt = formatCentsToBrl(parsedExpense.amount)
+
+    return {
+      handled: true,
+      reply: `Esse gasto de ${valFmt} (${parsedExpense.description}) entra em qual caixinha?\n\n${optionsList}\nResponda com o número ou nome da caixinha! 😊`,
+    }
+  }
+
+  // Caso 2: UMA ÚNICA CAIXINHA CANDIDATA (=== 1)
+  // Grava direto com o budget preenchido e confirma informando a caixinha!
+  if (candidates.length === 1) {
+    const singleBudget = candidates[0]
+    let txCol = null
+    try {
+      txCol = app.findCollectionByNameOrId('transactions')
+    } catch (_) {}
+
+    if (txCol) {
+      const newTx = new Record(txCol)
+      newTx.set('owner', userId)
+      newTx.set('amount', parsedExpense.amount)
+      newTx.set('description', parsedExpense.description)
+      newTx.set('date', parsedExpense.date)
+      newTx.set('category', parsedExpense.categoryId)
+      newTx.set('type', 'despesa')
+      newTx.set('source', 'whatsapp_text')
+      newTx.set('status', 'active')
+      newTx.set('is_retroactive', parsedExpense.isRetroactive || false)
+      newTx.set('budget', singleBudget.id)
+      newTx.set('message_timestamp', new Date().toISOString())
+      app.save(newTx)
+    }
+
+    const valFmt = formatCentsToBrl(parsedExpense.amount)
+    let retroPhrase = ''
+    if (parsedExpense.isRetroactive && parsedExpense.date) {
+      retroPhrase = ` (contabilizado em ${formatDatePtBr(parsedExpense.date)})`
+    }
+
+    return {
+      handled: true,
+      reply: `Registrei seu gasto de *${parsedExpense.description}* (${valFmt}) na caixinha *${singleBudget.name}*${retroPhrase} ✅`,
+    }
+  }
+
+  // Caso 3: ZERO VÍNCULOS PARAMETRIZADOS (=== 0)
+  // Retorna handled: false para que o fluxo normal da IA (com fallback) continue operando!
+  return { handled: false, reply: '' }
+}
+
 // Exporta tanto em module.exports quanto no globalThis (PocketBase JSVM)
 const reliabilityHelperExports = {
   OFF_TOPIC_GUARDRAIL_REPLY,
@@ -756,6 +1246,7 @@ const reliabilityHelperExports = {
   formatDatePtBr,
   isCancellationIntent,
   handleCancellationFlow,
+  handleCaixinhaFlow,
   formatCentsToBrl,
 }
 

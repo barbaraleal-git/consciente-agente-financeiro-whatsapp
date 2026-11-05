@@ -604,17 +604,54 @@ Caso envie uma mensagem no WhatsApp e não receba resposta em até 30 segundos:
      - Clique em **Salvar Caixinha**.
    - Em seguida, edite a caixinha _"Alimentação - VR"_, vá na aba **"Categorias Vinculadas"** e marque também _"Alimentação Essencial"_. Salve.
 
-3. **Verificação de Soma Dupla Parametrizada**:
-   - Lance ou localize uma transação ativa com a categoria _"Alimentação Essencial"_ no valor de R$ 100,00.
-   - Observe os totais apurados:
-     - A caixinha _"Alimentação - VA"_ tem seu consumo acrescido dos R$ 100,00.
-     - A caixinha _"Alimentação - VR"_ também tem seu consumo acrescido dos R$ 100,00.
-     - A lista expansível de lançamentos vinculados em cada caixinha exibe a transação com data, descrição e valor.
-
-4. **Verificação no WhatsApp**:
-   - Envie _"como estão minhas caixinhas"_ ou solicite o resumo visual no WhatsApp.
-   - O resumo gerado pelo helper (`caixinhas_summary_helper.js`) computa exatamente os mesmos valores apurados no painel web, somando a transação nas caixinhas parametrizadas.
-
-5. **Remoção de Vínculo e Isolamento de Cancelados**:
-   - Desmarque a categoria no modal de edição da caixinha: o valor deixa de somar imediatamente.
+3. **Verificação de Vínculos e Isolamento de Cancelados**:
+   - Desmarque a categoria no modal de edição da caixinha: o vínculo deixa de existir imediatamente.
    - Lançamentos com `status === 'cancelled'` ou `status === 'deleted'` continuam visíveis no extrato mas **NUNCA** entram em nenhuma soma de caixinha.
+
+---
+
+## AD) Escolha Obrigatória de Caixinha e Não Duplicação de Gastos (Item 29 / v0.0.56)
+
+1. **Objetivo do Teste**:
+   - Garantir que cada transação conte em no máximo UMA única caixinha, eliminando qualquer duplicação de saldo e respeitando a escolha do cliente.
+
+2. **Cenário 1 — WhatsApp com Categoria Vinculada a Múltiplas Caixinhas**:
+   - Certifique-se de que a categoria _"Alimentação Essencial"_ possui vínculos com duas ou mais caixinhas (ex.: _"Alimentação VA"_ e _"Alimentação VR"_).
+   - No WhatsApp, envie um gasto: _"Almoço 190 Alimentação Essencial"_.
+   - **Comportamento Esperado**:
+     - A transação **NÃO** é gravada imediatamente no banco.
+     - O contato fica com pendência salva (`pending_caixinha`).
+     - A IA responde perguntando em qual caixinha alocar com lista numerada e amigável:
+       `Esse gasto de R$ 190,00 entra em qual caixinha?`
+       `1️⃣ Alimentação VA`
+       `2️⃣ Alimentação VR`
+       `Responda com o número ou nome da caixinha.`
+   - Responda _"1"_ (ou _"Alimentação VA"_):
+     - A IA grava a transação com `budget` apontando para a caixinha escolhida.
+     - A IA confirma: `Pronto! Registrei seu gasto de R$ 190,00 na caixinha 🍽️ Alimentação VA!`
+     - No resumo visual das caixinhas e no App, o valor de R$ 190,00 aparece **somente** na caixinha _"Alimentação VA"_, sem duplicar na _"Alimentação VR"_.
+   - Se o cliente responder algo inválido (ex.: _"batata"_), a IA repete educadamente a pergunta listando as opções disponíveis.
+
+3. **Cenário 2 — WhatsApp com Categoria Vinculada a Uma Única Caixinha**:
+   - Configure a categoria _"Transporte"_ com vínculo em apenas uma caixinha: _"Transporte Diário"_.
+   - No WhatsApp, envie: _"Uber 25 Transporte"_.
+   - **Comportamento Esperado**:
+     - A IA grava a transação diretamente com `budget` preenchido para _"Transporte Diário"_.
+     - A confirmação informa expressamente a caixinha: `Anotado! Uber de R$ 25,00 na caixinha 🚗 Transporte Diário.`
+
+4. **Cenário 3 — Lançamento Manual no App (TransactionModal)**:
+   - Abra o painel web e clique em **"Novo Lançamento"**.
+   - Digite valor, descrição e selecione a categoria _"Alimentação Essencial"_ (que possui 2 vínculos).
+   - **Comportamento Esperado**:
+     - O modal exibe imediatamente um seletor obrigatório: _"Caixinha (obrigatório — categoria vinculada a 2 caixinhas)"_.
+     - O botão **"Salvar Lançamento"** fica **desabilitado** até que o usuário clique em uma das caixinhas candidatas.
+     - Selecione _"Alimentação VR"_ e clique em Salvar: a transação é criada com o campo `budget` preenchido.
+     - A despesa soma exclusivamente na caixinha _"Alimentação VR"_.
+   - Ao selecionar uma categoria com vínculo único, a caixinha correspondente é pré-selecionada e um aviso visual indica o direcionamento automático.
+
+5. **Cenário 4 — Cliente Sem Vínculos Parametrizados (Fallback Retrocompatível)**:
+   - Para um cliente que não configurou nenhum vínculo na coleção `category_caixinha_links`, envie ou lance um gasto normalmente.
+   - O matcher continua aplicando o fallback histórico (matching semântico por categoria / anotação / sufixos) resolvendo para uma única caixinha estável sem quebrar nem exigir fluxo adicional.
+
+6. **Cenário 5 — Isolamento Estrito de Transações Canceladas**:
+   - Transações com status `cancelled` ou `deleted` continuam excluídas de qualquer soma de caixinha, dashboard ou resumo de WhatsApp.

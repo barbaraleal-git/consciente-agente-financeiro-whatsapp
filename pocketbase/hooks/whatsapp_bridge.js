@@ -1035,6 +1035,36 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               }
             }
 
+            // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha (Item 29 / v0.0.56)
+            // Se há pendência de escolha de caixinha (pending_caixinha) ou novo gasto em categoria
+            // com 1 ou mais caixinhas vinculadas (category_caixinha_links):
+            if (
+              !agentReply &&
+              isRegistered &&
+              textContent &&
+              reliabilityHelper &&
+              typeof reliabilityHelper.handleCaixinhaFlow === 'function'
+            ) {
+              try {
+                const caixinhaRes = reliabilityHelper.handleCaixinhaFlow(
+                  $app,
+                  activeUserId,
+                  textContent,
+                  contact,
+                  todayStr,
+                )
+                if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
+                  agentReply = caixinhaRes.reply
+                  console.log(
+                    '[whatsapp_bridge] Fluxo de escolha de caixinha executado com resposta:',
+                    agentReply,
+                  )
+                }
+              } catch (cxFlowErr) {
+                console.log('[whatsapp_bridge] Erro no fluxo de escolha de caixinha:', cxFlowErr)
+              }
+            }
+
             // 3. Detecção e Ajuste de Data Retroativa (Item 28)
             let retroactiveInfo = null
             if (

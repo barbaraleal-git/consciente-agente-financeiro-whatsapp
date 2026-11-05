@@ -25,11 +25,30 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.56',
+    date: '05/11/2026',
+    title:
+      'Escolha Obrigatória de Caixinha no WhatsApp e no App (Regra de Não Duplicação de Gastos)',
+    tag: 'Atual',
+    highlights: [
+      'Regra de Ouro Atendida: Cada transação ativa soma em exatamente UMA única caixinha, eliminando duplicidade no histórico e em novos gastos.',
+      'Fluxo de Desambiguação no WhatsApp: Quando a categoria do gasto possui múltiplos vínculos de caixinhas (ex.: Alimentação VA e VR), a IA suspende o registro imediato, salva a pendência em pending_caixinha e pergunta ao cliente em lista numerada qual caixinha usar. Ao responder, a transação é criada com o campo budget vinculado e confirmada.',
+      'Vínculo Único Direto: Categorias com vínculo único gravam diretamente o budget e informam a caixinha na confirmação da mensagem.',
+      'Seleção Obrigatória no App (TransactionModal): Ao lançar despesa manual numa categoria com múltiplas caixinhas candidatas, o modal exige a seleção da caixinha e mantém o botão salvar desabilitado até a escolha.',
+      'Fallback Estável Retrocompatível: Clientes sem vínculos parametrizados mantêm o matching histórico sem quebra, e transações canceladas continuam estritamente excluídas de qualquer soma.',
+    ],
+    details: [
+      'Atualizados pocketbase/hooks/reliability_helper.js e pocketbase/hooks/whatsapp_bridge.js para gerenciar pending_caixinha e desambiguação conversacional.',
+      'Atualizado src/components/TransactionModal.tsx para carregar categoryCaixinhaLinksService e exigir caixinha em categorias ambíguas.',
+      'docs/TESTES_REGRESSIVOS.md (novo cenário AD), docs/BACKLOG.md e src/data/docsContent.ts atualizados.',
+    ],
+  },
+  {
     version: '0.0.41',
     date: '03/11/2026',
     title:
       'Correção da Causa Raiz do Upload de Foto de Perfil WhatsApp na Meta (Item 36) e Compatibilidade Base64 no JSVM',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Causa Raiz Identificada e Corrigida (Item 36): No ambiente PocketBase JSVM (Goja), e.findUploadedFile lançava silenciosamente ou retornava indefinido para multipart FormData do browser, deixando o buffer de bytes vazio e disparando a mensagem 400 antes da Meta. O serviço frontend (finance.ts) foi atualizado para serializar o arquivo em Base64 e enviar via JSON tipado (image_base64), com fallback robusto no backend para e.findUploadedFiles() com reader.read.',
       'Avanço de Sessão Resumable Upload na Meta: o hook whatsapp_bridge.js agora descobre dinamicamente o App ID via /app e /debug_token com fallback para o Phone Number ID e WABA ID, chamando o Resumable Upload oficial e repassando o profile_picture_handle gerado para o whatsapp_business_profile.',

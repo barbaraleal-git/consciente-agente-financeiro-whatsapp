@@ -1119,7 +1119,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
             if (isCaixinhasOverview) {
               console.log(
-                `[whatsapp_bridge] Intenção de visão geral de caixinhas interceptada determinística para usuário ${activeUserId}. Montando resumo direto da base (SEM IA)...`,
+                `[whatsapp_bridge] Interceptação determinística de resumo para usuário ${activeUserId}. Montando resumo DIRETO da base (SEM IA)...`,
               )
               try {
                 const summary = caixinhasHelper.buildCaixinhasSummaryForUser(
@@ -1130,7 +1130,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 if (summary) {
                   agentReply = summary
                   console.log(
-                    `[whatsapp_bridge] Resumo visual determinístico montado com sucesso (tamanho=${agentReply.length}).`,
+                    `[whatsapp_bridge] Resumo visual determinístico montado com sucesso (tamanho=${agentReply.length}). Enviando diretamente pela Meta Cloud API.`,
                   )
                 } else {
                   agentReply =
@@ -2239,7 +2239,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
       if (isCaixinhasOverview) {
         console.log(
-          `[whatsapp_bridge] [simulate] Intenção de visão geral de caixinhas detectada determinística para usuário ${activeUserId}. Montando resumo direto da base (SEM IA)...`,
+          `[whatsapp_bridge] [simulate] Interceptação determinística de resumo para usuário ${activeUserId}. Montando resumo DIRETO da base (SEM IA)...`,
         )
         try {
           const summary = caixinhasHelperSim.buildCaixinhasSummaryForUser(

@@ -837,4 +837,20 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 5. **Cenário 4 — Resiliência com Mensagem Honesta de Erro**:
    - Em caso improvável de falha de conexão com a base na montagem do resumo, o sistema retorna uma mensagem honesta e transparente convidando a consultar o app, JAMAIS caindo em fallback para o \`$ai.agent\` gerar números fictícios.
+
+6. **Cenário 5 — Casos de Borda da Interceptação (AH-5)**:
+   - Envie \`resumo\`, \`Resumo\`, \`RESUMO\`, \`resumo!\`, \`meu resumo\`, \`visão geral\`, \`quais são minhas caixinhas\`, \`como estão minhas caixinhas\` e \`ver resumo\`.
+   - Envie também mensagens com valores monetários que NÃO são resumo (ex.: \`almoço 35\`, \`uber 20 reais\`): elas devem continuar indo para a IA como lançamento.
+   - **Comportamento Esperado**:
+     - TODAS as variantes de pedido de resumo caem na interceptação determinística (log \`[whatsapp_bridge] Interceptação determinística de resumo\`), sem nenhum \`Chamando $ai.agent\`.
+     - Lançamentos com valores continuam fluindo normalmente para o agente (zero regressão).
+     - Mensagens não-financeiras ("oi", "obrigada") continuam com o fallback acolhedor do agente.
+
+7. **Cenário 6 — Idempotência e Zero Duplicidade no Resumo (AH-6)**:
+   - Solicite "resumo" duas vezes seguidas e confira os valores.
+   - **Comportamento Esperado**:
+     - Cada transação ativa é somada em exatamente UMA caixinha (campo \`budget\` persistido + fallback determinístico por vínculo/desempate textual).
+     - Transações \`cancelled\` nunca entram em nenhuma soma.
+     - Os percentuais exibidos (ex.: VA 21%, VR 16%) batem com o gasto/teto da tela \`/budgets\`.
+     - Os totais do rodapé ("Total Gasto no Mês", "Total dos Tetos", "Saldo Restante") são iguais à soma exata dos itens listados — nenhuma aritmética divergente (regressão do R$ 5.450,00 é impossível por construção).
 `

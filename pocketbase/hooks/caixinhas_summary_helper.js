@@ -207,11 +207,22 @@ function isCaixinhasOverviewIntent(text) {
     /resumo\s+dos\s+orcamentos/,
     /mostrar\s+caixinhas/,
     /todas\s+as\s+caixinhas/,
+    /resumo\s+(por\s+favor|rapido|agora|completo|detalhado)/,
+    /meus\s+tetos/,
+    /teto\s+d(as|e)\s+(minhas\s+)?caixinhas/,
+    /(gastos?|gasto)\s+por\s+caixinha/,
+    /como\s+est[aã]o?\s+(as\s+)?minhas\s+caixinhas/,
+    /quais\s+caixinhas/,
+    /estado\s+d(as|e)\s+caixinhas/,
   ]
 
   for (let i = 0; i < patterns.length; i++) {
     if (patterns[i].test(t)) return true
   }
+
+  // Qualquer ocorrência de "resumo" como palavra isolada (com pontuação, emoji ou
+  // cercada de outras palavras): ex. "pode me mandar um resumo?", "Resumo!", "RESUMO"
+  if (/(^|[^a-z0-9])resumo([^a-z0-9]|$)/.test(t)) return true
 
   // Casos curtos: "resumo", "caixinhas", "caixinha", "orcamentos", "saldo"
   if (
@@ -271,10 +282,28 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     console.log('[caixinhas_summary] Erro ao carregar budgets:', bErr)
   }
 
-  // Se não tiver budget no mês atual, busca os budgets mais recentes do usuário para reaproveitar os tetos definidos
+  // Se não tiver budget no mês atual, busca os budgets mais recentes do usuário para reaproveitar os tetos definidos.
+  // Deduplica por nome: mantém apenas a caixinha do mês mais recente (evita caixinha duplicada entre meses).
   if (budgets.length === 0) {
     try {
-      budgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-month,-created', 100, 0)
+      const recent = app.findRecordsByFilter(
+        'budgets',
+        `owner = '${userId}'`,
+        '-month,-created',
+        100,
+        0,
+      )
+      const seenNames = {}
+      const deduped = []
+      for (let r = 0; r < recent.length; r++) {
+        const nm = String(recent[r].getString('name') || '')
+          .toLowerCase()
+          .trim()
+        if (!nm || seenNames[nm]) continue
+        seenNames[nm] = true
+        deduped.push(recent[r])
+      }
+      budgets = deduped
     } catch (_) {}
   }
 
@@ -547,6 +576,15 @@ function buildCaixinhasSummaryForUser(app, userId, targetMonthStr) {
     })
   }
 
+  // LOG DE AUDITORIA DETERMINÍSTICA (v0.0.62): totais calculados ESTRITAMENTE da
+  // base, somando apenas os itens que serão listados na mensagem.
+  try {
+    const auditNames = list.map((i) => i.name).join(' | ')
+    console.log(
+      `[caixinhas_summary] Resumo determinístico userId=${userId} mes=${monthStr} caixinhas=${list.length} [${auditNames}] gasto_total=${totalSpentCents} tetos_total=${totalBudgetCents}`,
+    )
+  } catch (_) {}
+
   // Ordena: estouradas primeiro (>= 100%), depois atenção (>= 80%), depois pelo maior valor gasto
   list.sort((a, b) => {
     if (a.percent >= 100 && b.percent < 100) return -1
@@ -633,7 +671,24 @@ function buildCaixinhasContextPrompt(app, userId, targetMonthStr) {
 
   if (budgets.length === 0) {
     try {
-      budgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-month,-created', 100, 0)
+      const recentCtx = app.findRecordsByFilter(
+        'budgets',
+        `owner = '${userId}'`,
+        '-month,-created',
+        100,
+        0,
+      )
+      const seenCtxNames = {}
+      const dedupedCtx = []
+      for (let r = 0; r < recentCtx.length; r++) {
+        const nm = String(recentCtx[r].getString('name') || '')
+          .toLowerCase()
+          .trim()
+        if (!nm || seenCtxNames[nm]) continue
+        seenCtxNames[nm] = true
+        dedupedCtx.push(recentCtx[r])
+      }
+      budgets = dedupedCtx
     } catch (_) {}
   }
 
@@ -683,7 +738,9 @@ function buildCaixinhasContextPrompt(app, userId, targetMonthStr) {
     items.join('\n') +
     `\nREGRAS CRÍTICAS E OBRIGATÓRIAS:\n` +
     `1. Esta é a ÚNICA lista de caixinhas que existem hoje na base. Qualquer caixinha não listada acima foi EXCLUÍDA pelo usuário e é TERMINANTEMENTE PROIBIDO citá-la, sugeri-la ou ressuscitá-la.\n` +
-    `2. Resumos visuais e cálculos oficiais de caixinhas são gerados automaticamente pelo sistema via comando "resumo". NUNCA gere números de caixinhas, totais ou saldos por conta própria.]`
+    `2. Resumos visuais e cálculos oficiais de caixinhas são gerados automaticamente pelo sistema via comando "resumo". NUNCA gere números de caixinhas, totais ou saldos por conta própria.\n` +
+    `3. Esta lista é recalculada e reenviada A CADA MENSAGEM direto da base de dados. NUNCA cite caixinhas mencionadas em mensagens anteriores da conversa que não estejam na lista acima — caixinhas excluídas pelo usuário deixaram de existir e ressuscitá-las é um erro grave.\n` +
+    `4. Se o usuário pedir resumo, visão geral ou estado das caixinhas, responda que o resumo oficial é enviado automaticamente pelo sistema com os dados atualizados — NUNCA monte a lista de caixinhas por conta própria.]`
   )
 }
 

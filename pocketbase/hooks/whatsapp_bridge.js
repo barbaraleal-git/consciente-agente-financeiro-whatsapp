@@ -822,23 +822,62 @@ function inlineBuildCaixinhasContextPrompt(app, userId, targetMonthStr) {
   )
 }
 
+// REGISTRO GLOBAL SEM REQUIRE: expõe o motor determinístico de resumo via
+// globalThis para que os callbacks (webhook, simulate, diag-summary) o resolvam
+// em runtime. NENHUM require envolvido — o require de módulos de hook falha
+// neste runtime com "GoError: Invalid module" (top-level E dentro do callback).
+// O código acima é executado no boot do arquivo (mesmo escopo dos routerAdd,
+// que comprovadamente rodam no boot), portanto o registro acontece sempre.
+if (typeof globalThis !== 'undefined') {
+  globalThis.__caixinhasInlineEngine = {
+    isCaixinhasOverviewIntent: inlineIsCaixinhasOverviewIntent,
+    buildCaixinhasSummaryForUser: inlineBuildCaixinhasSummaryForUser,
+    buildCaixinhasContextPrompt: inlineBuildCaixinhasContextPrompt,
+  }
+}
+
 // ----------------------------------------------------
 // 2. Webhook POST - Recebe mensagens reais do WhatsApp da Meta
 // ----------------------------------------------------
 routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
   try {
-    // Módulo determinístico de caixinhas (carregado DENTRO do callback — declarações
-    // top-level não são visíveis dentro de callbacks na JSVM do PocketBase).
-    // Protegido: se o require falhar em runtime, o app NUNCA derruba o webhook.
-    let summaryMod = null
-    try {
-      summaryMod = require('./whatsapp_bridge_inline_summary.js')
-    } catch (modErr) {
+    // MOTOR DETERMINÍSTICO DE RESUMO — SEM REQUIRE (padrão comprovado neste
+    // runtime: require de módulos de hook falha com "GoError: Invalid module",
+    // no top-level E dentro do callback). O motor é resolvido em runtime a
+    // partir de globalThis.__caixinhasInlineEngine (registrado no boot deste
+    // arquivo) ou das próprias funções inline do arquivo (closure do hook).
+    const resolveCaixinhasEngine = function () {
+      try {
+        if (
+          typeof globalThis !== 'undefined' &&
+          globalThis.__caixinhasInlineEngine &&
+          typeof globalThis.__caixinhasInlineEngine.isCaixinhasOverviewIntent === 'function' &&
+          typeof globalThis.__caixinhasInlineEngine.buildCaixinhasSummaryForUser === 'function' &&
+          typeof globalThis.__caixinhasInlineEngine.buildCaixinhasContextPrompt === 'function'
+        ) {
+          return globalThis.__caixinhasInlineEngine
+        }
+      } catch (_) {}
+      try {
+        if (
+          typeof inlineIsCaixinhasOverviewIntent === 'function' &&
+          typeof inlineBuildCaixinhasSummaryForUser === 'function' &&
+          typeof inlineBuildCaixinhasContextPrompt === 'function'
+        ) {
+          return {
+            isCaixinhasOverviewIntent: inlineIsCaixinhasOverviewIntent,
+            buildCaixinhasSummaryForUser: inlineBuildCaixinhasSummaryForUser,
+            buildCaixinhasContextPrompt: inlineBuildCaixinhasContextPrompt,
+          }
+        }
+      } catch (_) {}
+      return null
+    }
+    const caixinhasEngine = resolveCaixinhasEngine()
+    if (!caixinhasEngine) {
       console.error(
-        '[whatsapp_bridge] FALHA ao carregar whatsapp_bridge_inline_summary via require:',
-        modErr,
+        '[whatsapp_bridge] ATENÇÃO: motor determinístico de resumo INDISPONÍVEL (sem require). Resumo responderá mensagem honesta de instabilidade — NUNCA via IA.',
       )
-      summaryMod = null
     }
     const normalizeDigits = function (raw) {
       if (!raw) return ''
@@ -1811,15 +1850,15 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             // Verificação de intenção padronizada: Resumo Visual das Caixinhas
             // REGRA INVIOLÁVEL: O resumo de caixinhas no WhatsApp é 100% DETERMINÍSTICO da base de dados.
             // NUNCA passa pelo $ai.agent (evita alucinação de caixinhas deletadas ou números inconsistentes).
-            // Implementação via módulo interno whatsapp_bridge_inline_summary.js, carregado no TOPO
-            // do callback (require dentro do callback é suportado; o problema era o escopo de
-            // declarações top-level referenciadas dentro de callbacks). Se o require falhar,
-            // fallback determinístico inline abaixo (mesma lógica, versão enxuta).
+            // Motor resolvido SEM REQUIRE via caixinhasEngine (globalThis/closure do hook).
             let isCaixinhasOverview = false
             if (isRegistered && textContent) {
               try {
-                if (summaryMod && typeof summaryMod.isCaixinhasOverviewIntent === 'function') {
-                  isCaixinhasOverview = summaryMod.isCaixinhasOverviewIntent(textContent)
+                if (
+                  caixinhasEngine &&
+                  typeof caixinhasEngine.isCaixinhasOverviewIntent === 'function'
+                ) {
+                  isCaixinhasOverview = caixinhasEngine.isCaixinhasOverviewIntent(textContent)
                 }
               } catch (intentErr) {
                 console.log('[whatsapp_bridge] Erro na checagem de intenção de resumo:', intentErr)
@@ -1831,12 +1870,10 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                 `[whatsapp_bridge] Interceptação determinística de resumo (inline) para usuário ${activeUserId}. Montando resumo DIRETO da base (SEM IA)...`,
               )
               try {
-                if (!summaryMod) {
-                  throw new Error(
-                    'módulo de resumo determinístico não carregado (whatsapp_bridge_inline_summary)',
-                  )
+                if (!caixinhasEngine) {
+                  throw new Error('motor determinístico de resumo não resolvido (sem require)')
                 }
-                const summary = summaryMod.buildCaixinhasSummaryForUser(
+                const summary = caixinhasEngine.buildCaixinhasSummaryForUser(
                   $app,
                   activeUserId,
                   todayStr.slice(0, 7),
@@ -1877,11 +1914,14 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               // Para mensagens que seguem para o $ai.agent, injeta no prompt a lista fresca
               // das caixinhas ativas lidas da base de dados neste exato momento.
               // Instrução explícita: PROIBIDO inventar/citar caixinha fora da lista.
-              // Via módulo interno whatsapp_bridge_inline_summary.js (require no topo do callback).
+              // Motor determinístico SEM REQUIRE via caixinhasEngine (globalThis/closure).
               if (isRegistered) {
                 try {
-                  if (summaryMod && typeof summaryMod.buildCaixinhasContextPrompt === 'function') {
-                    const caixinhasContext = summaryMod.buildCaixinhasContextPrompt(
+                  if (
+                    caixinhasEngine &&
+                    typeof caixinhasEngine.buildCaixinhasContextPrompt === 'function'
+                  ) {
+                    const caixinhasContext = caixinhasEngine.buildCaixinhasContextPrompt(
                       $app,
                       activeUserId,
                       todayStr.slice(0, 7),
@@ -1891,7 +1931,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                     }
                   } else {
                     console.log(
-                      '[whatsapp_bridge] Contexto anti-alucinação indisponível (módulo de resumo não carregado).',
+                      '[whatsapp_bridge] Contexto anti-alucinação indisponível (motor determinístico não resolvido — sem require).',
                     )
                   }
                 } catch (ctxErr) {
@@ -2933,27 +2973,50 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
         }
       }
 
-      // Verificação de intenção padronizada: Resumo Visual das Caixinhas no simulate
-      // REGRA INVIOLÁVEL: 100% determinístico, nunca passa pelo agente.
-      // Implementação via módulo interno whatsapp_bridge_inline_summary.js.
-      let simulateSummaryMod = null
-      try {
-        simulateSummaryMod = require('./whatsapp_bridge_inline_summary.js')
-      } catch (simModErr) {
+      // MOTOR DETERMINÍSTICO DE RESUMO no simulate — SEM REQUIRE (padrão
+      // comprovado: require de módulos de hook falha com "GoError: Invalid
+      // module"). Resolução idêntica à do webhook.
+      const resolveCaixinhasEngineSim = function () {
+        try {
+          if (
+            typeof globalThis !== 'undefined' &&
+            globalThis.__caixinhasInlineEngine &&
+            typeof globalThis.__caixinhasInlineEngine.isCaixinhasOverviewIntent === 'function' &&
+            typeof globalThis.__caixinhasInlineEngine.buildCaixinhasSummaryForUser === 'function' &&
+            typeof globalThis.__caixinhasInlineEngine.buildCaixinhasContextPrompt === 'function'
+          ) {
+            return globalThis.__caixinhasInlineEngine
+          }
+        } catch (_) {}
+        try {
+          if (
+            typeof inlineIsCaixinhasOverviewIntent === 'function' &&
+            typeof inlineBuildCaixinhasSummaryForUser === 'function' &&
+            typeof inlineBuildCaixinhasContextPrompt === 'function'
+          ) {
+            return {
+              isCaixinhasOverviewIntent: inlineIsCaixinhasOverviewIntent,
+              buildCaixinhasSummaryForUser: inlineBuildCaixinhasSummaryForUser,
+              buildCaixinhasContextPrompt: inlineBuildCaixinhasContextPrompt,
+            }
+          }
+        } catch (_) {}
+        return null
+      }
+      const caixinhasEngineSim = resolveCaixinhasEngineSim()
+      if (!caixinhasEngineSim) {
         console.error(
-          '[whatsapp_bridge] [simulate] FALHA ao carregar whatsapp_bridge_inline_summary via require:',
-          simModErr,
+          '[whatsapp_bridge] [simulate] ATENÇÃO: motor determinístico de resumo INDISPONÍVEL (sem require). Resumo responderá mensagem honesta de instabilidade — NUNCA via IA.',
         )
-        simulateSummaryMod = null
       }
       let isCaixinhasOverview = false
       if (isRegistered && message) {
         try {
           if (
-            simulateSummaryMod &&
-            typeof simulateSummaryMod.isCaixinhasOverviewIntent === 'function'
+            caixinhasEngineSim &&
+            typeof caixinhasEngineSim.isCaixinhasOverviewIntent === 'function'
           ) {
-            isCaixinhasOverview = simulateSummaryMod.isCaixinhasOverviewIntent(message)
+            isCaixinhasOverview = caixinhasEngineSim.isCaixinhasOverviewIntent(message)
           }
         } catch (intentErr) {
           console.log(
@@ -2968,12 +3031,10 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
           `[whatsapp_bridge] [simulate] Interceptação determinística de resumo (inline) para usuário ${activeUserId}. Montando resumo DIRETO da base (SEM IA)...`,
         )
         try {
-          if (!simulateSummaryMod) {
-            throw new Error(
-              'módulo de resumo determinístico não carregado (whatsapp_bridge_inline_summary)',
-            )
+          if (!caixinhasEngineSim) {
+            throw new Error('motor determinístico de resumo não resolvido (sem require)')
           }
-          const summary = simulateSummaryMod.buildCaixinhasSummaryForUser(
+          const summary = caixinhasEngineSim.buildCaixinhasSummaryForUser(
             $app,
             activeUserId,
             todayStr.slice(0, 7),
@@ -3009,10 +3070,16 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
       if (activeUserId && !agentReply) {
         // INJEÇÃO DE CONTEXTO DETERMINÍSTICO DE CAIXINHAS ATIVAS (Anti-alucinação) no simulate:
-        // Via módulo interno whatsapp_bridge_inline_summary.js.
+        // Motor determinístico SEM REQUIRE via caixinhasEngineSim (globalThis/closure).
         if (isRegistered) {
           try {
-            const caixinhasContext = simulateSummaryMod.buildCaixinhasContextPrompt(
+            if (
+              !caixinhasEngineSim ||
+              typeof caixinhasEngineSim.buildCaixinhasContextPrompt !== 'function'
+            ) {
+              throw new Error('motor determinístico de contexto não resolvido (sem require)')
+            }
+            const caixinhasContext = caixinhasEngineSim.buildCaixinhasContextPrompt(
               $app,
               activeUserId,
               todayStr.slice(0, 7),
@@ -3464,21 +3531,52 @@ routerAdd('GET', '/backend/v1/whatsapp/diag-summary', (e) => {
     const result = {
       module_loaded: false,
       module_error: '',
+      module_source: 'globalthis_or_inline_no_require',
       summary_preview: '',
       summary_error: '',
       active_user_id: '',
     }
 
+    // Motor determinístico SEM REQUIRE (mesma resolução do webhook/simulate):
+    // valida o carregamento e a prévia do resumo direto da base.
+    const resolveCaixinhasEngineDiag = function () {
+      try {
+        if (
+          typeof globalThis !== 'undefined' &&
+          globalThis.__caixinhasInlineEngine &&
+          typeof globalThis.__caixinhasInlineEngine.isCaixinhasOverviewIntent === 'function' &&
+          typeof globalThis.__caixinhasInlineEngine.buildCaixinhasSummaryForUser === 'function' &&
+          typeof globalThis.__caixinhasInlineEngine.buildCaixinhasContextPrompt === 'function'
+        ) {
+          return globalThis.__caixinhasInlineEngine
+        }
+      } catch (_) {}
+      try {
+        if (
+          typeof inlineIsCaixinhasOverviewIntent === 'function' &&
+          typeof inlineBuildCaixinhasSummaryForUser === 'function' &&
+          typeof inlineBuildCaixinhasContextPrompt === 'function'
+        ) {
+          return {
+            isCaixinhasOverviewIntent: inlineIsCaixinhasOverviewIntent,
+            buildCaixinhasSummaryForUser: inlineBuildCaixinhasSummaryForUser,
+            buildCaixinhasContextPrompt: inlineBuildCaixinhasContextPrompt,
+          }
+        }
+      } catch (_) {}
+      return null
+    }
+
     try {
-      const summaryMod = require('./whatsapp_bridge_inline_summary.js')
+      const engineDiag = resolveCaixinhasEngineDiag()
       result.module_loaded =
-        !!summaryMod && typeof summaryMod.buildCaixinhasSummaryForUser === 'function'
-      if (summaryMod && typeof summaryMod.isCaixinhasOverviewIntent === 'function') {
-        result.intent_resumo = summaryMod.isCaixinhasOverviewIntent('Resumo')
-        result.intent_visao_geral = summaryMod.isCaixinhasOverviewIntent(
+        !!engineDiag && typeof engineDiag.buildCaixinhasSummaryForUser === 'function'
+      if (engineDiag && typeof engineDiag.isCaixinhasOverviewIntent === 'function') {
+        result.intent_resumo = engineDiag.isCaixinhasOverviewIntent('Resumo')
+        result.intent_visao_geral = engineDiag.isCaixinhasOverviewIntent(
           'Me envie uma visão geral das minhas caixinhas',
         )
-        result.intent_negativo = summaryMod.isCaixinhasOverviewIntent('Gastei 50 reais no mercado')
+        result.intent_negativo = engineDiag.isCaixinhasOverviewIntent('Gastei 50 reais no mercado')
       }
       if (result.module_loaded) {
         let activeUserId = ''
@@ -3495,11 +3593,11 @@ routerAdd('GET', '/backend/v1/whatsapp/diag-summary', (e) => {
         result.active_user_id = activeUserId
         const now = new Date()
         const monthStr = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2)
-        const summary = summaryMod.buildCaixinhasSummaryForUser($app, activeUserId, monthStr)
+        const summary = engineDiag.buildCaixinhasSummaryForUser($app, activeUserId, monthStr)
         result.summary_preview = summary || ''
         result.summary_error = summary ? '' : 'resumo vazio'
-      } else {
-        result.summary_error = 'módulo sem buildCaixinhasSummaryForUser'
+      } else if (!result.module_error) {
+        result.summary_error = 'motor determinístico não resolvido (sem require)'
       }
     } catch (modErr) {
       result.module_error = String(modErr)

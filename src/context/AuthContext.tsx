@@ -9,6 +9,13 @@ export interface AuthUser extends RecordModel {
   phone?: string
   onboarding_completed?: boolean
   role?: 'client' | 'admin'
+  full_name?: string
+  cpf?: string
+  birth_date?: string
+  subscription_status?: 'trial' | 'active' | 'carencia' | 'bloqueado' | 'cancelado'
+  subscription_plan?: 'mensal' | 'anual'
+  subscription_expires_at?: string
+  carencia_until?: string
 }
 
 interface AuthContextType {
@@ -17,7 +24,13 @@ interface AuthContextType {
   isLoading: boolean
   isAuthenticated: boolean
   login: (email: string, pass: string) => Promise<void>
-  register: (name: string, email: string, pass: string, phone?: string) => Promise<void>
+  register: (
+    name: string,
+    email: string,
+    pass: string,
+    phone?: string,
+    extraFields?: Record<string, unknown>,
+  ) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
   completeOnboarding: () => Promise<void>
@@ -80,7 +93,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(authData.token)
   }
 
-  const register = async (name: string, email: string, pass: string, phone?: string) => {
+  const register = async (
+    name: string,
+    email: string,
+    pass: string,
+    phone?: string,
+    extraFields?: Record<string, unknown>,
+  ) => {
     // Garante que não haja sessão residual antes de registrar nova conta
     pb.authStore.clear()
     setUser(null)
@@ -95,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       phone: cleanPhone,
       password: pass,
       passwordConfirm: pass,
+      ...(extraFields || {}),
     })
     // Request verification email
     try {

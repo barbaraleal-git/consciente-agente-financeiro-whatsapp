@@ -790,3 +790,227 @@ export const adminService = {
     })
   },
 }
+
+export interface CompanyLegalInfo {
+  id?: string
+  company_name: string
+  trade_name: string
+  cnpj: string
+  address_full: string
+  email_contact: string
+  support_phone_or_bot?: string
+  terms_version?: string
+  privacy_version?: string
+  trial_days_default?: number
+  carencia_days_default?: number
+}
+
+export interface SubscriptionPlanItem {
+  id: string
+  plan_type: 'mensal' | 'anual'
+  name: string
+  price_cents: number
+  stripe_price_id?: string
+  stripe_product_id?: string
+  valid_from?: string
+  valid_until?: string
+  active?: boolean
+  notes?: string
+  user_override?: string
+  user_override_info?: { name: string; email: string } | null
+  created?: string
+  updated?: string
+}
+
+export interface BillingStatusResponse {
+  status: 'trial' | 'active' | 'carencia' | 'bloqueado' | 'cancelado'
+  plan: 'mensal' | 'anual'
+  expires_at?: string
+  carencia_until?: string
+  has_stripe_customer: boolean
+  has_stripe_subscription: boolean
+  user_info: {
+    id: string
+    name: string
+    full_name?: string
+    email: string
+    cpf?: string
+    birth_date?: string
+    phone?: string
+    address?: {
+      zip_code?: string
+      street?: string
+      number?: string
+      complement?: string
+      neighborhood?: string
+      city?: string
+      state?: string
+    }
+    terms_accepted_at?: string
+    recurring_consent_accepted_at?: string
+  }
+  plans: {
+    mensal: {
+      id: string
+      plan_type: 'mensal'
+      name: string
+      price_cents: number
+      stripe_price_id?: string
+      stripe_product_id?: string
+      is_override: boolean
+    }
+    anual: {
+      id: string
+      plan_type: 'anual'
+      name: string
+      price_cents: number
+      stripe_price_id?: string
+      stripe_product_id?: string
+      is_override: boolean
+    }
+  }
+  legal_info: CompanyLegalInfo
+}
+
+export interface AdminSubscriptionsResponse {
+  metrics: {
+    total: number
+    active: number
+    trial: number
+    carencia: number
+    bloqueado: number
+    cancelado: number
+  }
+  clients: Array<{
+    id: string
+    name: string
+    full_name: string
+    email: string
+    phone: string
+    cpf: string
+    subscription_status: 'trial' | 'active' | 'carencia' | 'bloqueado' | 'cancelado'
+    subscription_plan: 'mensal' | 'anual'
+    subscription_expires_at?: string
+    carencia_until?: string
+    stripe_customer_id?: string
+    stripe_subscription_id?: string
+    terms_accepted_at?: string
+    recurring_consent_accepted_at?: string
+    created: string
+  }>
+}
+
+export const billingService = {
+  getStatus: async (): Promise<BillingStatusResponse> => {
+    return pb.send('/backend/v1/billing/status', {
+      method: 'GET',
+    })
+  },
+
+  createCheckoutSession: async (
+    planType: 'mensal' | 'anual',
+    successUrl?: string,
+    cancelUrl?: string,
+  ): Promise<{ session_id: string; url: string; plan: unknown }> => {
+    return pb.send('/backend/v1/billing/create-checkout-session', {
+      method: 'POST',
+      body: {
+        plan_type: planType,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      },
+    })
+  },
+
+  syncSession: async (
+    sessionId: string,
+  ): Promise<{
+    success: boolean
+    status?: string
+    plan?: string
+    expires_at?: string
+    message: string
+  }> => {
+    return pb.send('/backend/v1/billing/sync-session', {
+      method: 'POST',
+      body: { session_id: sessionId },
+    })
+  },
+
+  cancelSubscription: async (): Promise<{ success: boolean; status: string; message: string }> => {
+    return pb.send('/backend/v1/billing/cancel-subscription', {
+      method: 'POST',
+    })
+  },
+
+  createPortalSession: async (returnUrl?: string): Promise<{ url: string }> => {
+    return pb.send('/backend/v1/billing/create-portal-session', {
+      method: 'POST',
+      body: { return_url: returnUrl },
+    })
+  },
+
+  updateProfile: async (data: {
+    full_name?: string
+    cpf?: string
+    birth_date?: string
+    zip_code?: string
+    street?: string
+    number?: string
+    complement?: string
+    neighborhood?: string
+    city?: string
+    state?: string
+    accept_terms?: boolean
+    accept_recurring?: boolean
+  }): Promise<{ success: boolean; message: string }> => {
+    return pb.send('/backend/v1/billing/update-profile', {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  // Admin Billing endpoints
+  adminGetPlans: async (): Promise<{
+    plans: SubscriptionPlanItem[]
+    legal_info: CompanyLegalInfo | null
+  }> => {
+    return pb.send('/backend/v1/admin/billing/plans', {
+      method: 'GET',
+    })
+  },
+
+  adminSavePlan: async (
+    planData: Partial<SubscriptionPlanItem>,
+  ): Promise<{ success: boolean; message: string; id: string }> => {
+    return pb.send('/backend/v1/admin/billing/plans', {
+      method: 'POST',
+      body: planData,
+    })
+  },
+
+  adminSaveLegalInfo: async (
+    legalData: Partial<CompanyLegalInfo>,
+  ): Promise<{ success: boolean; message: string }> => {
+    return pb.send('/backend/v1/admin/billing/legal-info', {
+      method: 'POST',
+      body: legalData,
+    })
+  },
+
+  adminGetSubscriptions: async (): Promise<AdminSubscriptionsResponse> => {
+    return pb.send('/backend/v1/admin/billing/subscriptions', {
+      method: 'GET',
+    })
+  },
+
+  adminSetupStripeProducts: async (): Promise<{
+    success: boolean
+    message: string
+    data: unknown
+  }> => {
+    return pb.send('/backend/v1/admin/billing/setup-stripe-products', {
+      method: 'POST',
+    })
+  },
+}

@@ -23,6 +23,18 @@ export const Register: React.FC = () => {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [cpf, setCpf] = useState('')
+  const [birthDate, setBirthDate] = useState('')
+  const [zipCode, setZipCode] = useState('')
+  const [street, setStreet] = useState('')
+  const [number, setNumber] = useState('')
+  const [complement, setComplement] = useState('')
+  const [neighborhood, setNeighborhood] = useState('')
+  const [city, setCity] = useState('')
+  const [state, setState] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [acceptRecurring, setAcceptRecurring] = useState(false)
+
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -35,30 +47,155 @@ export const Register: React.FC = () => {
   const [touched, setTouched] = useState({
     name: false,
     email: false,
+    cpf: false,
+    birthDate: false,
     password: false,
     confirm: false,
+    terms: false,
+    recurring: false,
   })
+
+  // Validação de CPF com dígitos verificadores
+  const validateCpf = (str: string): boolean => {
+    const clean = str.replace(/\D/g, '')
+    if (clean.length !== 11) return false
+    if (/^(\d)\1{10}$/.test(clean)) return false
+    let sum = 0
+    let rest = 0
+    for (let i = 1; i <= 9; i++) sum += parseInt(clean.substring(i - 1, i), 10) * (11 - i)
+    rest = (sum * 10) % 11
+    if (rest === 10 || rest === 11) rest = 0
+    if (rest !== parseInt(clean.substring(9, 10), 10)) return false
+    sum = 0
+    for (let i = 1; i <= 10; i++) sum += parseInt(clean.substring(i - 1, i), 10) * (12 - i)
+    rest = (sum * 10) % 11
+    if (rest === 10 || rest === 11) rest = 0
+    if (rest !== parseInt(clean.substring(10, 11), 10)) return false
+    return true
+  }
+
+  // Validação de Maioridade 18+
+  const validateAge18 = (dateStr: string): boolean => {
+    if (!dateStr) return false
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) return false
+    const birth = new Date(
+      parseInt(parts[0], 10),
+      parseInt(parts[1], 10) - 1,
+      parseInt(parts[2], 10),
+    )
+    if (isNaN(birth.getTime())) return false
+    const today = new Date()
+    let age = today.getFullYear() - birth.getFullYear()
+    const m = today.getMonth() - birth.getMonth()
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age >= 18
+  }
 
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const isPassValid = password.length >= 8
   const isConfirmValid = password === confirmPassword && confirmPassword.length > 0
   const isNameValid = name.trim().length >= 2
+  const isCpfValid = validateCpf(cpf)
+  const isAgeValid = validateAge18(birthDate)
+  const isTermsValid = acceptTerms
+  const isRecurringValid = acceptRecurring
+
+  const formatCpfInput = (val: string) => {
+    const clean = val.replace(/\D/g, '').slice(0, 11)
+    if (clean.length <= 3) return clean
+    if (clean.length <= 6) return `${clean.slice(0, 3)}.${clean.slice(3)}`
+    if (clean.length <= 9) return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6)}`
+    return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9, 11)}`
+  }
+
+  const formatCepInput = (val: string) => {
+    const clean = val.replace(/\D/g, '').slice(0, 8)
+    if (clean.length <= 5) return clean
+    return `${clean.slice(0, 5)}-${clean.slice(5)}`
+  }
+
+  const handleCepBlur = async () => {
+    const clean = zipCode.replace(/\D/g, '')
+    if (clean.length === 8) {
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`)
+        const data = await res.json()
+        if (!data.erro) {
+          if (data.logradouro) setStreet(data.logradouro)
+          if (data.bairro) setNeighborhood(data.bairro)
+          if (data.localidade) setCity(data.localidade)
+          if (data.uf) setState(data.uf)
+        }
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setTouched({ name: true, email: true, password: true, confirm: true })
+    setTouched({
+      name: true,
+      email: true,
+      cpf: true,
+      birthDate: true,
+      password: true,
+      confirm: true,
+      terms: true,
+      recurring: true,
+    })
 
     if (!isNameValid || !isEmailValid || !isPassValid || !isConfirmValid) return
+    if (!isCpfValid) {
+      setError('CPF inválido. Verifique os 11 dígitos.')
+      return
+    }
+    if (!isAgeValid) {
+      setError('Você deve ter pelo menos 18 anos completos para se cadastrar.')
+      return
+    }
+    if (!isTermsValid) {
+      setError('Você precisa aceitar os Termos de Uso e a Política de Privacidade.')
+      return
+    }
+    if (!isRecurringValid) {
+      setError('Você precisa confirmar o consentimento de cobrança recorrente.')
+      return
+    }
 
     setIsLoading(true)
     setError(null)
 
     try {
-      await register(name, email, password, phone)
+      const nowIso = new Date().toISOString()
+      const cleanCpf = cpf.replace(/\D/g, '')
+      await register(name, email, password, phone, {
+        full_name: name.trim(),
+        cpf: cleanCpf,
+        birth_date: birthDate,
+        zip_code: zipCode.replace(/\D/g, ''),
+        street,
+        number,
+        complement,
+        neighborhood,
+        city,
+        state,
+        terms_accepted_at: nowIso,
+        recurring_consent_accepted_at: nowIso,
+        subscription_status: 'trial',
+      })
       setSuccess(true)
     } catch (err: unknown) {
       console.error(err)
-      setError('Erro ao criar conta. Este email já pode estar cadastrado.')
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.toLowerCase().includes('cpf')) {
+        setError('Este CPF já está cadastrado em outra conta.')
+      } else {
+        setError('Erro ao criar conta. Este email ou CPF já pode estar cadastrado.')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -186,6 +323,140 @@ export const Register: React.FC = () => {
                     </p>
                   </div>
 
+                  {/* CPF e Data de Nascimento (Validação 18+) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cpf" className="text-xs text-slate-300">
+                        CPF (obrigatório)
+                      </Label>
+                      <Input
+                        id="cpf"
+                        type="text"
+                        placeholder="000.000.000-00"
+                        value={cpf}
+                        onChange={(e) => setCpf(formatCpfInput(e.target.value))}
+                        onBlur={() => setTouched((p) => ({ ...p, cpf: true }))}
+                        className={`bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 ${
+                          touched.cpf && !isCpfValid ? 'border-red-500' : ''
+                        }`}
+                        disabled={isLoading}
+                      />
+                      {touched.cpf && !isCpfValid && (
+                        <p className="text-xs text-red-400">CPF inválido (11 dígitos válidos)</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="birthDate" className="text-xs text-slate-300">
+                        Nascimento (18+ anos)
+                      </Label>
+                      <Input
+                        id="birthDate"
+                        type="date"
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                        onBlur={() => setTouched((p) => ({ ...p, birthDate: true }))}
+                        className={`bg-slate-800/80 border-slate-700 text-white ${
+                          touched.birthDate && !isAgeValid ? 'border-red-500' : ''
+                        }`}
+                        disabled={isLoading}
+                      />
+                      {touched.birthDate && !isAgeValid && (
+                        <p className="text-xs text-red-400">Necessário ter 18+ anos</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Endereço completo */}
+                  <div className="space-y-2 pt-1 border-t border-slate-800">
+                    <p className="text-xs font-semibold text-slate-300">Endereço de cobrança</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-1">
+                        <Input
+                          id="zipCode"
+                          type="text"
+                          placeholder="CEP"
+                          value={zipCode}
+                          onChange={(e) => setZipCode(formatCepInput(e.target.value))}
+                          onBlur={handleCepBlur}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Input
+                          id="street"
+                          type="text"
+                          placeholder="Rua / Logradouro"
+                          value={street}
+                          onChange={(e) => setStreet(e.target.value)}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs"
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Input
+                          id="number"
+                          type="text"
+                          placeholder="Número"
+                          value={number}
+                          onChange={(e) => setNumber(e.target.value)}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Input
+                          id="complement"
+                          type="text"
+                          placeholder="Complemento (Apto, bloco)"
+                          value={complement}
+                          onChange={(e) => setComplement(e.target.value)}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs"
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Input
+                          id="neighborhood"
+                          type="text"
+                          placeholder="Bairro"
+                          value={neighborhood}
+                          onChange={(e) => setNeighborhood(e.target.value)}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div>
+                        <Input
+                          id="city"
+                          type="text"
+                          placeholder="Cidade"
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div>
+                        <Input
+                          id="state"
+                          type="text"
+                          placeholder="UF"
+                          maxLength={2}
+                          value={state}
+                          onChange={(e) => setState(e.target.value.toUpperCase())}
+                          className="bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 text-xs uppercase"
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label htmlFor="password" className="text-xs text-slate-300">
                       Senha (mínimo 8 caracteres)
@@ -259,6 +530,48 @@ export const Register: React.FC = () => {
                     </div>
                     {touched.confirm && !isConfirmValid && (
                       <p className="text-xs text-red-400">As senhas não coincidem</p>
+                    )}
+                  </div>
+
+                  {/* Aceites com data/hora obrigatórios */}
+                  <div className="space-y-3 pt-2 border-t border-slate-800">
+                    <label className="flex items-start gap-2 cursor-pointer text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={acceptTerms}
+                        onChange={(e) => setAcceptTerms(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500"
+                        disabled={isLoading}
+                      />
+                      <span>
+                        Li e concordo com os <strong className="text-white">Termos de Uso</strong> e
+                        a <strong className="text-white">Política de Privacidade</strong> do
+                        Consciente.
+                      </span>
+                    </label>
+                    {touched.terms && !isTermsValid && (
+                      <p className="text-xs text-red-400">Aceite dos termos é obrigatório</p>
+                    )}
+
+                    <label className="flex items-start gap-2 cursor-pointer text-xs text-amber-200/90 bg-amber-950/20 p-2.5 rounded-lg border border-amber-500/20">
+                      <input
+                        type="checkbox"
+                        checked={acceptRecurring}
+                        onChange={(e) => setAcceptRecurring(e.target.checked)}
+                        className="mt-0.5 rounded border-amber-600/50 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                        disabled={isLoading}
+                      />
+                      <span>
+                        <strong className="text-amber-300">
+                          Consentimento de cobrança recorrente:
+                        </strong>{' '}
+                        Concordo com a renovação automática da assinatura mensal ou anual ao fim de
+                        cada período, no valor contratado, podendo cancelar a qualquer momento sem
+                        burocracia com 1 clique.
+                      </span>
+                    </label>
+                    {touched.recurring && !isRecurringValid && (
+                      <p className="text-xs text-red-400">Consentimento expresso é obrigatório</p>
                     )}
                   </div>
 

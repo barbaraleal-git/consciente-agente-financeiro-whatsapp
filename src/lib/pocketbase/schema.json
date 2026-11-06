@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-06T00:56:50.146Z",
+  "generatedAt": "2026-11-06T02:36:07.960Z",
   "collections": [
     {
       "name": "users",
@@ -56,6 +56,116 @@
           "required": false,
           "system": false,
           "selectValues": ["client", "admin"]
+        },
+        {
+          "name": "full_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "birth_date",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "zip_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "street",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "complement",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "neighborhood",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "terms_accepted_at",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recurring_consent_accepted_at",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subscription_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["trial", "active", "carencia", "bloqueado", "cancelado"]
+        },
+        {
+          "name": "subscription_plan",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["mensal", "anual"]
+        },
+        {
+          "name": "subscription_expires_at",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carencia_until",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "stripe_customer_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "stripe_subscription_id",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -732,6 +842,267 @@
         "CREATE INDEX idx_cat_links_user ON category_caixinha_links (user)",
         "CREATE INDEX idx_cat_links_budget ON category_caixinha_links (budget)",
         "CREATE INDEX idx_cat_links_user_budget ON category_caixinha_links (user, budget)"
+      ]
+    },
+    {
+      "name": "subscription_plans",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')"
+      },
+      "fields": [
+        {
+          "name": "plan_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["mensal", "anual"]
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "price_cents",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "stripe_price_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "stripe_product_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valid_from",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valid_until",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "user_override",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_plans_type_active ON subscription_plans (plan_type, active)",
+        "CREATE INDEX idx_plans_override ON subscription_plans (user_override)"
+      ]
+    },
+    {
+      "name": "company_legal_info",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')"
+      },
+      "fields": [
+        {
+          "name": "company_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "trade_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cnpj",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "address_full",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "email_contact",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "support_phone_or_bot",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "terms_version",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "privacy_version",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trial_days_default",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carencia_days_default",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "subscriptions_history",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (user = @request.auth.id || @request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "view": "@request.auth.id != '' && (user = @request.auth.id || @request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "event_type",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "plan_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "amount_cents",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_from",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_to",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "stripe_event_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_sub_hist_user ON subscriptions_history (user)",
+        "CREATE INDEX idx_sub_hist_event ON subscriptions_history (event_type)"
       ]
     }
   ]

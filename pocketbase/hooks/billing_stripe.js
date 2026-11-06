@@ -1,0 +1,1312 @@
+/// <reference path="../pb_data/types.d.ts" />
+
+/**
+ * Hook de Assinaturas, Cobrança Recorrente (Stripe), Webhook e Sincronização.
+ *
+ * Arquitetura e Regras JSVM do PocketBase:
+ * 1. ZERO declarações top-level referenciadas dentro de callbacks!
+ *    O PocketBase executa callbacks em pools de VMs isoladas. TODAS as funções auxiliares
+ *    devem ser declaradas 100% INLINE dentro do corpo de cada callback routerAdd.
+ * 2. Conectores Owner (Stripe): $connectors.executeAsOwner('stripe', toolSlug, args)
+ * 3. Rotas criadas:
+ *    - GET  /backend/v1/billing/status (dados da assinatura, dados legais e planos vigentes)
+ *    - POST /backend/v1/billing/create-checkout-session (inicia sessão de checkout Stripe)
+ *    - POST /backend/v1/billing/create-portal-session (portal Stripe para autogestão/cancelamento)
+ *    - POST /backend/v1/billing/sync-session (sincroniza manualmente via session_id após retorno)
+ *    - POST /backend/v1/billing/cancel-subscription (cancelamento self-service)
+ *    - POST /backend/v1/billing/update-profile (atualiza dados complementares e aceites)
+ *    - POST /backend/v1/stripe/webhook (webhook público Stripe para eventos de cobrança)
+ *    - POST /backend/v1/admin/billing/setup-stripe-products (admin provisiona produtos/preços na Stripe)
+ *    - GET  /backend/v1/admin/billing/plans (lista planos e overrides)
+ *    - POST /backend/v1/admin/billing/plans (cria ou atualiza plano/override)
+ *    - POST /backend/v1/admin/billing/legal-info (atualiza dados legais da empresa)
+ *    - GET  /backend/v1/admin/billing/subscriptions (visão de clientes e assinaturas)
+ */
+
+// ----------------------------------------------------
+// 1. GET /backend/v1/billing/status
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/billing/status',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      // Função inline para buscar dados legais
+      function inlineGetLegal() {
+        try {
+          const records = $app.findRecordsByFilter('company_legal_info', '', '-created', 1, 0)
+          if (records.length > 0) {
+            const r = records[0]
+            return {
+              id: r.id,
+              company_name: r.getString('company_name'),
+              trade_name: r.getString('trade_name'),
+              cnpj: r.getString('cnpj'),
+              address_full: r.getString('address_full'),
+              email_contact: r.getString('email_contact'),
+              support_phone_or_bot: r.getString('support_phone_or_bot'),
+              terms_version: r.getString('terms_version') || 'v1.0',
+              privacy_version: r.getString('privacy_version') || 'v1.0',
+              trial_days_default: r.getInt('trial_days_default') || 7,
+              carencia_days_default: r.getInt('carencia_days_default') || 7,
+            }
+          }
+        } catch (err) {
+          console.log('[billing] Erro ao buscar company_legal_info: ' + err)
+        }
+        return {
+          company_name: 'Consciente Gestão Financeira Inteligente Ltda.',
+          trade_name: 'Consciente - Seu parceiro nas finanças',
+          cnpj: '53.842.190/0001-38',
+          address_full: 'Av. Paulista, 1000, Bela Vista, São Paulo - SP, CEP 01310-100',
+          email_contact: 'contato@consciente.app.br',
+          support_phone_or_bot: '+55 (11) 94998-9868',
+          terms_version: 'v1.0',
+          privacy_version: 'v1.0',
+          trial_days_default: 7,
+          carencia_days_default: 7,
+        }
+      }
+
+      // Função inline para resolver plano vigente
+      function inlineResolvePlan(userId, planType) {
+        const today = new Date().toISOString().slice(0, 10)
+        try {
+          if (userId) {
+            const overrides = $app.findRecordsByFilter(
+              'subscription_plans',
+              "user_override = '" + userId + "' && plan_type = '" + planType + "' && active = true",
+              '-created',
+              5,
+              0,
+            )
+            for (let i = 0; i < overrides.length; i++) {
+              const o = overrides[i]
+              const vFrom = o.getString('valid_from') || ''
+              const vUntil = o.getString('valid_until') || ''
+              if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
+                return {
+                  id: o.id,
+                  plan_type: o.getString('plan_type'),
+                  name: o.getString('name'),
+                  price_cents: o.getInt('price_cents'),
+                  stripe_price_id: o.getString('stripe_price_id'),
+                  stripe_product_id: o.getString('stripe_product_id'),
+                  is_override: true,
+                }
+              }
+            }
+          }
+
+          const plans = $app.findRecordsByFilter(
+            'subscription_plans',
+            "user_override = null && plan_type = '" + planType + "' && active = true",
+            '-created',
+            20,
+            0,
+          )
+          for (let i = 0; i < plans.length; i++) {
+            const p = plans[i]
+            const vFrom = p.getString('valid_from') || ''
+            const vUntil = p.getString('valid_until') || ''
+            if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
+              return {
+                id: p.id,
+                plan_type: p.getString('plan_type'),
+                name: p.getString('name'),
+                price_cents: p.getInt('price_cents'),
+                stripe_price_id: p.getString('stripe_price_id'),
+                stripe_product_id: p.getString('stripe_product_id'),
+                is_override: false,
+              }
+            }
+          }
+        } catch (err) {
+          console.log('[billing] Erro ao resolver plano: ' + err)
+        }
+
+        if (planType === 'anual') {
+          return {
+            id: '',
+            plan_type: 'anual',
+            name: 'Anual (Black November)',
+            price_cents: 21490,
+            stripe_price_id: '',
+            stripe_product_id: '',
+            is_override: false,
+          }
+        }
+        return {
+          id: '',
+          plan_type: 'mensal',
+          name: 'Mensal (Black November)',
+          price_cents: 1990,
+          stripe_price_id: '',
+          stripe_product_id: '',
+          is_override: false,
+        }
+      }
+
+      const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
+      const subStatus = userRec.getString('subscription_status') || 'trial'
+      const subPlan = userRec.getString('subscription_plan') || 'mensal'
+      const subExpires = userRec.getString('subscription_expires_at') || ''
+      const carenciaUntil = userRec.getString('carencia_until') || ''
+      const customerId = userRec.getString('stripe_customer_id') || ''
+      const subId = userRec.getString('stripe_subscription_id') || ''
+
+      const legal = inlineGetLegal()
+      const planMensal = inlineResolvePlan(userRec.id, 'mensal')
+      const planAnual = inlineResolvePlan(userRec.id, 'anual')
+
+      const nowIso = new Date().toISOString()
+      let effectiveStatus = subStatus
+      if (subStatus === 'carencia' && carenciaUntil && nowIso > carenciaUntil) {
+        effectiveStatus = 'bloqueado'
+        try {
+          userRec.set('subscription_status', 'bloqueado')
+          $app.save(userRec)
+        } catch (_) {}
+      }
+
+      return e.json(200, {
+        status: effectiveStatus,
+        plan: subPlan,
+        expires_at: subExpires,
+        carencia_until: carenciaUntil,
+        has_stripe_customer: !!customerId,
+        has_stripe_subscription: !!subId,
+        user_info: {
+          id: userRec.id,
+          name: userRec.getString('name') || '',
+          full_name: userRec.getString('full_name') || '',
+          email: userRec.getString('email') || '',
+          cpf: userRec.getString('cpf') || '',
+          birth_date: userRec.getString('birth_date') || '',
+          phone: userRec.getString('phone') || '',
+          address: {
+            zip_code: userRec.getString('zip_code') || '',
+            street: userRec.getString('street') || '',
+            number: userRec.getString('number') || '',
+            complement: userRec.getString('complement') || '',
+            neighborhood: userRec.getString('neighborhood') || '',
+            city: userRec.getString('city') || '',
+            state: userRec.getString('state') || '',
+          },
+          terms_accepted_at: userRec.getString('terms_accepted_at') || '',
+          recurring_consent_accepted_at: userRec.getString('recurring_consent_accepted_at') || '',
+        },
+        plans: {
+          mensal: planMensal,
+          anual: planAnual,
+        },
+        legal_info: legal,
+      })
+    } catch (err) {
+      console.log('[billing] Erro em /status: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 2. POST /backend/v1/billing/create-checkout-session
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/billing/create-checkout-session',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      function inlineResolvePlan(userId, planType) {
+        const today = new Date().toISOString().slice(0, 10)
+        try {
+          if (userId) {
+            const overrides = $app.findRecordsByFilter(
+              'subscription_plans',
+              "user_override = '" + userId + "' && plan_type = '" + planType + "' && active = true",
+              '-created',
+              5,
+              0,
+            )
+            for (let i = 0; i < overrides.length; i++) {
+              const o = overrides[i]
+              const vFrom = o.getString('valid_from') || ''
+              const vUntil = o.getString('valid_until') || ''
+              if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
+                return {
+                  id: o.id,
+                  plan_type: o.getString('plan_type'),
+                  name: o.getString('name'),
+                  price_cents: o.getInt('price_cents'),
+                  stripe_price_id: o.getString('stripe_price_id'),
+                  stripe_product_id: o.getString('stripe_product_id'),
+                  is_override: true,
+                }
+              }
+            }
+          }
+
+          const plans = $app.findRecordsByFilter(
+            'subscription_plans',
+            "user_override = null && plan_type = '" + planType + "' && active = true",
+            '-created',
+            20,
+            0,
+          )
+          for (let i = 0; i < plans.length; i++) {
+            const p = plans[i]
+            const vFrom = p.getString('valid_from') || ''
+            const vUntil = p.getString('valid_until') || ''
+            if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
+              return {
+                id: p.id,
+                plan_type: p.getString('plan_type'),
+                name: p.getString('name'),
+                price_cents: p.getInt('price_cents'),
+                stripe_price_id: p.getString('stripe_price_id'),
+                stripe_product_id: p.getString('stripe_product_id'),
+                is_override: false,
+              }
+            }
+          }
+        } catch (err) {
+          console.log('[billing] Erro ao resolver plano: ' + err)
+        }
+
+        if (planType === 'anual') {
+          return {
+            id: '',
+            plan_type: 'anual',
+            name: 'Anual (Black November)',
+            price_cents: 21490,
+            stripe_price_id: '',
+            stripe_product_id: '',
+            is_override: false,
+          }
+        }
+        return {
+          id: '',
+          plan_type: 'mensal',
+          name: 'Mensal (Black November)',
+          price_cents: 1990,
+          stripe_price_id: '',
+          stripe_product_id: '',
+          is_override: false,
+        }
+      }
+
+      const body = e.requestInfo().body || {}
+      const planType = body.plan_type === 'anual' ? 'anual' : 'mensal'
+      const successUrl =
+        body.success_url ||
+        'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?session_id={CHECKOUT_SESSION_ID}&checkout=success'
+      const cancelUrl =
+        body.cancel_url ||
+        'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?checkout=cancelled'
+
+      const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
+      const userEmail = userRec.getString('email')
+      const userName =
+        userRec.getString('full_name') || userRec.getString('name') || 'Cliente Consciente'
+      const userPhone = userRec.getString('phone') || ''
+      let customerId = userRec.getString('stripe_customer_id') || ''
+
+      const resolvedPlan = inlineResolvePlan(userRec.id, planType)
+
+      // Garante customer na Stripe
+      if (!customerId) {
+        try {
+          const custRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_CUSTOMER', {
+            email: userEmail,
+            name: userName,
+            phone: userPhone,
+            description: 'Cliente Consciente ID: ' + userRec.id,
+          })
+          if (custRes && custRes.successful && custRes.data && custRes.data.id) {
+            customerId = custRes.data.id
+            userRec.set('stripe_customer_id', customerId)
+            $app.save(userRec)
+          }
+        } catch (cErr) {
+          console.log('[billing] Exceção ao criar customer Stripe: ' + cErr)
+        }
+      }
+
+      let lineItems = []
+      if (resolvedPlan.stripe_price_id) {
+        lineItems = [
+          {
+            price: resolvedPlan.stripe_price_id,
+            quantity: 1,
+          },
+        ]
+      } else {
+        const interval = planType === 'anual' ? 'year' : 'month'
+        lineItems = [
+          {
+            price_data: {
+              currency: 'brl',
+              product_data: {
+                name: resolvedPlan.name,
+                description: 'Assinatura Consciente - Seu parceiro nas finanças',
+              },
+              unit_amount: resolvedPlan.price_cents,
+              recurring: {
+                interval: interval,
+              },
+            },
+            quantity: 1,
+          },
+        ]
+      }
+
+      const sessionArgs = {
+        mode: 'subscription',
+        line_items: lineItems,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        client_reference_id: userRec.id,
+        metadata: {
+          user_id: userRec.id,
+          plan_type: planType,
+          price_cents: String(resolvedPlan.price_cents),
+        },
+      }
+      if (customerId) {
+        sessionArgs.customer = customerId
+      }
+
+      const sessionRes = $connectors.executeAsOwner(
+        'stripe',
+        'STRIPE_CREATE_CHECKOUT_SESSION',
+        sessionArgs,
+      )
+
+      if (!sessionRes || !sessionRes.successful || !sessionRes.data) {
+        return e.json(502, {
+          error:
+            'Não foi possível iniciar a sessão de checkout na Stripe: ' +
+            ((sessionRes && sessionRes.error && sessionRes.error.message) ||
+              'Verifique as credenciais da Stripe do projeto.'),
+        })
+      }
+
+      const sessionData = sessionRes.data
+      const checkoutUrl = sessionData.url || sessionData.hosted_url || ''
+
+      return e.json(200, {
+        session_id: sessionData.id,
+        url: checkoutUrl,
+        plan: resolvedPlan,
+      })
+    } catch (err) {
+      console.log('[billing] Erro em create-checkout-session: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 3. POST /backend/v1/billing/sync-session
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/billing/sync-session',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      function inlineLogHistory(userId, eventType, data) {
+        try {
+          const col = $app.findCollectionByNameOrId('subscriptions_history')
+          const rec = new Record(col)
+          rec.set('user', userId)
+          rec.set('event_type', eventType)
+          if (data.plan_type) rec.set('plan_type', data.plan_type)
+          if (data.amount_cents) rec.set('amount_cents', data.amount_cents)
+          if (data.status_from) rec.set('status_from', data.status_from)
+          if (data.status_to) rec.set('status_to', data.status_to)
+          if (data.stripe_event_id) rec.set('stripe_event_id', data.stripe_event_id)
+          if (data.details) rec.set('details', data.details)
+          $app.save(rec)
+        } catch (hErr) {
+          console.log('[billing] Falha ao registrar subscriptions_history: ' + hErr)
+        }
+      }
+
+      const body = e.requestInfo().body || {}
+      const sessionId = body.session_id
+      if (!sessionId) {
+        return e.json(400, { error: 'session_id obrigatório' })
+      }
+
+      const res = $connectors.executeAsOwner('stripe', 'STRIPE_RETRIEVE_CHECKOUT_SESSION', {
+        session: sessionId,
+      })
+
+      if (!res || !res.successful || !res.data) {
+        return e.json(404, {
+          error: 'Sessão Stripe não encontrada ou conector indisponível',
+        })
+      }
+
+      const sess = res.data
+      const paymentStatus = sess.payment_status
+      const status = sess.status
+      const customerId = sess.customer || ''
+      const subId = sess.subscription || ''
+      const planType = (sess.metadata && sess.metadata.plan_type) || 'mensal'
+      const priceCents = parseInt((sess.metadata && sess.metadata.price_cents) || '1990', 10)
+
+      if (paymentStatus === 'paid' || status === 'complete') {
+        const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
+        const oldStatus = userRec.getString('subscription_status')
+        userRec.set('subscription_status', 'active')
+        userRec.set('subscription_plan', planType)
+        if (customerId) userRec.set('stripe_customer_id', customerId)
+        if (subId) userRec.set('stripe_subscription_id', subId)
+        userRec.set('carencia_until', '')
+
+        const addDays = planType === 'anual' ? 365 : 30
+        const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
+        userRec.set('subscription_expires_at', expiresAt)
+
+        $app.save(userRec)
+
+        inlineLogHistory(userRec.id, 'checkout.completed', {
+          plan_type: planType,
+          amount_cents: priceCents,
+          status_from: oldStatus,
+          status_to: 'active',
+          stripe_event_id: sessionId,
+          details: { session_id: sessionId, customer_id: customerId, subscription_id: subId },
+        })
+
+        return e.json(200, {
+          success: true,
+          status: 'active',
+          plan: planType,
+          expires_at: expiresAt,
+          message: 'Assinatura ativada com sucesso! Seu Consciente no WhatsApp já está liberado.',
+        })
+      }
+
+      return e.json(200, {
+        success: false,
+        payment_status: paymentStatus,
+        status: status,
+        message: 'Pagamento ainda não confirmado ou pendente.',
+      })
+    } catch (err) {
+      console.log('[billing] Erro em sync-session: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 4. POST /backend/v1/billing/cancel-subscription
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/billing/cancel-subscription',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      function inlineLogHistory(userId, eventType, data) {
+        try {
+          const col = $app.findCollectionByNameOrId('subscriptions_history')
+          const rec = new Record(col)
+          rec.set('user', userId)
+          rec.set('event_type', eventType)
+          if (data.status_from) rec.set('status_from', data.status_from)
+          if (data.status_to) rec.set('status_to', data.status_to)
+          if (data.details) rec.set('details', data.details)
+          $app.save(rec)
+        } catch (_) {}
+      }
+
+      const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
+      const subId = userRec.getString('stripe_subscription_id')
+      const oldStatus = userRec.getString('subscription_status')
+
+      if (subId) {
+        try {
+          $connectors.executeAsOwner('stripe', 'STRIPE_CANCEL_SUBSCRIPTION', {
+            subscription_id: subId,
+          })
+        } catch (cErr) {
+          console.log('[billing] Erro ao cancelar na Stripe: ' + cErr)
+        }
+      }
+
+      userRec.set('subscription_status', 'cancelado')
+      $app.save(userRec)
+
+      inlineLogHistory(userRec.id, 'subscription.cancelled', {
+        status_from: oldStatus,
+        status_to: 'cancelado',
+        details: { cancelled_by: 'user_self_service', subscription_id: subId },
+      })
+
+      return e.json(200, {
+        success: true,
+        status: 'cancelado',
+        message:
+          'Assinatura cancelada com sucesso. Você ainda pode usar o app até o fim do período já pago.',
+      })
+    } catch (err) {
+      console.log('[billing] Erro em cancel-subscription: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 5. POST /backend/v1/billing/create-portal-session
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/billing/create-portal-session',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
+      const customerId = userRec.getString('stripe_customer_id')
+      if (!customerId) {
+        return e.json(400, { error: 'Nenhum cadastro de cliente na Stripe vinculado.' })
+      }
+
+      const returnUrl =
+        e.requestInfo().body?.return_url ||
+        'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings'
+
+      const portalRes = $connectors.executeAsOwner(
+        'stripe',
+        'STRIPE_CREATE_BILLING_PORTAL_SESSION',
+        {
+          customer: customerId,
+          return_url: returnUrl,
+        },
+      )
+
+      if (portalRes && portalRes.successful && portalRes.data && portalRes.data.url) {
+        return e.json(200, { url: portalRes.data.url })
+      }
+
+      return e.json(502, {
+        error:
+          'Não foi possível gerar a sessão do portal: ' +
+          JSON.stringify((portalRes && portalRes.error) || portalRes),
+      })
+    } catch (err) {
+      console.log('[billing] Erro em create-portal-session: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 6. POST /backend/v1/billing/update-profile
+// Salva CPF, nascimento, endereço e aceites com validação
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/billing/update-profile',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      function inlineValidateCPF(cpf) {
+        const clean = String(cpf || '').replace(/\D/g, '')
+        if (clean.length !== 11) return false
+        if (/^(\d)\1{10}$/.test(clean)) return false
+        let sum = 0
+        for (let i = 0; i < 9; i++) sum += parseInt(clean.charAt(i), 10) * (10 - i)
+        let rev = 11 - (sum % 11)
+        if (rev === 10 || rev === 11) rev = 0
+        if (rev !== parseInt(clean.charAt(9), 10)) return false
+        sum = 0
+        for (let i = 0; i < 10; i++) sum += parseInt(clean.charAt(i), 10) * (11 - i)
+        rev = 11 - (sum % 11)
+        if (rev === 10 || rev === 11) rev = 0
+        return rev === parseInt(clean.charAt(10), 10)
+      }
+
+      function inlineValidateAge(birthDateStr) {
+        if (!birthDateStr) return false
+        const birth = new Date(birthDateStr)
+        if (isNaN(birth.getTime())) return false
+        const today = new Date()
+        let age = today.getFullYear() - birth.getFullYear()
+        const m = today.getMonth() - birth.getMonth()
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+        return age >= 18
+      }
+
+      const body = e.requestInfo().body || {}
+      const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
+
+      if (body.cpf !== undefined) {
+        const cleanCpf = String(body.cpf).replace(/\D/g, '')
+        if (cleanCpf && !inlineValidateCPF(cleanCpf)) {
+          return e.json(400, { error: 'CPF inválido. Verifique os números informados.' })
+        }
+        // Valida unicidade
+        if (cleanCpf) {
+          try {
+            const existing = $app.findRecordsByFilter(
+              '_pb_users_auth_',
+              "cpf = '" + cleanCpf + "' && id != '" + userRec.id + "'",
+              '',
+              1,
+              0,
+            )
+            if (existing.length > 0) {
+              return e.json(400, { error: 'Este CPF já está cadastrado em outra conta.' })
+            }
+          } catch (_) {}
+          userRec.set('cpf', cleanCpf)
+        }
+      }
+
+      if (body.birth_date !== undefined) {
+        if (body.birth_date && !inlineValidateAge(body.birth_date)) {
+          return e.json(400, {
+            error: 'É necessário ter 18 anos ou mais para contratar o serviço.',
+          })
+        }
+        userRec.set('birth_date', body.birth_date || '')
+      }
+
+      if (body.full_name !== undefined) userRec.set('full_name', body.full_name)
+      if (body.zip_code !== undefined) userRec.set('zip_code', body.zip_code)
+      if (body.street !== undefined) userRec.set('street', body.street)
+      if (body.number !== undefined) userRec.set('number', body.number)
+      if (body.complement !== undefined) userRec.set('complement', body.complement)
+      if (body.neighborhood !== undefined) userRec.set('neighborhood', body.neighborhood)
+      if (body.city !== undefined) userRec.set('city', body.city)
+      if (body.state !== undefined) userRec.set('state', body.state)
+
+      const nowIso = new Date().toISOString()
+      if (body.accept_terms) {
+        userRec.set('terms_accepted_at', nowIso)
+      }
+      if (body.accept_recurring) {
+        userRec.set('recurring_consent_accepted_at', nowIso)
+      }
+
+      $app.save(userRec)
+
+      return e.json(200, {
+        success: true,
+        message: 'Dados cadastrais atualizados com sucesso.',
+      })
+    } catch (err) {
+      console.log('[billing] Erro em update-profile: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 7. POST /backend/v1/stripe/webhook
+// ----------------------------------------------------
+routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
+  try {
+    function inlineLogHistory(userId, eventType, data) {
+      try {
+        const col = $app.findCollectionByNameOrId('subscriptions_history')
+        const rec = new Record(col)
+        rec.set('user', userId)
+        rec.set('event_type', eventType)
+        if (data.plan_type) rec.set('plan_type', data.plan_type)
+        if (data.amount_cents) rec.set('amount_cents', data.amount_cents)
+        if (data.status_from) rec.set('status_from', data.status_from)
+        if (data.status_to) rec.set('status_to', data.status_to)
+        if (data.stripe_event_id) rec.set('stripe_event_id', data.stripe_event_id)
+        if (data.details) rec.set('details', data.details)
+        $app.save(rec)
+      } catch (hErr) {
+        console.log('[stripe_webhook] Falha ao registrar subscriptions_history: ' + hErr)
+      }
+    }
+
+    const rawBody = e.requestInfo().body || {}
+    const eventType = rawBody.type || ''
+    const eventData = rawBody.data && rawBody.data.object ? rawBody.data.object : {}
+    const eventId = rawBody.id || ''
+
+    console.log('[stripe_webhook] Evento recebido: ' + eventType + ' (id: ' + eventId + ')')
+
+    // 1. Checkout completed
+    if (eventType === 'checkout.session.completed') {
+      const sess = eventData
+      const customerId = sess.customer || ''
+      const subId = sess.subscription || ''
+      const userId = sess.client_reference_id || (sess.metadata && sess.metadata.user_id) || ''
+      const planType = (sess.metadata && sess.metadata.plan_type) || 'mensal'
+      const priceCents = parseInt((sess.metadata && sess.metadata.price_cents) || '1990', 10)
+
+      let targetUser = null
+      if (userId) {
+        try {
+          targetUser = $app.findRecordById('_pb_users_auth_', userId)
+        } catch (_) {}
+      }
+      if (!targetUser && customerId) {
+        try {
+          targetUser = $app.findFirstRecordByData(
+            '_pb_users_auth_',
+            'stripe_customer_id',
+            customerId,
+          )
+        } catch (_) {}
+      }
+
+      if (targetUser) {
+        const oldSt = targetUser.getString('subscription_status')
+        targetUser.set('subscription_status', 'active')
+        targetUser.set('subscription_plan', planType)
+        if (customerId) targetUser.set('stripe_customer_id', customerId)
+        if (subId) targetUser.set('stripe_subscription_id', subId)
+        targetUser.set('carencia_until', '')
+        const addDays = planType === 'anual' ? 365 : 30
+        const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
+        targetUser.set('subscription_expires_at', expiresAt)
+        $app.save(targetUser)
+
+        inlineLogHistory(targetUser.id, 'stripe.checkout.session.completed', {
+          plan_type: planType,
+          amount_cents: priceCents,
+          status_from: oldSt,
+          status_to: 'active',
+          stripe_event_id: eventId,
+          details: sess,
+        })
+        console.log('[stripe_webhook] Usuário ' + targetUser.id + ' ATIVADO.')
+      }
+    }
+
+    // 2. Fatura paga
+    if (eventType === 'invoice.payment_succeeded') {
+      const inv = eventData
+      const customerId = inv.customer || ''
+      const subId = inv.subscription || ''
+      const amountPaid = inv.amount_paid || 0
+
+      if (customerId) {
+        try {
+          const targetUser = $app.findFirstRecordByData(
+            '_pb_users_auth_',
+            'stripe_customer_id',
+            customerId,
+          )
+          if (targetUser) {
+            const oldSt = targetUser.getString('subscription_status')
+            targetUser.set('subscription_status', 'active')
+            targetUser.set('carencia_until', '')
+            const plan = targetUser.getString('subscription_plan') || 'mensal'
+            const addDays = plan === 'anual' ? 365 : 30
+            targetUser.set(
+              'subscription_expires_at',
+              new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString(),
+            )
+            $app.save(targetUser)
+
+            inlineLogHistory(targetUser.id, 'stripe.invoice.payment_succeeded', {
+              plan_type: plan,
+              amount_cents: amountPaid,
+              status_from: oldSt,
+              status_to: 'active',
+              stripe_event_id: eventId,
+              details: { invoice_id: inv.id, subscription_id: subId },
+            })
+          }
+        } catch (uErr) {
+          console.log('[stripe_webhook] Erro invoice.payment_succeeded: ' + uErr)
+        }
+      }
+    }
+
+    // 3. Fatura falhou: CARÊNCIA DE 7 DIAS
+    if (eventType === 'invoice.payment_failed') {
+      const inv = eventData
+      const customerId = inv.customer || ''
+
+      if (customerId) {
+        try {
+          const targetUser = $app.findFirstRecordByData(
+            '_pb_users_auth_',
+            'stripe_customer_id',
+            customerId,
+          )
+          if (targetUser) {
+            const oldSt = targetUser.getString('subscription_status')
+            const carenciaDays = 7
+            const carenciaDate = new Date(
+              Date.now() + carenciaDays * 24 * 60 * 60 * 1000,
+            ).toISOString()
+
+            targetUser.set('subscription_status', 'carencia')
+            targetUser.set('carencia_until', carenciaDate)
+            $app.save(targetUser)
+
+            inlineLogHistory(targetUser.id, 'stripe.invoice.payment_failed', {
+              status_from: oldSt,
+              status_to: 'carencia',
+              stripe_event_id: eventId,
+              details: {
+                invoice_id: inv.id,
+                carencia_until: carenciaDate,
+                failure_message: inv.last_payment_error || 'Payment failed',
+              },
+            })
+            console.log(
+              '[stripe_webhook] Pagamento falhou. Usuário ' +
+                targetUser.id +
+                ' em CARÊNCIA até ' +
+                carenciaDate,
+            )
+          }
+        } catch (uErr) {
+          console.log('[stripe_webhook] Erro invoice.payment_failed: ' + uErr)
+        }
+      }
+    }
+
+    // 4. Subscription deleted
+    if (eventType === 'customer.subscription.deleted') {
+      const sub = eventData
+      const customerId = sub.customer || ''
+      if (customerId) {
+        try {
+          const targetUser = $app.findFirstRecordByData(
+            '_pb_users_auth_',
+            'stripe_customer_id',
+            customerId,
+          )
+          if (targetUser) {
+            const oldSt = targetUser.getString('subscription_status')
+            targetUser.set('subscription_status', 'cancelado')
+            $app.save(targetUser)
+
+            inlineLogHistory(targetUser.id, 'stripe.subscription.deleted', {
+              status_from: oldSt,
+              status_to: 'cancelado',
+              stripe_event_id: eventId,
+              details: { subscription_id: sub.id },
+            })
+          }
+        } catch (uErr) {
+          console.log('[stripe_webhook] Erro subscription.deleted: ' + uErr)
+        }
+      }
+    }
+
+    return e.json(200, { received: true, event: eventType })
+  } catch (err) {
+    console.log('[stripe_webhook] Erro geral: ' + err)
+    return e.json(200, { received: false, error: String(err) })
+  }
+})
+
+// ----------------------------------------------------
+// 8. POST /backend/v1/admin/billing/setup-stripe-products
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/admin/billing/setup-stripe-products',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      console.log('[admin_billing] Criando produtos e preços na Stripe...')
+      const results = {
+        product: null,
+        price_mensal: null,
+        price_anual: null,
+      }
+
+      // Cria produto
+      const prodRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_PRODUCT', {
+        name: 'Consciente - Assinatura Agente Financeiro',
+        description:
+          'Acesso completo ao agente financeiro Consciente no WhatsApp, controle de caixinhas, extratos e relatórios.',
+      })
+      if (!prodRes || !prodRes.successful || !prodRes.data) {
+        return e.json(502, {
+          error:
+            'Falha ao criar Produto na Stripe: ' +
+            JSON.stringify((prodRes && prodRes.error) || prodRes),
+        })
+      }
+      const stripeProduct = prodRes.data
+      const productId = stripeProduct.id
+      results.product = stripeProduct
+
+      // Preço Mensal Black November: R$ 19,90 / mês
+      const priceMensalRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_PRICE', {
+        product: productId,
+        currency: 'brl',
+        unit_amount: 1990,
+        recurring: { interval: 'month' },
+        nickname: 'Mensal Black November (R$ 19,90/mês)',
+      })
+      if (priceMensalRes && priceMensalRes.successful && priceMensalRes.data) {
+        results.price_mensal = priceMensalRes.data
+      }
+
+      // Preço Anual Black November: R$ 214,90 / ano
+      const priceAnualRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_PRICE', {
+        product: productId,
+        currency: 'brl',
+        unit_amount: 21490,
+        recurring: { interval: 'year' },
+        nickname: 'Anual Black November (R$ 214,90/ano)',
+      })
+      if (priceAnualRes && priceAnualRes.successful && priceAnualRes.data) {
+        results.price_anual = priceAnualRes.data
+      }
+
+      // Vincula IDs nos registros de subscription_plans
+      if (results.price_mensal && results.price_mensal.id) {
+        try {
+          const plans = $app.findRecordsByFilter(
+            'subscription_plans',
+            "plan_type = 'mensal' && name ~ 'Black November'",
+            '-created',
+            1,
+            0,
+          )
+          if (plans.length > 0) {
+            plans[0].set('stripe_product_id', productId)
+            plans[0].set('stripe_price_id', results.price_mensal.id)
+            $app.save(plans[0])
+          }
+        } catch (_) {}
+      }
+      if (results.price_anual && results.price_anual.id) {
+        try {
+          const plans = $app.findRecordsByFilter(
+            'subscription_plans',
+            "plan_type = 'anual' && name ~ 'Black November'",
+            '-created',
+            1,
+            0,
+          )
+          if (plans.length > 0) {
+            plans[0].set('stripe_product_id', productId)
+            plans[0].set('stripe_price_id', results.price_anual.id)
+            $app.save(plans[0])
+          }
+        } catch (_) {}
+      }
+
+      return e.json(200, {
+        success: true,
+        message: 'Produtos e preços da Black November criados com sucesso na sua conta Stripe!',
+        data: results,
+      })
+    } catch (err) {
+      console.log('[admin_billing] Erro ao provisionar na Stripe: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 9. GET /backend/v1/admin/billing/plans
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/admin/billing/plans',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      function inlineGetLegal() {
+        try {
+          const records = $app.findRecordsByFilter('company_legal_info', '', '-created', 1, 0)
+          if (records.length > 0) {
+            const r = records[0]
+            return {
+              id: r.id,
+              company_name: r.getString('company_name'),
+              trade_name: r.getString('trade_name'),
+              cnpj: r.getString('cnpj'),
+              address_full: r.getString('address_full'),
+              email_contact: r.getString('email_contact'),
+              support_phone_or_bot: r.getString('support_phone_or_bot'),
+              terms_version: r.getString('terms_version') || 'v1.0',
+              privacy_version: r.getString('privacy_version') || 'v1.0',
+              trial_days_default: r.getInt('trial_days_default') || 7,
+              carencia_days_default: r.getInt('carencia_days_default') || 7,
+            }
+          }
+        } catch (_) {}
+        return null
+      }
+
+      const allPlans = $app.findRecordsByFilter('subscription_plans', '', '-created', 100, 0)
+      const usersCol = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 500, 0)
+      const userMap = {}
+      for (let i = 0; i < usersCol.length; i++) {
+        userMap[usersCol[i].id] = {
+          name: usersCol[i].getString('name') || usersCol[i].getString('full_name') || 'Sem nome',
+          email: usersCol[i].getString('email'),
+        }
+      }
+
+      const formatted = allPlans.map((p) => {
+        const uId = p.getString('user_override')
+        return {
+          id: p.id,
+          plan_type: p.getString('plan_type'),
+          name: p.getString('name'),
+          price_cents: p.getInt('price_cents'),
+          stripe_price_id: p.getString('stripe_price_id'),
+          stripe_product_id: p.getString('stripe_product_id'),
+          valid_from: p.getString('valid_from'),
+          valid_until: p.getString('valid_until'),
+          active: p.getBool('active'),
+          notes: p.getString('notes'),
+          user_override: uId,
+          user_override_info: uId ? userMap[uId] || null : null,
+          created: p.getString('created'),
+          updated: p.getString('updated'),
+        }
+      })
+
+      return e.json(200, {
+        plans: formatted,
+        legal_info: inlineGetLegal(),
+      })
+    } catch (err) {
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 10. POST /backend/v1/admin/billing/plans
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/admin/billing/plans',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const planId = body.id
+      const plansCol = $app.findCollectionByNameOrId('subscription_plans')
+
+      let rec = null
+      if (planId) {
+        rec = $app.findRecordById('subscription_plans', planId)
+      } else {
+        rec = new Record(plansCol)
+      }
+
+      if (body.plan_type) rec.set('plan_type', body.plan_type)
+      if (body.name) rec.set('name', body.name)
+      if (body.price_cents !== undefined) rec.set('price_cents', parseInt(body.price_cents, 10))
+      if (body.valid_from) rec.set('valid_from', body.valid_from)
+      rec.set('valid_until', body.valid_until || '')
+      rec.set('stripe_price_id', body.stripe_price_id || '')
+      rec.set('stripe_product_id', body.stripe_product_id || '')
+      rec.set('user_override', body.user_override || '')
+      rec.set('active', body.active !== undefined ? !!body.active : true)
+      rec.set('notes', body.notes || '')
+
+      $app.save(rec)
+
+      return e.json(200, {
+        success: true,
+        message: 'Plano salvo com sucesso!',
+        id: rec.id,
+      })
+    } catch (err) {
+      console.log('[admin_billing] Erro ao salvar plano: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 11. POST /backend/v1/admin/billing/legal-info
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/admin/billing/legal-info',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const records = $app.findRecordsByFilter('company_legal_info', '', '-created', 1, 0)
+      const col = $app.findCollectionByNameOrId('company_legal_info')
+
+      let rec = records.length > 0 ? records[0] : new Record(col)
+
+      if (body.company_name) rec.set('company_name', body.company_name)
+      if (body.trade_name) rec.set('trade_name', body.trade_name)
+      if (body.cnpj) rec.set('cnpj', body.cnpj)
+      if (body.address_full) rec.set('address_full', body.address_full)
+      if (body.email_contact) rec.set('email_contact', body.email_contact)
+      if (body.support_phone_or_bot !== undefined)
+        rec.set('support_phone_or_bot', body.support_phone_or_bot)
+      if (body.terms_version) rec.set('terms_version', body.terms_version)
+      if (body.privacy_version) rec.set('privacy_version', body.privacy_version)
+      if (body.trial_days_default !== undefined)
+        rec.set('trial_days_default', parseInt(body.trial_days_default, 10))
+      if (body.carencia_days_default !== undefined)
+        rec.set('carencia_days_default', parseInt(body.carencia_days_default, 10))
+
+      $app.save(rec)
+
+      return e.json(200, {
+        success: true,
+        message: 'Dados legais atualizados com sucesso!',
+      })
+    } catch (err) {
+      console.log('[admin_billing] Erro ao salvar dados legais: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 12. GET /backend/v1/admin/billing/subscriptions
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/admin/billing/subscriptions',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const allUsers = $app.findRecordsByFilter(
+        '_pb_users_auth_',
+        "email != 'whatsapp-visitante@agente.internal'",
+        '-created',
+        500,
+        0,
+      )
+
+      let totalActive = 0
+      let totalTrial = 0
+      let totalCarencia = 0
+      let totalBloqueado = 0
+      let totalCancelado = 0
+
+      const clientsList = allUsers.map((u) => {
+        const status = u.getString('subscription_status') || 'trial'
+        if (status === 'active') totalActive++
+        else if (status === 'trial') totalTrial++
+        else if (status === 'carencia') totalCarencia++
+        else if (status === 'bloqueado') totalBloqueado++
+        else if (status === 'cancelado') totalCancelado++
+
+        return {
+          id: u.id,
+          name: u.getString('name') || u.getString('full_name') || 'Sem nome',
+          full_name: u.getString('full_name') || '',
+          email: u.getString('email'),
+          phone: u.getString('phone') || '',
+          cpf: u.getString('cpf') || '',
+          subscription_status: status,
+          subscription_plan: u.getString('subscription_plan') || 'mensal',
+          subscription_expires_at: u.getString('subscription_expires_at') || '',
+          carencia_until: u.getString('carencia_until') || '',
+          stripe_customer_id: u.getString('stripe_customer_id') || '',
+          stripe_subscription_id: u.getString('stripe_subscription_id') || '',
+          terms_accepted_at: u.getString('terms_accepted_at') || '',
+          recurring_consent_accepted_at: u.getString('recurring_consent_accepted_at') || '',
+          created: u.getString('created'),
+        }
+      })
+
+      return e.json(200, {
+        metrics: {
+          total: allUsers.length,
+          active: totalActive,
+          trial: totalTrial,
+          carencia: totalCarencia,
+          bloqueado: totalBloqueado,
+          cancelado: totalCancelado,
+        },
+        clients: clientsList,
+      })
+    } catch (err) {
+      console.log('[admin_billing] Erro em /subscriptions: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)

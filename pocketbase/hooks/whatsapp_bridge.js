@@ -2530,11 +2530,47 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             let activeUserId = ''
             let isRegistered = false
             let hasCompletedOnboarding = false
+            let subStatus = 'trial'
+            let isSubSuspended = false
+            let subSuspendedMsg = ''
 
             if (matchedUser) {
               activeUserId = matchedUser.id
               isRegistered = true
               hasCompletedOnboarding = isUserAccountReady(matchedUser)
+
+              // GATE DE ASSINATURA: checa status da conta
+              // Estados: 'active', 'trial', 'carencia' (7 dias), 'bloqueado', 'cancelado'
+              subStatus = matchedUser.getString('subscription_status') || 'trial'
+              const carenciaUntil = matchedUser.getString('carencia_until') || ''
+              const nowIso = new Date().toISOString()
+
+              if (subStatus === 'carencia') {
+                if (carenciaUntil && nowIso > carenciaUntil) {
+                  subStatus = 'bloqueado'
+                  try {
+                    matchedUser.set('subscription_status', 'bloqueado')
+                    $app.save(matchedUser)
+                  } catch (_) {}
+                }
+              }
+
+              if (subStatus === 'carencia') {
+                isSubSuspended = true
+                subSuspendedMsg =
+                  'Olá! Notamos uma pendência no pagamento da sua assinatura do Consciente. ' +
+                  'Seu acesso ao WhatsApp está temporariamente suspenso durante o período de carência de 7 dias, mas você ainda pode consultar seus dados no aplicativo.\n\n' +
+                  'Para continuar registrando seus gastos com facilidade por aqui, por favor regularize sua assinatura em:\n' +
+                  'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?tab=planos\n\n' +
+                  'Qualquer dúvida, estamos à disposição!'
+              } else if (subStatus === 'bloqueado' || subStatus === 'cancelado') {
+                isSubSuspended = true
+                subSuspendedMsg =
+                  'Olá! Sua assinatura do Consciente está inativa no momento. ' +
+                  'Para voltar a ter seu parceiro financeiro no WhatsApp e no aplicativo, basta reativar seu plano em:\n' +
+                  'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?tab=planos\n\n' +
+                  'Esperamos ter você de volta em breve!'
+              }
             } else {
               const guest = getOrCreateGuestUser()
               if (guest) {
@@ -2543,8 +2579,18 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
 
             console.log(
-              `[whatsapp_bridge] activeUserId para agente: "${activeUserId}", isRegistered=${isRegistered}, hasCompletedOnboarding=${hasCompletedOnboarding}`,
+              `[whatsapp_bridge] activeUserId para agente: "${activeUserId}", isRegistered=${isRegistered}, hasCompletedOnboarding=${hasCompletedOnboarding}, subStatus=${subStatus}, isSubSuspended=${isSubSuspended}`,
             )
+
+            // Se a assinatura estiver suspensa (carência ou bloqueado), responde mensagem gentil e não processa gasto
+            if (isSubSuspended && subSuspendedMsg) {
+              console.log(
+                '[whatsapp_bridge] Resposta de suspensão de assinatura enviada para ' + fromRaw,
+              )
+              sendMetaMessage(fromRaw, subSuspendedMsg)
+              processedCount++
+              continue
+            }
 
             const existingConvId = contact.getString('conversation_id') || null
             const todayStr = messageTimestampIso

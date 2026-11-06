@@ -1031,6 +1031,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 
       let matchedCategory = null
       let matchedCategoryScore = 0
+      let matchedCategories = []
 
       const cleanedTerm = norm
         .replace(valMatch[0].toLowerCase(), '')
@@ -1101,16 +1102,30 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
           score = 80
         }
 
-        if (score > matchedCategoryScore) {
-          matchedCategoryScore = score
-          matchedCategory = cat
+        if (score > 0) {
+          if (score > matchedCategoryScore) {
+            matchedCategoryScore = score
+            matchedCategory = cat
+            matchedCategories = [{ id: cat.id, name: cat.getString('name') }]
+          } else if (score === matchedCategoryScore) {
+            // Evita duplicatas se a mesma categoria aparecer duas vezes
+            if (!matchedCategories.some((mc) => mc.id === cat.id)) {
+              matchedCategories.push({ id: cat.id, name: cat.getString('name') })
+            }
+          }
         }
+      }
+
+      let candidateCategories = []
+      if (matchedCategoryScore > 0 && matchedCategories.length > 0) {
+        candidateCategories = matchedCategories
       }
 
       if (!matchedCategory && userCategories.length > 0) {
         matchedCategory =
           userCategories.find((c) => localNorm(c.getString('name')).includes('outros')) ||
           userCategories[0]
+        candidateCategories = []
       }
 
       if (!matchedCategory) return null
@@ -1128,6 +1143,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         description: desc,
         categoryId: matchedCategory.id,
         categoryName: matchedCategory.getString('name'),
+        candidateCategories: candidateCategories,
         date: dateYmd,
         isRetroactive: isRetroactive,
         matchedPhrase: matchedPhrase,
@@ -1230,7 +1246,186 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       const todayStr = referenceDateYmd || new Date().toISOString().slice(0, 10)
       const txSource = sourceOverride || 'whatsapp_text'
 
-      // 1. VERIFICA SE EXISTE PENDÊNCIA AGUARDANDO RESPOSTA (pending_caixinha)
+      // 1.0 VERIFICA SE EXISTE PENDÊNCIA DE CATEGORIA AGUARDANDO RESPOSTA (pending_category) - Nível 1
+      let pendingCategoryData = null
+      if (contactRecord) {
+        const rawPendingCat = contactRecord.getString('pending_category')
+        if (rawPendingCat) {
+          try {
+            pendingCategoryData = JSON.parse(rawPendingCat)
+          } catch (_) {}
+        }
+      }
+
+      if (
+        pendingCategoryData &&
+        Array.isArray(pendingCategoryData.candidate_categories) &&
+        pendingCategoryData.candidate_categories.length > 0
+      ) {
+        if (localIsConfirmationNo(cleanText) || cleanText.toLowerCase() === 'cancelar') {
+          contactRecord.set('pending_category', '')
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+          return {
+            handled: true,
+            reply:
+              'Tudo bem! Cancelei o registro do gasto. Seus lançamentos não foram alterados! Se precisar de algo, só me chamar. 😊',
+          }
+        }
+
+        const catCands = pendingCategoryData.candidate_categories
+        let chosenCategory = null
+
+        const numCatIdx = parseInt(cleanText, 10)
+        if (!isNaN(numCatIdx) && numCatIdx >= 1 && numCatIdx <= catCands.length) {
+          chosenCategory = catCands[numCatIdx - 1]
+        } else {
+          const normInput = localNorm(cleanText)
+          for (let i = 0; i < catCands.length; i++) {
+            const cName = localNorm(catCands[i].name)
+            if (normInput === cName || cName.includes(normInput) || normInput.includes(cName)) {
+              chosenCategory = catCands[i]
+              break
+            }
+          }
+        }
+
+        if (chosenCategory) {
+          // Limpa pending_category pois a categoria foi resolvida com sucesso
+          contactRecord.set('pending_category', '')
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+
+          const chosenCategoryId = chosenCategory.id
+          const chosenCategoryName = chosenCategory.name
+          const catExpenseDate = pendingCategoryData.date || todayStr
+
+          // Busca caixinhas candidatas para a categoria escolhida
+          const caixinhaCandidates = localGetCandidateBudgetsForCategory(
+            app,
+            userId,
+            chosenCategoryId,
+            chosenCategoryName,
+            catExpenseDate.slice(0, 7),
+          )
+
+          // Subcaso 1: Categoria escolhida possui mais de 1 caixinha vinculada (>1) -> Pergunta de caixinha (Nível 2)
+          if (caixinhaCandidates.length > 1) {
+            contactRecord.set(
+              'pending_caixinha',
+              JSON.stringify({
+                amount: pendingCategoryData.amount,
+                description: pendingCategoryData.description,
+                category_id: chosenCategoryId,
+                category_name: chosenCategoryName,
+                date: catExpenseDate,
+                is_retroactive: pendingCategoryData.is_retroactive || false,
+                candidate_budgets: caixinhaCandidates,
+                source: pendingCategoryData.source || txSource,
+                note: pendingCategoryData.note || '',
+                created_at: new Date().toISOString(),
+              }),
+            )
+            try {
+              app.save(contactRecord)
+            } catch (_) {}
+
+            let optionsList = ''
+            for (let i = 0; i < caixinhaCandidates.length; i++) {
+              optionsList += `${localGetNumberEmoji(i)} ${caixinhaCandidates[i].name}\n`
+            }
+            const valFmt = localFormatCentsToBrl(pendingCategoryData.amount)
+
+            return {
+              handled: true,
+              reply: `Esse gasto de ${valFmt} (${pendingCategoryData.description}) entra em qual caixinha?\n\n${optionsList}\nResponda com o número ou nome da caixinha! 😊`,
+            }
+          }
+
+          // Subcaso 2: Categoria escolhida possui exatamente 1 caixinha vinculada (=== 1) -> Grava direto com o budget
+          if (caixinhaCandidates.length === 1) {
+            const singleBudget = caixinhaCandidates[0]
+            let txCol = null
+            try {
+              txCol = app.findCollectionByNameOrId('transactions')
+            } catch (_) {}
+
+            if (txCol) {
+              const newTx = new Record(txCol)
+              newTx.set('owner', userId)
+              newTx.set('amount', pendingCategoryData.amount)
+              newTx.set('description', pendingCategoryData.description)
+              newTx.set('date', catExpenseDate)
+              newTx.set('category', chosenCategoryId)
+              newTx.set('type', 'despesa')
+              newTx.set('source', pendingCategoryData.source || txSource)
+              newTx.set('status', 'active')
+              newTx.set('is_retroactive', pendingCategoryData.is_retroactive || false)
+              newTx.set('budget', singleBudget.id)
+              newTx.set('message_timestamp', new Date().toISOString())
+              if (pendingCategoryData.note) {
+                newTx.set('note', pendingCategoryData.note)
+              }
+              app.save(newTx)
+            }
+
+            const valFmt = localFormatCentsToBrl(pendingCategoryData.amount)
+            let retroPhrase = ''
+            if (pendingCategoryData.is_retroactive && catExpenseDate) {
+              retroPhrase = ` (contabilizado em ${localFormatDatePtBr(catExpenseDate)})`
+            }
+
+            let remainingPhrase = ''
+            try {
+              const monthPrefix = catExpenseDate.slice(0, 7)
+              const bRec = app.findRecordById('budgets', singleBudget.id)
+              const tetoCents = (bRec && bRec.getInt('amount')) || singleBudget.amount || 0
+              if (tetoCents > 0) {
+                const txs = app.findRecordsByFilter(
+                  'transactions',
+                  `owner = '${userId}' && budget = '${singleBudget.id}' && type = 'despesa' && (status = 'active' || status = '' || status = null) && date >= '${monthPrefix}-01' && date <= '${monthPrefix}-31'`,
+                  '',
+                  500,
+                  0,
+                )
+                let spentTotal = 0
+                for (let st = 0; st < txs.length; st++) {
+                  spentTotal += txs[st].getInt('amount') || 0
+                }
+                const rest = tetoCents - spentTotal
+                if (rest >= 0) {
+                  remainingPhrase = ` Restam ${localFormatCentsToBrl(rest)} do seu teto neste mês.`
+                } else {
+                  remainingPhrase = ` 🚨 Atenção: caixinha estourada por ${localFormatCentsToBrl(Math.abs(rest))}.`
+                }
+              }
+            } catch (_) {}
+
+            return {
+              handled: true,
+              reply: `Registrei seu gasto de *${pendingCategoryData.description}* (${valFmt}) na caixinha *${singleBudget.name}*${retroPhrase} ✅${remainingPhrase}`,
+            }
+          }
+
+          // Subcaso 3: Categoria escolhida possui 0 caixinhas vinculadas (=== 0) -> Deixa passar para o agente/fallback
+          return { handled: false, reply: '' }
+        }
+
+        // Resposta não casou com nenhuma categoria da lista: repete a pergunta de categoria
+        let repeatCatList = ''
+        for (let i = 0; i < catCands.length; i++) {
+          repeatCatList += `${localGetNumberEmoji(i)} ${catCands[i].name}\n`
+        }
+        const valFmt = localFormatCentsToBrl(pendingCategoryData.amount)
+        return {
+          handled: true,
+          reply: `Não entendi qual opção você escolheu para o gasto de *${valFmt}* (${pendingCategoryData.description}).\n\nPor favor, responda apenas com o número ou nome da categoria:\n\n${repeatCatList}\nOu envie "cancelar" para desconsiderar.`,
+        }
+      }
+
+      // 1.1 VERIFICA SE EXISTE PENDÊNCIA AGUARDANDO RESPOSTA (pending_caixinha) - Nível 2
       let pendingData = null
       if (contactRecord) {
         const rawPending = contactRecord.getString('pending_caixinha')
@@ -1363,10 +1558,46 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         }
       }
 
-      // 2. SE NÃO HÁ PENDÊNCIA, ANALISA SE A MENSAGEM É UM NOVO GASTO COM VÍNCULOS DE CAIXINHA
+      // 2. SE NÃO HÁ PENDÊNCIA, ANALISA SE A MENSAGEM É UM NOVO GASTO
       const parsedExpense = localTryParseSpendingExpense(app, userId, cleanText, todayStr)
       if (!parsedExpense) {
         return { handled: false, reply: '' }
+      }
+
+      // Caso 0: MAIS DE UMA CATEGORIA CANDIDATA (>1) -> Pergunta de CATEGORIA (Nível 1) e NÃO grava nada ainda
+      if (
+        Array.isArray(parsedExpense.candidateCategories) &&
+        parsedExpense.candidateCategories.length > 1
+      ) {
+        if (contactRecord) {
+          contactRecord.set(
+            'pending_category',
+            JSON.stringify({
+              amount: parsedExpense.amount,
+              description: parsedExpense.description,
+              date: parsedExpense.date,
+              is_retroactive: parsedExpense.isRetroactive,
+              source: txSource,
+              note: '',
+              candidate_categories: parsedExpense.candidateCategories,
+              created_at: new Date().toISOString(),
+            }),
+          )
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+        }
+
+        let catOptionsList = ''
+        for (let i = 0; i < parsedExpense.candidateCategories.length; i++) {
+          catOptionsList += `${localGetNumberEmoji(i)} ${parsedExpense.candidateCategories[i].name}\n`
+        }
+        const valFmt = localFormatCentsToBrl(parsedExpense.amount)
+
+        return {
+          handled: true,
+          reply: `Esse gasto de ${valFmt} (${parsedExpense.description}) é de qual categoria?\n\n${catOptionsList}\nResponda com o número ou o nome da categoria! 😊`,
+        }
       }
 
       const candidates = localGetCandidateBudgetsForCategory(

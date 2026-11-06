@@ -153,6 +153,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Desacoplamento e Autonomia Total das Caixinhas (v0.0.59)** | **AUTONOMIA TOTAL DAS CAIXINHAS**: Remoção completa do conceito de "categoria da caixinha" (\`category\` em \`budgets\`). Caixinhas passam a ser 100% autônomas com nome, figurinha (ícones, emojis ou bichinhos), cor e teto próprios. O modal de criar e editar caixinha (\`/budgets\`) foi totalmente limpo, eliminando seletor de categoria e ramificações. Gastos alimentam a caixinha unicamente via campo gravado \`budget\`, vínculos parametrizados (\`category_caixinha_links\`) ou matching inteligente. Zero regressão na regra de ouro (cada lançamento conta em no máximo 1 caixinha e cancelados são excluídos). | **Concluído** |
 | **Resumo de Caixinhas no WhatsApp 100% Determinístico da Base (v0.0.62/v0.0.66)** | **BUGFIX DEFINITIVO DE INTERCEPTAÇÃO**: Correção cirúrgica da interceptação do resumo determinístico no webhook do WhatsApp. O bloco de checagem e montagem chamava \`caixinhasEngine\` não declarada no escopo local, gerando ReferenceError engolido que desviava a mensagem para o \`$ai.agent\`. Corrigido para invocar as funções locais estritas (\`localIsCaixinhasOverviewIntent\`, \`localBuildCaixinhasSummaryForUser\` e \`localBuildCaixinhasContextPrompt\`) 100% embutidas no corpo do callback do webhook sem require. Resumo das caixinhas ativas e contexto anti-alucinação funcionando de forma determinística direta da base. | **Concluído** |
 | **Desambiguação e Escolha de Caixinha Inline no WhatsApp (v0.0.69)** | **FLUXO CONVERSACIONAL 100% INLINE**: Implementação e embutimento completo do fluxo de escolha de caixinha (\`localHandleCaixinhaFlow\`, \`localTryParseSpendingExpense\`, \`localGetCandidateBudgetsForCategory\`) 100% inline no callback do webhook e da rota \`/simulate\` sem dependência de require(). Quando um gasto pertence a categoria com 2+ caixinhas ativas vinculadas, a gravação é pausada, o bot envia a pergunta numerada (1️⃣ Caixinha A / 2️⃣ Caixinha B) e salva o estado em \`pending_caixinha\`. Ao receber "1", "2" ou o nome da caixinha, a transação é gravada (em centavos, active, com budget vinculado), confirmando valor e saldo restante do teto. Categorias com vínculo único gravam direto sem pergunta. Integridade protegida em \`transactions_integrity.js\`. | **Concluído** |
+| **Desambiguação de Categoria em 2 Níveis no WhatsApp (v0.0.71)** | **PERGUNTA DE CATEGORIA ANTES DA CAIXINHA (NÍVEL 1)**: Implementação embutida e rígida no webhook do WhatsApp para desambiguação de categorias com similaridade concorrente (ex.: "Padaria" casando tanto com "Alimentação Essencial" quanto com "Alimentação Não Essencial"). O matcher coleta todas as categorias candidatas empatadas no score máximo. Se houver 2+, suspende o registro e pergunta amigavelmente com numeração (1️⃣/2️⃣) e salva em \`pending_category\`. Após a resposta do cliente, emenda diretamente no fluxo de caixinha: se a categoria escolhida tiver 2+ caixinhas ativas, pergunta a caixinha (Nível 2); se tiver vínculo único, grava direto e confirma o teto; se tiver 0 caixinhas, encaminha para fallback. Resumo determinístico e cenários A–AJ mantidos 100% íntegros. | **Concluído** |
 
 ---
 
@@ -889,4 +890,31 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Envio de gasto cuja categoria possui 2 caixinhas ativas (ex.: "18 padaria" em Alimentação vinculada a "Alimentação - VR" e "Supermercado - VA"): bot responde perguntando "1️⃣ Alimentação - VR / 2️⃣ Supermercado - VA". Nenhuma transação é gravada ainda.
    - Resposta do cliente com "1": transação gravada com sucesso com budget da caixinha 1, confirmando valor e saldo restante do teto.
    - Envio de gasto em categoria com vínculo único: gravação instantânea e confirmação direta sem pergunta.
+
+---
+
+## AK) Desambiguação de Categoria (Nível 1) e Emenda com Caixinha (v0.0.71)
+1. **Objetivo**: Garantir que, quando um gasto informado no WhatsApp apresentar similaridade com mais de uma categoria cadastrada do usuário (exemplo clássico: *"Padaria R$ 12"* casando com a mesma pontuação tanto para *"Alimentação Essencial"* quanto para *"Alimentação Não Essencial"*), o sistema suspenda imediatamente o registro e questione educadamente a categoria antes de qualquer outra ação.
+2. **Fluxo em 2 Níveis**:
+   - **Nível 1 (Categoria)**:
+     - \`localTryParseSpendingExpense\` coleta todas as categorias que atingem o score máximo (\`candidateCategories\`).
+     - Se \`candidateCategories.length > 1\`: grava o estado pendente no campo \`pending_category\` da tabela \`whatsapp_contacts\` e envia mensagem numerada:
+       > *"Esse gasto de R$ 12,00 (Padaria) é de qual categoria?*
+       >
+       > *1️⃣ Alimentação Essencial*
+       > *2️⃣ Alimentação Não Essencial*
+       >
+       > *Responda com o número ou o nome da categoria! 😊"*
+     - Nenhuma transação é gravada na coleção \`transactions\` nesta etapa.
+   - **Emenda com Nível 2 (Caixinha)**:
+     - O cliente responde com "1", "2" ou o nome da categoria (ex.: "Alimentação Essencial").
+     - O webhook limpa \`pending_category\` e consulta as caixinhas ativas vinculadas à categoria escolhida (\`localGetCandidateBudgetsForCategory\`):
+       - Se houver **2 ou mais caixinhas candidatas**: salva \`pending_caixinha\` e envia a pergunta numerada de caixinha (1️⃣ Alimentação - VA / 2️⃣ Alimentação - VR).
+       - Se houver **exatamente 1 caixinha candidata**: grava a transação na hora com \`budget\` preenchido, calcula e exibe o saldo restante do teto no mês.
+       - Se houver **0 caixinhas candidatas**: cai no fluxo seguro de despesa sem caixinha fixa.
+3. **Casos Especiais e Proteções**:
+   - Opção de cancelamento em qualquer nível: envio de "cancelar" ou termos negativos limpa a pendência e confirma que nada foi alterado.
+   - Resposta inválida: repete educadamente a lista de opções com número emoji e instrução clara.
+   - Gastos com categoria clara e pontuação única: continuam gravando direto (se vínculo único) ou indo direto para a pergunta de caixinha (se 2+ caixinhas), com zero regressão.
+   - Resumo determinístico das caixinhas: mantido 100% inline, com cálculo direto da base e sem intervenção de IA.
 `

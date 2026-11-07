@@ -389,7 +389,15 @@ routerAdd(
         sessionArgs.customer = customerId
       }
 
-      const sessionRes = $connectors.executeAsOwner('STRIPE_CREATE_CHECKOUT_SESSION', sessionArgs)
+      let sessionRes = null
+      try {
+        sessionRes = $connectors.executeAsOwner('STRIPE_CREATE_CHECKOUT_SESSION', sessionArgs)
+      } catch (sErr) {
+        console.log('[billing] Exceção ao criar checkout session: ' + sErr)
+        return e.json(502, {
+          error: 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
+        })
+      }
 
       if (!sessionRes || !sessionRes.successful || !sessionRes.data) {
         console.log(
@@ -456,9 +464,17 @@ routerAdd(
         return e.json(400, { error: 'session_id obrigatório' })
       }
 
-      const res = $connectors.executeAsOwner('STRIPE_RETRIEVE_CHECKOUT_SESSION', {
-        session: sessionId,
-      })
+      let res = null
+      try {
+        res = $connectors.executeAsOwner('STRIPE_RETRIEVE_CHECKOUT_SESSION', {
+          session: sessionId,
+        })
+      } catch (rErr) {
+        console.log('[billing] Exceção ao recuperar session: ' + rErr)
+        return e.json(404, {
+          error: 'Sessão Stripe não encontrada ou conector indisponível',
+        })
+      }
 
       if (!res || !res.successful || !res.data) {
         return e.json(404, {
@@ -609,10 +625,19 @@ routerAdd(
         e.requestInfo().body?.return_url ||
         'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings'
 
-      const portalRes = $connectors.executeAsOwner('STRIPE_CREATE_BILLING_PORTAL_SESSION', {
-        customer: customerId,
-        return_url: returnUrl,
-      })
+      let portalRes = null
+      try {
+        portalRes = $connectors.executeAsOwner('STRIPE_CREATE_BILLING_PORTAL_SESSION', {
+          customer: customerId,
+          return_url: returnUrl,
+        })
+      } catch (pErr) {
+        console.log('[billing] Exceção ao criar portal session: ' + pErr)
+        return e.json(502, {
+          error:
+            'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
+        })
+      }
 
       if (portalRes && portalRes.successful && portalRes.data && portalRes.data.url) {
         return e.json(200, { url: portalRes.data.url })

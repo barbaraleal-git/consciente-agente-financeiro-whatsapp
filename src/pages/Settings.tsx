@@ -46,12 +46,35 @@ import {
   Upload,
   Info,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { SubscriptionPlansTab } from '@/components/SubscriptionPlansTab'
 
 export const Settings: React.FC = () => {
   const { user, refreshUser } = useAuth()
   const { toast } = useToast()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Seções da tela: perfil, whatsapp, assinatura...
+  const sectionParam = searchParams.get('section')
+  const [activeSection, setActiveSection] = useState<'perfil' | 'assinatura' | 'whatsapp'>(
+    sectionParam === 'assinatura' ? 'assinatura' : 'perfil',
+  )
+  const [billingCardOpen, setBillingCardOpen] = useState(sectionParam === 'assinatura')
+
+  useEffect(() => {
+    if (sectionParam === 'assinatura') setActiveSection('assinatura')
+  }, [sectionParam])
+
+  const openBillingSection = () => {
+    setBillingCardOpen(true)
+    setActiveSection('assinatura')
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('section', 'assinatura')
+      return next
+    })
+  }
 
   // Profile Form
   const [name, setName] = useState('')
@@ -1370,6 +1393,46 @@ export const Settings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Assinatura */}
+      <Card
+        id="assinatura"
+        className="border-slate-200 scroll-mt-24 cursor-pointer transition-shadow hover:shadow-sm"
+        onClick={() => {
+          if (!billingCardOpen) openBillingSection()
+        }}
+      >
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            Assinatura
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500">
+            Status da sua assinatura, planos disponíveis e checkout seguro via Stripe
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation()
+              openBillingSection()
+            }}
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs sm:text-sm"
+          >
+            <Sparkles className="w-4 h-4 mr-1.5" />
+            Gerenciar Assinatura
+          </Button>
+        </CardContent>
+      </Card>
+
+      {billingCardOpen && (
+        <div id="secao-assinatura" className="scroll-mt-24">
+          <SubscriptionPlansTab />
+        </div>
+      )}
 
       {/* Segurança */}
       <Card className="border-slate-200">

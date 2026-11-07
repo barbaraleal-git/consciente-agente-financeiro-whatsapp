@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { BillingAdminSection } from '@/components/admin/BillingAdminSection'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
 import {
@@ -345,6 +346,23 @@ export const AdminBackoffice: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Módulo de Billing: planos, assinaturas e dados legais */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-indigo-600" />
+            Assinaturas & Billing
+          </CardTitle>
+          <CardDescription className="text-sm text-slate-500">
+            Planos e preços (com vigência e override por cliente), status dos assinantes e dados
+            legais da empresa exibidos no rodapé.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BillingAdminSection />
+        </CardContent>
+      </Card>
 
       {/* Card Principal: Custo Operacional Mensal Acumulado por Cliente (Item 9) */}
       <Card className="border-indigo-100 bg-white shadow-sm overflow-hidden">

@@ -26,7 +26,7 @@ export const LegalFooter: React.FC<{ className?: string }> = ({ className = '' }
     }
   }, [])
 
-  const companyName = legal?.company_name || 'Consciente Gestão Financeira Inteligente Ltda.'
+  const companyName = legal?.company_name || 'BFL Soluções em Tecnologia'
   const tradeName = legal?.trade_name || 'Consciente - Seu parceiro nas finanças'
   const cnpj = legal?.cnpj || '53.842.190/0001-38'
   const address =

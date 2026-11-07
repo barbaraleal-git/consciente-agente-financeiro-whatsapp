@@ -39,6 +39,15 @@ import {
 
 type AdminTab = 'clientes' | 'planos' | 'legal'
 
+const EMPTY_LEGAL_INFO: CompanyLegalInfo = {
+  company_name: '',
+  trade_name: '',
+  cnpj: '',
+  address_full: '',
+  email_contact: '',
+  support_phone_or_bot: '',
+}
+
 const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; icon: React.ReactNode }> =
   {
     active: {
@@ -83,6 +92,7 @@ export const BillingAdminSection: React.FC = () => {
 
   const [legalLoading, setLegalLoading] = useState(true)
   const [legal, setLegal] = useState<CompanyLegalInfo | null>(null)
+  const [legalError, setLegalError] = useState<string | null>(null)
   const [savingLegal, setSavingLegal] = useState(false)
 
   const loadSubscriptions = async () => {
@@ -124,11 +134,15 @@ export const BillingAdminSection: React.FC = () => {
   const loadLegal = async () => {
     try {
       setLegalLoading(true)
+      setLegalError(null)
       const res = await billingService.adminGetPlans()
-      if (res.legal_info) setLegal(res.legal_info)
-      else setLegal(null)
+      setLegal(res.legal_info || { ...EMPTY_LEGAL_INFO })
     } catch {
-      setLegal(null)
+      // Sem dados legais (ou sem permissão/erro): abre o formulário vazio em vez de travar
+      setLegal({ ...EMPTY_LEGAL_INFO })
+      setLegalError(
+        'Não foi possível carregar os dados legais salvos. O formulário foi aberto vazio — preencha e salve.',
+      )
     } finally {
       setLegalLoading(false)
     }
@@ -137,6 +151,7 @@ export const BillingAdminSection: React.FC = () => {
   useEffect(() => {
     loadSubscriptions()
     loadPlans()
+    loadLegal()
   }, [])
 
   const handleSavePlan = async (plan: SubscriptionPlanItem) => {
@@ -195,6 +210,7 @@ export const BillingAdminSection: React.FC = () => {
       setSavingLegal(true)
       const res = await billingService.adminSaveLegalInfo(legal)
       if (res.success) {
+        setLegalError(null)
         toast({
           title: 'Dados legais salvos!',
           description: 'As informações do rodapé e das telas de cobrança foram atualizadas.',
@@ -535,6 +551,11 @@ export const BillingAdminSection: React.FC = () => {
             </div>
           ) : (
             <>
+              {legalError && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {legalError}
+                </div>
+              )}
               <p className="text-xs text-slate-500 max-w-2xl">
                 Dados exibidos no rodapé legal do app e na tela de planos, conforme o Decreto
                 Federal nº 7.962/2013 (Comércio Eletrônico) e o CDC.

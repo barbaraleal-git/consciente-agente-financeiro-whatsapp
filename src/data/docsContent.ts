@@ -197,7 +197,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Item 15** | Backup automatizado da base | Rotina automatizada e versionada de snapshots do banco em produção. |
 | **Item 17** | PWA instalável no celular | Manifesto web, service worker e suporte a instalação como Progressive Web App em iOS e Android com ícone Consciente. |
 | **Item 18** | Captcha no cadastro | Proteção contra cadastros automatizados (bots) na tela de registro com hCaptcha/Turnstile. |
-| **Item 24** | Billing + dashboard de assinaturas | Módulo financeiro de cobrança e controle de planos pagos/recorrentes. **Dependência**: Aguarda definição final da precificação e gateways de pagamento (ex: Stripe/Asaas). |
+| **Item 24** | Billing + dashboard de assinaturas | Módulo financeiro de cobrança e controle de planos pagos/recorrentes. **Status**: Implementado com Stripe (checkout real, preços Black November, carência de 7 dias e bloqueio — ver cenário AL). **Pendente**: conectar a conta Stripe PJ da BFL Soluções em Tecnologia em **Conectores** (painel Skip) e validar um pagamento real ponta a ponta. |
 | **Item 34** | Billing: visão acumulada de custos vs faturamento bruto | No módulo de billing, exibir a visão comparativa acumulada de custos operacionais da infraestrutura (Meta + Groq + IA) versus faturamento bruto (receita líquida até o momento). **Sinergia**: Complementa diretamente o Item 24 e se alimenta da modelagem de custos do Item 9. |
 | **Item 37** | Billing próprio — tela de tarifas ajustáveis no backoffice | Hoje os custos de fornecedores estão fixos em real cravados no código (áudio R$ 0,001 por transcrição, mensagem de IA R$ 0,02, utility R$ 0,04). Na fase de escala, criar tela de 'Tarifas' no backoffice para ajustar esses valores (e eventual conversão de câmbio) sem mexer em código. Faz parte do módulo de billing, que tem duas faces: billing dos clientes (assinatura/trial — o que eles pagam) e billing próprio (o que pagamos aos fornecedores). **Status**: Backlog — fase de escala. **Sinergia**: Complementa os Itens 9, 24 e 34. |
 `
@@ -922,6 +922,8 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 ---
 
 ## AL) Assinatura (Billing Stripe) — Plano, Checkout, Carência e Bloqueio
+> **Status (v0.0.79)**: módulo no ar, porém o checkout ainda **não foi validado ponta a ponta com pagamento real**. A conta Stripe PJ da BFL Soluções em Tecnologia precisa estar conectada em **Conectores** (painel Skip) para o checkout abrir a página real da Stripe — sem essa conexão, o botão "Assinar" responde com erro amigável de conector indisponível. Repita este cenário completo após conectar.
+
 1. **Fluxo de Assinatura Bem-Sucedido (Caminho Feliz)**:
    - Acesse \`/settings\` como cliente e abra a seção **Assinatura** (ou o deep-link \`/settings?section=assinatura\`).
    - Na tela de planos, escolha o plano: **Mensal R$ 19,90** ou **Anual R$ 214,90** (preço promocional Black November; valores parametrizáveis no Backoffice Admin com vigência geral e por cliente).

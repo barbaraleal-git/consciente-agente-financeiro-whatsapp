@@ -67,9 +67,19 @@ export const SubscriptionPlansTab: React.FC = () => {
               'Assinatura ativada com sucesso! Seu agente no WhatsApp já está 100% liberado.',
             )
             loadStatus()
+          } else {
+            setSuccessMsg(
+              'Pagamento confirmado! A ativação pode levar alguns instantes; se o status não mudar, aguarde um minuto e recarregue a página.',
+            )
+            loadStatus()
           }
         })
         .catch(() => {
+          // Sincronização falhou, mas o webhook da Stripe também ativa a
+          // assinatura — orientamos a recarregar em vez de alarmar.
+          setSuccessMsg(
+            'Pagamento confirmado! Se o status não atualizar em instantes, recarregue a página.',
+          )
           loadStatus()
         })
     } else if (checkoutResult === 'cancelled') {
@@ -83,18 +93,21 @@ export const SubscriptionPlansTab: React.FC = () => {
     setActionLoading(planType)
     try {
       const origin = window.location.origin
-      const successUrl = `${origin}/settings?tab=planos&checkout=success&session_id={CHECKOUT_SESSION_ID}`
-      const cancelUrl = `${origin}/settings?tab=planos&checkout=cancelled`
+      // URLs de retorno apontam para a seção real da aba de assinatura
+      const successUrl = `${origin}/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}`
+      const cancelUrl = `${origin}/settings?section=assinatura&checkout=cancelled`
 
       const res = await billingService.createCheckoutSession(planType, successUrl, cancelUrl)
-      if (res.url) {
+      if (res?.url) {
         window.location.href = res.url
-      } else {
-        setErrorMsg('Erro ao abrir tela de checkout da Stripe.')
+        return
       }
+      setErrorMsg('Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      setErrorMsg(msg || 'Falha ao iniciar checkout. Verifique suas informações.')
+      setErrorMsg(
+        msg || 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
+      )
     } finally {
       setActionLoading(null)
     }
@@ -131,12 +144,19 @@ export const SubscriptionPlansTab: React.FC = () => {
     setActionLoading('portal')
     try {
       const res = await billingService.createPortalSession(window.location.href)
-      if (res.url) {
+      if (res?.url) {
         window.location.href = res.url
+        return
       }
+      setErrorMsg(
+        'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
+      )
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      setErrorMsg(msg || 'Não foi possível acessar o portal de faturamento.')
+      setErrorMsg(
+        msg ||
+          'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
+      )
     } finally {
       setActionLoading(null)
     }

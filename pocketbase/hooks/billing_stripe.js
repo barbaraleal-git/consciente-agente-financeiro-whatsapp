@@ -7,7 +7,9 @@
  * 1. ZERO declarações top-level referenciadas dentro de callbacks!
  *    O PocketBase executa callbacks em pools de VMs isoladas. TODAS as funções auxiliares
  *    devem ser declaradas 100% INLINE dentro do corpo de cada callback routerAdd.
- * 2. Conectores Owner (Stripe): $connectors.executeAsOwner('stripe', toolSlug, args)
+ * 2. Conectores Owner (Stripe): $connectors.executeAsOwner(toolSlug, args)
+ *    (a conta Stripe usada é a da dona do app, conectada em Conectores; o toolkit
+ *    é inferido do prefixo do slug da ferramenta — nunca passar toolkit à parte)
  * 3. Rotas criadas:
  *    - GET  /backend/v1/billing/status (dados da assinatura, dados legais e planos vigentes)
  *    - POST /backend/v1/billing/create-checkout-session (inicia sessão de checkout Stripe)
@@ -209,7 +211,7 @@ routerAdd(
       })
     } catch (err) {
       console.log('[billing] Erro em /status: ' + err)
-      return e.json(500, { error: String(err) })
+      return e.json(500, { error: 'Não foi possível carregar o status da assinatura.' })
     }
   },
   $apis.requireAuth(),
@@ -308,12 +310,12 @@ routerAdd(
 
       const body = e.requestInfo().body || {}
       const planType = body.plan_type === 'anual' ? 'anual' : 'mensal'
+      // success_url/cancel_url fixos no servidor (nada do request é encaminhado
+      // como preço/produto; a URL só escolhe a tela de volta do app)
+      const appOrigin = 'https://agente-financeiro-whatsapp-37fd3.goskip.app'
       const successUrl =
-        body.success_url ||
-        'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?session_id={CHECKOUT_SESSION_ID}&checkout=success'
-      const cancelUrl =
-        body.cancel_url ||
-        'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?checkout=cancelled'
+        appOrigin + '/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}'
+      const cancelUrl = appOrigin + '/settings?section=assinatura&checkout=cancelled'
 
       const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
       const userEmail = userRec.getString('email')
@@ -327,7 +329,7 @@ routerAdd(
       // Garante customer na Stripe
       if (!customerId) {
         try {
-          const custRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_CUSTOMER', {
+          const custRes = $connectors.executeAsOwner('STRIPE_CREATE_CUSTOMER', {
             email: userEmail,
             name: userName,
             phone: userPhone,
@@ -387,18 +389,15 @@ routerAdd(
         sessionArgs.customer = customerId
       }
 
-      const sessionRes = $connectors.executeAsOwner(
-        'stripe',
-        'STRIPE_CREATE_CHECKOUT_SESSION',
-        sessionArgs,
-      )
+      const sessionRes = $connectors.executeAsOwner('STRIPE_CREATE_CHECKOUT_SESSION', sessionArgs)
 
       if (!sessionRes || !sessionRes.successful || !sessionRes.data) {
+        console.log(
+          '[billing] Falha ao criar checkout session na Stripe: ' +
+            JSON.stringify((sessionRes && sessionRes.error) || sessionRes),
+        )
         return e.json(502, {
-          error:
-            'Não foi possível iniciar a sessão de checkout na Stripe: ' +
-            ((sessionRes && sessionRes.error && sessionRes.error.message) ||
-              'Verifique as credenciais da Stripe do projeto.'),
+          error: 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
         })
       }
 
@@ -412,7 +411,9 @@ routerAdd(
       })
     } catch (err) {
       console.log('[billing] Erro em create-checkout-session: ' + err)
-      return e.json(500, { error: String(err) })
+      return e.json(500, {
+        error: 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
+      })
     }
   },
   $apis.requireAuth(),
@@ -455,7 +456,7 @@ routerAdd(
         return e.json(400, { error: 'session_id obrigatório' })
       }
 
-      const res = $connectors.executeAsOwner('stripe', 'STRIPE_RETRIEVE_CHECKOUT_SESSION', {
+      const res = $connectors.executeAsOwner('STRIPE_RETRIEVE_CHECKOUT_SESSION', {
         session: sessionId,
       })
 
@@ -514,7 +515,7 @@ routerAdd(
       })
     } catch (err) {
       console.log('[billing] Erro em sync-session: ' + err)
-      return e.json(500, { error: String(err) })
+      return e.json(500, { error: 'Não foi possível sincronizar o pagamento. Tente novamente.' })
     }
   },
   $apis.requireAuth(),
@@ -552,7 +553,7 @@ routerAdd(
 
       if (subId) {
         try {
-          $connectors.executeAsOwner('stripe', 'STRIPE_CANCEL_SUBSCRIPTION', {
+          $connectors.executeAsOwner('STRIPE_CANCEL_SUBSCRIPTION', {
             subscription_id: subId,
           })
         } catch (cErr) {
@@ -577,7 +578,9 @@ routerAdd(
       })
     } catch (err) {
       console.log('[billing] Erro em cancel-subscription: ' + err)
-      return e.json(500, { error: String(err) })
+      return e.json(500, {
+        error: 'Não foi possível cancelar a assinatura. Tente novamente ou fale com o suporte.',
+      })
     }
   },
   $apis.requireAuth(),
@@ -606,27 +609,29 @@ routerAdd(
         e.requestInfo().body?.return_url ||
         'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings'
 
-      const portalRes = $connectors.executeAsOwner(
-        'stripe',
-        'STRIPE_CREATE_BILLING_PORTAL_SESSION',
-        {
-          customer: customerId,
-          return_url: returnUrl,
-        },
-      )
+      const portalRes = $connectors.executeAsOwner('STRIPE_CREATE_BILLING_PORTAL_SESSION', {
+        customer: customerId,
+        return_url: returnUrl,
+      })
 
       if (portalRes && portalRes.successful && portalRes.data && portalRes.data.url) {
         return e.json(200, { url: portalRes.data.url })
       }
 
+      console.log(
+        '[billing] Falha ao criar portal session na Stripe: ' +
+          JSON.stringify((portalRes && portalRes.error) || portalRes),
+      )
       return e.json(502, {
         error:
-          'Não foi possível gerar a sessão do portal: ' +
-          JSON.stringify((portalRes && portalRes.error) || portalRes),
+          'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
       })
     } catch (err) {
       console.log('[billing] Erro em create-portal-session: ' + err)
-      return e.json(500, { error: String(err) })
+      return e.json(500, {
+        error:
+          'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
+      })
     }
   },
   $apis.requireAuth(),
@@ -965,7 +970,7 @@ routerAdd(
       }
 
       // Cria produto
-      const prodRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_PRODUCT', {
+      const prodRes = $connectors.executeAsOwner('STRIPE_CREATE_PRODUCT', {
         name: 'Consciente - Assinatura Agente Financeiro',
         description:
           'Acesso completo ao agente financeiro Consciente no WhatsApp, controle de caixinhas, extratos e relatórios.',
@@ -982,7 +987,7 @@ routerAdd(
       results.product = stripeProduct
 
       // Preço Mensal Black November: R$ 19,90 / mês
-      const priceMensalRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_PRICE', {
+      const priceMensalRes = $connectors.executeAsOwner('STRIPE_CREATE_PRICE', {
         product: productId,
         currency: 'brl',
         unit_amount: 1990,
@@ -994,7 +999,7 @@ routerAdd(
       }
 
       // Preço Anual Black November: R$ 214,90 / ano
-      const priceAnualRes = $connectors.executeAsOwner('stripe', 'STRIPE_CREATE_PRICE', {
+      const priceAnualRes = $connectors.executeAsOwner('STRIPE_CREATE_PRICE', {
         product: productId,
         currency: 'brl',
         unit_amount: 21490,

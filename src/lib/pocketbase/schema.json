@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T05:29:26.818Z",
+  "generatedAt": "2026-11-07T05:48:15.018Z",
   "collections": [
     {
       "name": "users",
@@ -1104,6 +1104,58 @@
         "CREATE INDEX idx_sub_hist_user ON subscriptions_history (user)",
         "CREATE INDEX idx_sub_hist_event ON subscriptions_history (event_type)"
       ]
+    },
+    {
+      "name": "stripe_config",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')"
+      },
+      "fields": [
+        {
+          "name": "secret_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "webhook_signing_secret",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mode",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

@@ -890,16 +890,27 @@ export interface AdminSubscriptionsResponse {
     cpf: string
     subscription_status: 'trial' | 'active' | 'carencia' | 'bloqueado' | 'cancelado'
     subscription_plan: 'mensal' | 'anual'
-    subscription_expires_at?: string
-    carencia_until?: string
-    stripe_customer_id?: string
-    stripe_subscription_id?: string
-    terms_accepted_at?: string
-    recurring_consent_accepted_at?: string
+    subscription_expires_at: string
+    carencia_until: string
+    stripe_customer_id: string
+    stripe_subscription_id: string
+    terms_accepted_at: string
+    recurring_consent_accepted_at: string
     created: string
   }>
 }
 
+export interface StripeAdminConfig {
+  configured: boolean
+  has_secret_key: boolean
+  has_webhook_signing_secret: boolean
+  masked_secret_key: string
+  masked_webhook_signing_secret: string
+  price_id_mensal: string
+  price_id_anual: string
+  updated?: string
+  updated_by?: string
+}
 export const billingService = {
   getStatus: async (): Promise<BillingStatusResponse> => {
     return pb.send('/backend/v1/billing/status', {
@@ -1001,6 +1012,24 @@ export const billingService = {
   adminGetSubscriptions: async (): Promise<AdminSubscriptionsResponse> => {
     return pb.send('/backend/v1/admin/billing/subscriptions', {
       method: 'GET',
+    })
+  },
+
+  adminGetStripeConfig: async (): Promise<StripeAdminConfig> => {
+    return pb.send('/backend/v1/admin/billing/stripe-config', {
+      method: 'GET',
+    })
+  },
+
+  adminSaveStripeConfig: async (data: {
+    secret_key?: string
+    webhook_signing_secret?: string
+    price_id_mensal?: string
+    price_id_anual?: string
+  }): Promise<{ success: boolean; message: string }> => {
+    return pb.send('/backend/v1/admin/billing/stripe-config', {
+      method: 'POST',
+      body: data,
     })
   },
 

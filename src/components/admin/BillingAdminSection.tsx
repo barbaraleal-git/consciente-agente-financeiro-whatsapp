@@ -21,6 +21,7 @@ import {
   type AdminSubscriptionsResponse,
   type SubscriptionPlanItem,
   type CompanyLegalInfo,
+  type StripeAdminConfig,
 } from '@/services/finance'
 import {
   Loader2,
@@ -35,9 +36,15 @@ import {
   Ban,
   XCircle,
   CheckCircle2,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  AlertTriangle,
 } from 'lucide-react'
 
-type AdminTab = 'clientes' | 'planos' | 'legal'
+type AdminTab = 'clientes' | 'planos' | 'stripe' | 'legal'
 
 const EMPTY_LEGAL_INFO: CompanyLegalInfo = {
   company_name: '',
@@ -95,6 +102,37 @@ export const BillingAdminSection: React.FC = () => {
   const [legalError, setLegalError] = useState<string | null>(null)
   const [savingLegal, setSavingLegal] = useState(false)
 
+  // Sub-seção Configuração Stripe
+  const [stripeLoading, setStripeLoading] = useState(true)
+  const [stripeConfig, setStripeConfig] = useState<StripeAdminConfig | null>(null)
+  const [stripeSecretKeyInput, setStripeSecretKeyInput] = useState('')
+  const [stripeWhsecInput, setStripeWhsecInput] = useState('')
+  const [stripePriceMensalInput, setStripePriceMensalInput] = useState('')
+  const [stripePriceAnualInput, setStripePriceAnualInput] = useState('')
+  const [savingStripe, setSavingStripe] = useState(false)
+  const [showSecretKey, setShowSecretKey] = useState(false)
+  const [showWhsec, setShowWhsec] = useState(false)
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false)
+
+  const webhookPublicUrl = `${import.meta.env.VITE_POCKETBASE_URL || ''}/backend/v1/stripe/webhook`
+
+  const loadStripeConfig = async () => {
+    try {
+      setStripeLoading(true)
+      const res = await billingService.adminGetStripeConfig()
+      setStripeConfig(res)
+      setStripePriceMensalInput(res.price_id_mensal || '')
+      setStripePriceAnualInput(res.price_id_anual || '')
+    } catch {
+      toast({
+        title: 'Aviso de configuração Stripe',
+        description: 'Não foi possível carregar o status da Stripe ou ainda não configurado.',
+      })
+    } finally {
+      setStripeLoading(false)
+    }
+  }
+
   const loadSubscriptions = async () => {
     try {
       setSubsLoading(true)
@@ -151,6 +189,7 @@ export const BillingAdminSection: React.FC = () => {
   useEffect(() => {
     loadSubscriptions()
     loadPlans()
+    loadStripeConfig()
     loadLegal()
   }, [])
 
@@ -232,6 +271,63 @@ export const BillingAdminSection: React.FC = () => {
 
   const statusMetrics = useMemo(() => subsData?.metrics, [subsData])
 
+  const handleSaveStripeConfig = async () => {
+    try {
+      setSavingStripe(true)
+      const payload: {
+        secret_key?: string
+        webhook_signing_secret?: string
+        price_id_mensal?: string
+        price_id_anual?: string
+      } = {
+        price_id_mensal: stripePriceMensalInput.trim(),
+        price_id_anual: stripePriceAnualInput.trim(),
+      }
+
+      if (stripeSecretKeyInput.trim()) {
+        payload.secret_key = stripeSecretKeyInput.trim()
+      }
+      if (stripeWhsecInput.trim()) {
+        payload.webhook_signing_secret = stripeWhsecInput.trim()
+      }
+
+      const res = await billingService.adminSaveStripeConfig(payload)
+      toast({
+        title: 'Configuração Stripe salva',
+        description: res.message || 'Credenciais e Price IDs gravados com sucesso!',
+      })
+      setStripeSecretKeyInput('')
+      setStripeWhsecInput('')
+      await loadStripeConfig()
+      await loadPlans()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao salvar configuração Stripe',
+        description: err instanceof Error ? err.message : 'Não foi possível salvar os dados.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingStripe(false)
+    }
+  }
+
+  const handleCopyWebhookUrl = () => {
+    try {
+      navigator.clipboard.writeText(webhookPublicUrl)
+      setCopiedWebhookUrl(true)
+      setTimeout(() => setCopiedWebhookUrl(false), 2000)
+      toast({
+        title: 'URL copiada',
+        description: 'Cole esta URL no painel da Stripe em Webhooks.',
+      })
+    } catch {
+      toast({
+        title: 'URL do Webhook',
+        description: webhookPublicUrl,
+      })
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Mini-tabs internas do módulo de billing */}
@@ -240,6 +336,7 @@ export const BillingAdminSection: React.FC = () => {
           [
             ['clientes', 'Assinaturas dos Clientes', Users],
             ['planos', 'Planos e Preços', Tag],
+            ['stripe', 'Configuração Stripe', KeyRound],
             ['legal', 'Dados Legais', ShieldCheck],
           ] as const
         ).map(([key, label, Icon]) => (
@@ -535,6 +632,227 @@ export const BillingAdminSection: React.FC = () => {
                     )}
                   </TableBody>
                 </Table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ============ ABA: CONFIGURAÇÃO STRIPE (DIRETA) ============ */}
+      {adminTab === 'stripe' && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-slate-900">
+                  Integração Direta com a API da Stripe
+                </h3>
+                {stripeConfig?.configured ? (
+                  <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs">
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> Configurado
+                  </Badge>
+                ) : (
+                  <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-xs">
+                    <AlertTriangle className="w-3 h-3 mr-1" /> Pendente de Chaves
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Conexão direta à Stripe via HTTPS sem depender de conectores externos. As
+                credenciais são armazenadas de forma segura no banco e retornadas sempre mascaradas.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadStripeConfig}
+              disabled={stripeLoading}
+              className="text-xs h-8 shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${stripeLoading ? 'animate-spin' : ''}`} />
+              Recarregar
+            </Button>
+          </div>
+
+          {stripeLoading ? (
+            <div className="flex items-center justify-center py-10 gap-2 text-sm text-slate-500">
+              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+              Carregando dados da Stripe...
+            </div>
+          ) : (
+            <>
+              {/* Endpoint Webhook */}
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
+                      Endpoint do Webhook Stripe
+                    </span>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Cadastre esta URL no seu painel da Stripe (
+                      <code className="text-indigo-600">Developers &gt; Webhooks</code>) escutando
+                      os eventos:
+                      <span className="font-mono text-[11px] text-slate-700 block mt-1">
+                        checkout.session.completed, invoice.payment_succeeded,
+                        invoice.payment_failed, customer.subscription.deleted
+                      </span>
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyWebhookUrl}
+                    className="h-8 text-xs shrink-0"
+                  >
+                    {copiedWebhookUrl ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Copiado!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 mr-1" /> Copiar URL
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="font-mono text-xs text-slate-800 bg-white border border-slate-200 rounded px-2.5 py-1.5 break-all select-all">
+                  {webhookPublicUrl}
+                </div>
+              </div>
+
+              {/* Formulário de Credenciais e Price IDs */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Secret Key */}
+                <div className="space-y-1.5 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Chave Secreta da Stripe (Secret Key)
+                    </Label>
+                    {stripeConfig?.masked_secret_key && (
+                      <span className="text-[11px] font-mono text-slate-500">
+                        Gravada: {stripeConfig.masked_secret_key}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type={showSecretKey ? 'text' : 'password'}
+                      placeholder={
+                        stripeConfig?.has_secret_key
+                          ? 'Deixe em branco para manter a chave atual ou cole uma nova sk_live_...'
+                          : 'Cole aqui sua chave secreta da Stripe (sk_live_... ou sk_test_...)'
+                      }
+                      value={stripeSecretKeyInput}
+                      onChange={(e) => setStripeSecretKeyInput(e.target.value)}
+                      className="text-xs font-mono pr-10 bg-slate-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecretKey(!showSecretKey)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showSecretKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    A chave nunca é exibida em texto claro após salva. Usada para criar sessões de
+                    checkout seguras.
+                  </p>
+                </div>
+
+                {/* Webhook Signing Secret */}
+                <div className="space-y-1.5 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Webhook Signing Secret (whsec_...)
+                    </Label>
+                    {stripeConfig?.masked_webhook_signing_secret && (
+                      <span className="text-[11px] font-mono text-slate-500">
+                        Gravado: {stripeConfig.masked_webhook_signing_secret}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type={showWhsec ? 'text' : 'password'}
+                      placeholder={
+                        stripeConfig?.has_webhook_signing_secret
+                          ? 'Deixe em branco para manter o secret atual ou cole um novo whsec_...'
+                          : 'Cole aqui o segredo de assinatura do Webhook (whsec_...)'
+                      }
+                      value={stripeWhsecInput}
+                      onChange={(e) => setStripeWhsecInput(e.target.value)}
+                      className="text-xs font-mono pr-10 bg-slate-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWhsec(!showWhsec)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showWhsec ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Utilizado para validar criptograficamente a assinatura HMAC-SHA256
+                    (Stripe-Signature) das notificações.
+                  </p>
+                </div>
+
+                {/* Price ID Mensal */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Price ID Mensal (R$ 19,90)
+                  </Label>
+                  <Input
+                    placeholder="price_1Q..."
+                    value={stripePriceMensalInput}
+                    onChange={(e) => setStripePriceMensalInput(e.target.value)}
+                    className="text-xs font-mono bg-slate-50"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    ID do preço recorrente mensal criado no painel da Stripe.
+                  </p>
+                </div>
+
+                {/* Price ID Anual */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Price ID Anual (R$ 214,90)
+                  </Label>
+                  <Input
+                    placeholder="price_1Q..."
+                    value={stripePriceAnualInput}
+                    onChange={(e) => setStripePriceAnualInput(e.target.value)}
+                    className="text-xs font-mono bg-slate-50"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    ID do preço recorrente anual criado no painel da Stripe.
+                  </p>
+                </div>
+              </div>
+
+              {/* Rodapé de Ação */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                <div className="text-xs text-slate-500">
+                  {stripeConfig?.updated && (
+                    <span>
+                      Última atualização: {new Date(stripeConfig.updated).toLocaleString('pt-BR')}
+                      {stripeConfig.updated_by && ` por ${stripeConfig.updated_by}`}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  onClick={handleSaveStripeConfig}
+                  disabled={savingStripe}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm w-full sm:w-auto"
+                >
+                  {savingStripe ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-1.5" />
+                  )}
+                  Salvar Configuração Stripe
+                </Button>
               </div>
             </>
           )}

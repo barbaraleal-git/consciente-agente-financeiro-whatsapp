@@ -1,24 +1,27 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * Hook de Assinaturas, Cobrança Recorrente (Stripe), Webhook e Sincronização.
+ * Hook de Assinaturas, Cobrança Recorrente (Stripe Direta via $http), Webhook e Sincronização.
  *
  * Arquitetura e Regras JSVM do PocketBase:
  * 1. ZERO declarações top-level referenciadas dentro de callbacks!
  *    O PocketBase executa callbacks em pools de VMs isoladas. TODAS as funções auxiliares
  *    devem ser declaradas 100% INLINE dentro do corpo de cada callback routerAdd.
- * 2. Conectores Owner (Stripe): $connectors.executeAsOwner(toolSlug, args)
- *    (a conta Stripe usada é a da dona do app, conectada em Conectores; o toolkit
- *    é inferido do prefixo do slug da ferramenta — nunca passar toolkit à parte)
+ * 2. Integração DIRETA com a API REST da Stripe (https://api.stripe.com/v1) via $http.send:
+ *    - Credenciais armazenadas na coleção `stripe_config` (secret_key, webhook_signing_secret, price_id_mensal, price_id_anual).
+ *    - Chave secreta enviada via Basic Auth (username: secret_key, password: "").
+ *    - A chave NUNCA é enviada em texto claro ao cliente: mascarada na leitura admin (sk_live_***abc) e nunca logada.
+ *    - Se `stripe_config` estiver sem secret_key, retorna 400 amigável orientando Backoffice Admin (sem 500 cru).
  * 3. Rotas criadas:
  *    - GET  /backend/v1/billing/status (dados da assinatura, dados legais e planos vigentes)
- *    - POST /backend/v1/billing/create-checkout-session (inicia sessão de checkout Stripe)
- *    - POST /backend/v1/billing/create-portal-session (portal Stripe para autogestão/cancelamento)
- *    - POST /backend/v1/billing/sync-session (sincroniza manualmente via session_id após retorno)
- *    - POST /backend/v1/billing/cancel-subscription (cancelamento self-service)
- *    - POST /backend/v1/billing/update-profile (atualiza dados complementares e aceites)
- *    - POST /backend/v1/stripe/webhook (webhook público Stripe para eventos de cobrança)
- *    - POST /backend/v1/admin/billing/setup-stripe-products (admin provisiona produtos/preços na Stripe)
+ *    - POST /backend/v1/billing/create-checkout-session (cria Checkout Session na Stripe via $http)
+ *    - POST /backend/v1/billing/create-portal-session (cria Portal Session na Stripe via $http)
+ *    - POST /backend/v1/billing/sync-session (sincroniza manualmente via session_id)
+ *    - POST /backend/v1/billing/cancel-subscription (cancela assinatura na Stripe via $http)
+ *    - POST /backend/v1/billing/update-profile (atualiza dados cadastrais)
+ *    - POST /backend/v1/stripe/webhook (webhook público Stripe com validação de Stripe-Signature)
+ *    - GET  /backend/v1/admin/billing/stripe-config (leitura de config Stripe para admin, mascarada)
+ *    - POST /backend/v1/admin/billing/stripe-config (gravação de config Stripe por admin)
  *    - GET  /backend/v1/admin/billing/plans (lista planos e overrides)
  *    - POST /backend/v1/admin/billing/plans (cria ou atualiza plano/override)
  *    - POST /backend/v1/admin/billing/legal-info (atualiza dados legais da empresa)
@@ -38,7 +41,6 @@ routerAdd(
         return e.json(401, { error: 'Não autenticado' })
       }
 
-      // Função inline para buscar dados legais
       function inlineGetLegal() {
         try {
           const records = $app.findRecordsByFilter('company_legal_info', '', '-created', 1, 0)
@@ -62,7 +64,7 @@ routerAdd(
           console.log('[billing] Erro ao buscar company_legal_info: ' + err)
         }
         return {
-          company_name: 'Consciente Gestão Financeira Inteligente Ltda.',
+          company_name: 'BFL Soluções em Tecnologia',
           trade_name: 'Consciente - Seu parceiro nas finanças',
           cnpj: '53.842.190/0001-38',
           address_full: 'Av. Paulista, 1000, Bela Vista, São Paulo - SP, CEP 01310-100',
@@ -75,7 +77,6 @@ routerAdd(
         }
       }
 
-      // Função inline para resolver plano vigente
       function inlineResolvePlan(userId, planType) {
         const today = new Date().toISOString().slice(0, 10)
         try {
@@ -230,8 +231,78 @@ routerAdd(
         return e.json(401, { error: 'Não autenticado' })
       }
 
-      function inlineResolvePlan(userId, planType) {
+      function inlineGetStripeConfig() {
+        try {
+          const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+          if (records.length > 0) {
+            const r = records[0]
+            return {
+              id: r.id,
+              secret_key: (r.getString('secret_key') || '').trim(),
+              webhook_signing_secret: (r.getString('webhook_signing_secret') || '').trim(),
+              price_id_mensal: (r.getString('price_id_mensal') || '').trim(),
+              price_id_anual: (r.getString('price_id_anual') || '').trim(),
+            }
+          }
+        } catch (err) {
+          console.log('[billing] Erro ao carregar stripe_config: ' + err)
+        }
+        return null
+      }
+
+      function inlineStripeRequest(secretKey, method, path, formParams) {
+        const url = 'https://api.stripe.com/v1' + path
+        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const headers = {
+          Authorization: authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }
+        let bodyStr = ''
+        if (formParams && typeof formParams === 'object') {
+          const pairs = []
+          for (let k in formParams) {
+            if (Object.prototype.hasOwnProperty.call(formParams, k)) {
+              const v = formParams[k]
+              if (v !== undefined && v !== null && v !== '') {
+                pairs.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))
+              }
+            }
+          }
+          bodyStr = pairs.join('&')
+        }
+
+        const res = $http.send({
+          url: url,
+          method: method,
+          headers: headers,
+          body: bodyStr || undefined,
+          timeout: 30,
+        })
+
+        let parsed = null
+        try {
+          parsed = JSON.parse(res.rawText || '{}')
+        } catch (_) {}
+
+        return {
+          statusCode: res.statusCode,
+          data: parsed,
+          rawText: res.rawText,
+        }
+      }
+
+      function inlineResolvePlan(userId, planType, config) {
         const today = new Date().toISOString().slice(0, 10)
+        let resolved = {
+          id: '',
+          plan_type: planType,
+          name: planType === 'anual' ? 'Anual (Black November)' : 'Mensal (Black November)',
+          price_cents: planType === 'anual' ? 21490 : 1990,
+          stripe_price_id: '',
+          stripe_product_id: '',
+          is_override: false,
+        }
+
         try {
           if (userId) {
             const overrides = $app.findRecordsByFilter(
@@ -246,7 +317,7 @@ routerAdd(
               const vFrom = o.getString('valid_from') || ''
               const vUntil = o.getString('valid_until') || ''
               if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
-                return {
+                resolved = {
                   id: o.id,
                   plan_type: o.getString('plan_type'),
                   name: o.getString('name'),
@@ -255,30 +326,34 @@ routerAdd(
                   stripe_product_id: o.getString('stripe_product_id'),
                   is_override: true,
                 }
+                break
               }
             }
           }
 
-          const plans = $app.findRecordsByFilter(
-            'subscription_plans',
-            "user_override = null && plan_type = '" + planType + "' && active = true",
-            '-created',
-            20,
-            0,
-          )
-          for (let i = 0; i < plans.length; i++) {
-            const p = plans[i]
-            const vFrom = p.getString('valid_from') || ''
-            const vUntil = p.getString('valid_until') || ''
-            if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
-              return {
-                id: p.id,
-                plan_type: p.getString('plan_type'),
-                name: p.getString('name'),
-                price_cents: p.getInt('price_cents'),
-                stripe_price_id: p.getString('stripe_price_id'),
-                stripe_product_id: p.getString('stripe_product_id'),
-                is_override: false,
+          if (!resolved.id) {
+            const plans = $app.findRecordsByFilter(
+              'subscription_plans',
+              "user_override = null && plan_type = '" + planType + "' && active = true",
+              '-created',
+              20,
+              0,
+            )
+            for (let i = 0; i < plans.length; i++) {
+              const p = plans[i]
+              const vFrom = p.getString('valid_from') || ''
+              const vUntil = p.getString('valid_until') || ''
+              if ((!vFrom || vFrom <= today) && (!vUntil || vUntil >= today)) {
+                resolved = {
+                  id: p.id,
+                  plan_type: p.getString('plan_type'),
+                  name: p.getString('name'),
+                  price_cents: p.getInt('price_cents'),
+                  stripe_price_id: p.getString('stripe_price_id'),
+                  stripe_product_id: p.getString('stripe_product_id'),
+                  is_override: false,
+                }
+                break
               }
             }
           }
@@ -286,36 +361,39 @@ routerAdd(
           console.log('[billing] Erro ao resolver plano: ' + err)
         }
 
-        if (planType === 'anual') {
-          return {
-            id: '',
-            plan_type: 'anual',
-            name: 'Anual (Black November)',
-            price_cents: 21490,
-            stripe_price_id: '',
-            stripe_product_id: '',
-            is_override: false,
+        // Se o plano ainda não tem stripe_price_id mas stripe_config tem o price_id correspondente, usa-o
+        if (!resolved.stripe_price_id && config) {
+          if (planType === 'mensal' && config.price_id_mensal) {
+            resolved.stripe_price_id = config.price_id_mensal
+          } else if (planType === 'anual' && config.price_id_anual) {
+            resolved.stripe_price_id = config.price_id_anual
           }
         }
-        return {
-          id: '',
-          plan_type: 'mensal',
-          name: 'Mensal (Black November)',
-          price_cents: 1990,
-          stripe_price_id: '',
-          stripe_product_id: '',
-          is_override: false,
-        }
+
+        return resolved
+      }
+
+      const stripeCfg = inlineGetStripeConfig()
+      if (!stripeCfg || !stripeCfg.secret_key) {
+        return e.json(400, {
+          error:
+            'O pagamento ainda não está configurado. Conclua a configuração no Backoffice Admin.',
+          code: 'STRIPE_NOT_CONFIGURED',
+        })
       }
 
       const body = e.requestInfo().body || {}
       const planType = body.plan_type === 'anual' ? 'anual' : 'mensal'
-      // success_url/cancel_url fixos no servidor (nada do request é encaminhado
-      // como preço/produto; a URL só escolhe a tela de volta do app)
       const appOrigin = 'https://agente-financeiro-whatsapp-37fd3.goskip.app'
       const successUrl =
-        appOrigin + '/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}'
-      const cancelUrl = appOrigin + '/settings?section=assinatura&checkout=cancelled'
+        body.success_url && String(body.success_url).indexOf('http') === 0
+          ? body.success_url
+          : appOrigin +
+            '/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}'
+      const cancelUrl =
+        body.cancel_url && String(body.cancel_url).indexOf('http') === 0
+          ? body.cancel_url
+          : appOrigin + '/settings?section=assinatura&checkout=cancelled'
 
       const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
       const userEmail = userRec.getString('email')
@@ -324,97 +402,108 @@ routerAdd(
       const userPhone = userRec.getString('phone') || ''
       let customerId = userRec.getString('stripe_customer_id') || ''
 
-      const resolvedPlan = inlineResolvePlan(userRec.id, planType)
+      const resolvedPlan = inlineResolvePlan(userRec.id, planType, stripeCfg)
 
-      // Garante customer na Stripe
+      // Garante customer na Stripe via API direta se ainda não tiver
       if (!customerId) {
         try {
-          const custRes = $connectors.executeAsOwner('STRIPE_CREATE_CUSTOMER', {
+          const custParams = {
             email: userEmail,
             name: userName,
-            phone: userPhone,
             description: 'Cliente Consciente ID: ' + userRec.id,
-          })
-          if (custRes && custRes.successful && custRes.data && custRes.data.id) {
+          }
+          if (userPhone) custParams['phone'] = userPhone
+          custParams['metadata[user_id]'] = userRec.id
+
+          const custRes = inlineStripeRequest(
+            stripeCfg.secret_key,
+            'POST',
+            '/customers',
+            custParams,
+          )
+          if (
+            custRes.statusCode >= 200 &&
+            custRes.statusCode < 300 &&
+            custRes.data &&
+            custRes.data.id
+          ) {
             customerId = custRes.data.id
             userRec.set('stripe_customer_id', customerId)
             $app.save(userRec)
+          } else {
+            console.log(
+              '[billing] Falha ao criar customer na Stripe (' +
+                custRes.statusCode +
+                '): ' +
+                custRes.rawText,
+            )
           }
         } catch (cErr) {
           console.log('[billing] Exceção ao criar customer Stripe: ' + cErr)
         }
       }
 
-      let lineItems = []
-      if (resolvedPlan.stripe_price_id) {
-        lineItems = [
-          {
-            price: resolvedPlan.stripe_price_id,
-            quantity: 1,
-          },
-        ]
-      } else {
-        const interval = planType === 'anual' ? 'year' : 'month'
-        lineItems = [
-          {
-            price_data: {
-              currency: 'brl',
-              product_data: {
-                name: resolvedPlan.name,
-                description: 'Assinatura Consciente - Seu parceiro nas finanças',
-              },
-              unit_amount: resolvedPlan.price_cents,
-              recurring: {
-                interval: interval,
-              },
-            },
-            quantity: 1,
-          },
-        ]
-      }
-
-      const sessionArgs = {
+      // Parâmetros da Checkout Session em form-encoded
+      const sessParams = {
         mode: 'subscription',
-        line_items: lineItems,
         success_url: successUrl,
         cancel_url: cancelUrl,
         client_reference_id: userRec.id,
-        metadata: {
-          user_id: userRec.id,
-          plan_type: planType,
-          price_cents: String(resolvedPlan.price_cents),
-        },
+        'metadata[user_id]': userRec.id,
+        'metadata[plan_type]': planType,
+        'metadata[price_cents]': String(resolvedPlan.price_cents),
       }
+
       if (customerId) {
-        sessionArgs.customer = customerId
+        sessParams['customer'] = customerId
+      } else if (userEmail) {
+        sessParams['customer_email'] = userEmail
       }
 
-      let sessionRes = null
-      try {
-        sessionRes = $connectors.executeAsOwner('STRIPE_CREATE_CHECKOUT_SESSION', sessionArgs)
-      } catch (sErr) {
-        console.log('[billing] Exceção ao criar checkout session: ' + sErr)
-        return e.json(502, {
-          error: 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
-        })
+      if (resolvedPlan.stripe_price_id) {
+        sessParams['line_items[0][price]'] = resolvedPlan.stripe_price_id
+        sessParams['line_items[0][quantity]'] = '1'
+      } else {
+        const interval = planType === 'anual' ? 'year' : 'month'
+        sessParams['line_items[0][price_data][currency]'] = 'brl'
+        sessParams['line_items[0][price_data][unit_amount]'] = String(resolvedPlan.price_cents)
+        sessParams['line_items[0][price_data][recurring][interval]'] = interval
+        sessParams['line_items[0][price_data][product_data][name]'] = resolvedPlan.name
+        sessParams['line_items[0][price_data][product_data][description]'] =
+          'Assinatura Consciente - Seu parceiro nas finanças'
+        sessParams['line_items[0][quantity]'] = '1'
       }
 
-      if (!sessionRes || !sessionRes.successful || !sessionRes.data) {
+      const sessRes = inlineStripeRequest(
+        stripeCfg.secret_key,
+        'POST',
+        '/checkout/sessions',
+        sessParams,
+      )
+
+      if (
+        sessRes.statusCode < 200 ||
+        sessRes.statusCode >= 300 ||
+        !sessRes.data ||
+        !sessRes.data.url
+      ) {
         console.log(
-          '[billing] Falha ao criar checkout session na Stripe: ' +
-            JSON.stringify((sessionRes && sessionRes.error) || sessionRes),
+          '[billing] Falha Stripe Checkout (' + sessRes.statusCode + '): ' + sessRes.rawText,
         )
+        const stripeErrorMsg =
+          (sessRes.data && sessRes.data.error && sessRes.data.error.message) || ''
         return e.json(502, {
-          error: 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
+          error:
+            'Não foi possível iniciar o checkout da Stripe. ' +
+            (stripeErrorMsg
+              ? '(' + stripeErrorMsg + ')'
+              : 'Verifique os dados no Backoffice Admin.'),
         })
       }
-
-      const sessionData = sessionRes.data
-      const checkoutUrl = sessionData.url || sessionData.hosted_url || ''
 
       return e.json(200, {
-        session_id: sessionData.id,
-        url: checkoutUrl,
+        session_id: sessRes.data.id,
+        url: sessRes.data.url,
         plan: resolvedPlan,
       })
     } catch (err) {
@@ -438,6 +527,43 @@ routerAdd(
       const authUser = e.auth
       if (!authUser) {
         return e.json(401, { error: 'Não autenticado' })
+      }
+
+      function inlineGetStripeConfig() {
+        try {
+          const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+          if (records.length > 0) {
+            const r = records[0]
+            return {
+              id: r.id,
+              secret_key: (r.getString('secret_key') || '').trim(),
+            }
+          }
+        } catch (_) {}
+        return null
+      }
+
+      function inlineStripeRequest(secretKey, method, path) {
+        const url = 'https://api.stripe.com/v1' + path
+        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const headers = {
+          Authorization: authHeader,
+        }
+        const res = $http.send({
+          url: url,
+          method: method,
+          headers: headers,
+          timeout: 30,
+        })
+        let parsed = null
+        try {
+          parsed = JSON.parse(res.rawText || '{}')
+        } catch (_) {}
+        return {
+          statusCode: res.statusCode,
+          data: parsed,
+          rawText: res.rawText,
+        }
       }
 
       function inlineLogHistory(userId, eventType, data) {
@@ -464,21 +590,21 @@ routerAdd(
         return e.json(400, { error: 'session_id obrigatório' })
       }
 
-      let res = null
-      try {
-        res = $connectors.executeAsOwner('STRIPE_RETRIEVE_CHECKOUT_SESSION', {
-          session: sessionId,
-        })
-      } catch (rErr) {
-        console.log('[billing] Exceção ao recuperar session: ' + rErr)
-        return e.json(404, {
-          error: 'Sessão Stripe não encontrada ou conector indisponível',
+      const stripeCfg = inlineGetStripeConfig()
+      if (!stripeCfg || !stripeCfg.secret_key) {
+        return e.json(400, {
+          error: 'Configuração Stripe ausente.',
         })
       }
 
-      if (!res || !res.successful || !res.data) {
+      const res = inlineStripeRequest(
+        stripeCfg.secret_key,
+        'GET',
+        '/checkout/sessions/' + sessionId,
+      )
+      if (res.statusCode < 200 || res.statusCode >= 300 || !res.data) {
         return e.json(404, {
-          error: 'Sessão Stripe não encontrada ou conector indisponível',
+          error: 'Sessão Stripe não encontrada na API.',
         })
       }
 
@@ -550,6 +676,43 @@ routerAdd(
         return e.json(401, { error: 'Não autenticado' })
       }
 
+      function inlineGetStripeConfig() {
+        try {
+          const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+          if (records.length > 0) {
+            const r = records[0]
+            return {
+              id: r.id,
+              secret_key: (r.getString('secret_key') || '').trim(),
+            }
+          }
+        } catch (_) {}
+        return null
+      }
+
+      function inlineStripeRequest(secretKey, method, path) {
+        const url = 'https://api.stripe.com/v1' + path
+        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const headers = {
+          Authorization: authHeader,
+        }
+        const res = $http.send({
+          url: url,
+          method: method,
+          headers: headers,
+          timeout: 30,
+        })
+        let parsed = null
+        try {
+          parsed = JSON.parse(res.rawText || '{}')
+        } catch (_) {}
+        return {
+          statusCode: res.statusCode,
+          data: parsed,
+          rawText: res.rawText,
+        }
+      }
+
       function inlineLogHistory(userId, eventType, data) {
         try {
           const col = $app.findCollectionByNameOrId('subscriptions_history')
@@ -567,13 +730,18 @@ routerAdd(
       const subId = userRec.getString('stripe_subscription_id')
       const oldStatus = userRec.getString('subscription_status')
 
-      if (subId) {
+      const stripeCfg = inlineGetStripeConfig()
+      if (subId && stripeCfg && stripeCfg.secret_key) {
         try {
-          $connectors.executeAsOwner('STRIPE_CANCEL_SUBSCRIPTION', {
-            subscription_id: subId,
-          })
+          // Stripe cancelamento direto: DELETE /v1/subscriptions/{subId}
+          const delRes = inlineStripeRequest(
+            stripeCfg.secret_key,
+            'DELETE',
+            '/subscriptions/' + subId,
+          )
+          console.log('[billing] Cancelamento Stripe status: ' + delRes.statusCode)
         } catch (cErr) {
-          console.log('[billing] Erro ao cancelar na Stripe: ' + cErr)
+          console.log('[billing] Erro ao cancelar na Stripe via API: ' + cErr)
         }
       }
 
@@ -615,37 +783,98 @@ routerAdd(
         return e.json(401, { error: 'Não autenticado' })
       }
 
+      function inlineGetStripeConfig() {
+        try {
+          const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+          if (records.length > 0) {
+            const r = records[0]
+            return {
+              id: r.id,
+              secret_key: (r.getString('secret_key') || '').trim(),
+            }
+          }
+        } catch (_) {}
+        return null
+      }
+
+      function inlineStripeRequest(secretKey, method, path, formParams) {
+        const url = 'https://api.stripe.com/v1' + path
+        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const headers = {
+          Authorization: authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }
+        let bodyStr = ''
+        if (formParams && typeof formParams === 'object') {
+          const pairs = []
+          for (let k in formParams) {
+            if (Object.prototype.hasOwnProperty.call(formParams, k)) {
+              const v = formParams[k]
+              if (v !== undefined && v !== null && v !== '') {
+                pairs.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))
+              }
+            }
+          }
+          bodyStr = pairs.join('&')
+        }
+
+        const res = $http.send({
+          url: url,
+          method: method,
+          headers: headers,
+          body: bodyStr || undefined,
+          timeout: 30,
+        })
+        let parsed = null
+        try {
+          parsed = JSON.parse(res.rawText || '{}')
+        } catch (_) {}
+        return {
+          statusCode: res.statusCode,
+          data: parsed,
+          rawText: res.rawText,
+        }
+      }
+
       const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
       const customerId = userRec.getString('stripe_customer_id')
       if (!customerId) {
         return e.json(400, { error: 'Nenhum cadastro de cliente na Stripe vinculado.' })
       }
 
+      const stripeCfg = inlineGetStripeConfig()
+      if (!stripeCfg || !stripeCfg.secret_key) {
+        return e.json(400, { error: 'Configuração Stripe ausente.' })
+      }
+
       const returnUrl =
         e.requestInfo().body?.return_url ||
         'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings'
 
-      let portalRes = null
-      try {
-        portalRes = $connectors.executeAsOwner('STRIPE_CREATE_BILLING_PORTAL_SESSION', {
+      const portalRes = inlineStripeRequest(
+        stripeCfg.secret_key,
+        'POST',
+        '/billing_portal/sessions',
+        {
           customer: customerId,
           return_url: returnUrl,
-        })
-      } catch (pErr) {
-        console.log('[billing] Exceção ao criar portal session: ' + pErr)
-        return e.json(502, {
-          error:
-            'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
-        })
-      }
+        },
+      )
 
-      if (portalRes && portalRes.successful && portalRes.data && portalRes.data.url) {
+      if (
+        portalRes.statusCode >= 200 &&
+        portalRes.statusCode < 300 &&
+        portalRes.data &&
+        portalRes.data.url
+      ) {
         return e.json(200, { url: portalRes.data.url })
       }
 
       console.log(
-        '[billing] Falha ao criar portal session na Stripe: ' +
-          JSON.stringify((portalRes && portalRes.error) || portalRes),
+        '[billing] Falha ao criar portal session na Stripe (' +
+          portalRes.statusCode +
+          '): ' +
+          portalRes.rawText,
       )
       return e.json(502, {
         error:
@@ -664,7 +893,6 @@ routerAdd(
 
 // ----------------------------------------------------
 // 6. POST /backend/v1/billing/update-profile
-// Salva CPF, nascimento, endereço e aceites com validação
 // ----------------------------------------------------
 routerAdd(
   'POST',
@@ -711,7 +939,6 @@ routerAdd(
         if (cleanCpf && !inlineValidateCPF(cleanCpf)) {
           return e.json(400, { error: 'CPF inválido. Verifique os números informados.' })
         }
-        // Valida unicidade
         if (cleanCpf) {
           try {
             const existing = $app.findRecordsByFilter(
@@ -774,6 +1001,59 @@ routerAdd(
 // ----------------------------------------------------
 routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
   try {
+    function inlineGetSigningSecret() {
+      try {
+        const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+        if (records.length > 0) {
+          return (records[0].getString('webhook_signing_secret') || '').trim()
+        }
+      } catch (_) {}
+      return ''
+    }
+
+    function inlineVerifyStripeSignature(payloadStr, sigHeader, signingSecret) {
+      if (!sigHeader || !signingSecret) {
+        // Se signing secret não estiver configurado, ignora checagem de assinatura
+        return true
+      }
+      try {
+        const parts = sigHeader.split(',')
+        let timestamp = ''
+        const signatures = []
+        for (let i = 0; i < parts.length; i++) {
+          const pair = parts[i].trim().split('=')
+          if (pair.length === 2) {
+            if (pair[0] === 't') timestamp = pair[1]
+            if (pair[0] === 'v1') signatures.push(pair[1])
+          }
+        }
+        if (!timestamp || signatures.length === 0) {
+          console.log('[stripe_webhook] Cabeçalho Stripe-Signature malformatado: ' + sigHeader)
+          return false
+        }
+
+        const signedPayload = timestamp + '.' + payloadStr
+        const expectedSig = $security.hs256(signedPayload, signingSecret)
+
+        let matched = false
+        for (let j = 0; j < signatures.length; j++) {
+          if (signatures[j] === expectedSig) {
+            matched = true
+            break
+          }
+        }
+
+        if (!matched) {
+          console.log('[stripe_webhook] Assinatura Stripe INVÁLIDA.')
+          return false
+        }
+        return true
+      } catch (verErr) {
+        console.log('[stripe_webhook] Erro ao validar assinatura: ' + verErr)
+        return false
+      }
+    }
+
     function inlineLogHistory(userId, eventType, data) {
       try {
         const col = $app.findCollectionByNameOrId('subscriptions_history')
@@ -790,6 +1070,24 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
       } catch (hErr) {
         console.log('[stripe_webhook] Falha ao registrar subscriptions_history: ' + hErr)
       }
+    }
+
+    const signingSecret = inlineGetSigningSecret()
+    const reqHeaders = e.requestInfo().headers || {}
+    const sigHeader =
+      reqHeaders['stripe-signature'] ||
+      reqHeaders['Stripe-Signature'] ||
+      reqHeaders['STRIPE-SIGNATURE'] ||
+      ''
+
+    let rawPayloadStr = ''
+    try {
+      const bodyObj = e.requestInfo().body || {}
+      rawPayloadStr = JSON.stringify(bodyObj)
+    } catch (_) {}
+
+    if (signingSecret && !inlineVerifyStripeSignature(rawPayloadStr, sigHeader, signingSecret)) {
+      return e.json(400, { error: 'Assinatura inválida (Stripe-Signature verification failed)' })
     }
 
     const rawBody = e.requestInfo().body || {}
@@ -972,11 +1270,12 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
 })
 
 // ----------------------------------------------------
-// 8. POST /backend/v1/admin/billing/setup-stripe-products
+// 8. GET /backend/v1/admin/billing/stripe-config
+// Leitura mascarada das credenciais Stripe (somente admin)
 // ----------------------------------------------------
 routerAdd(
-  'POST',
-  '/backend/v1/admin/billing/setup-stripe-products',
+  'GET',
+  '/backend/v1/admin/billing/stripe-config',
   (e) => {
     try {
       const authUser = e.auth
@@ -987,95 +1286,47 @@ routerAdd(
         return e.json(403, { error: 'Acesso restrito à administração' })
       }
 
-      console.log('[admin_billing] Criando produtos e preços na Stripe...')
-      const results = {
-        product: null,
-        price_mensal: null,
-        price_anual: null,
+      function inlineMaskKey(key) {
+        if (!key) return ''
+        const trimmed = String(key).trim()
+        if (trimmed.length <= 10) return '***'
+        const prefix = trimmed.slice(0, 8)
+        const suffix = trimmed.slice(-4)
+        return prefix + '***' + suffix
       }
 
-      // Cria produto
-      const prodRes = $connectors.executeAsOwner('STRIPE_CREATE_PRODUCT', {
-        name: 'Consciente - Assinatura Agente Financeiro',
-        description:
-          'Acesso completo ao agente financeiro Consciente no WhatsApp, controle de caixinhas, extratos e relatórios.',
-      })
-      if (!prodRes || !prodRes.successful || !prodRes.data) {
-        return e.json(502, {
-          error:
-            'Falha ao criar Produto na Stripe: ' +
-            JSON.stringify((prodRes && prodRes.error) || prodRes),
+      const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+      if (records.length === 0) {
+        return e.json(200, {
+          configured: false,
+          has_secret_key: false,
+          has_webhook_signing_secret: false,
+          masked_secret_key: '',
+          masked_webhook_signing_secret: '',
+          price_id_mensal: '',
+          price_id_anual: '',
+          updated: '',
+          updated_by: '',
         })
       }
-      const stripeProduct = prodRes.data
-      const productId = stripeProduct.id
-      results.product = stripeProduct
 
-      // Preço Mensal Black November: R$ 19,90 / mês
-      const priceMensalRes = $connectors.executeAsOwner('STRIPE_CREATE_PRICE', {
-        product: productId,
-        currency: 'brl',
-        unit_amount: 1990,
-        recurring: { interval: 'month' },
-        nickname: 'Mensal Black November (R$ 19,90/mês)',
-      })
-      if (priceMensalRes && priceMensalRes.successful && priceMensalRes.data) {
-        results.price_mensal = priceMensalRes.data
-      }
-
-      // Preço Anual Black November: R$ 214,90 / ano
-      const priceAnualRes = $connectors.executeAsOwner('STRIPE_CREATE_PRICE', {
-        product: productId,
-        currency: 'brl',
-        unit_amount: 21490,
-        recurring: { interval: 'year' },
-        nickname: 'Anual Black November (R$ 214,90/ano)',
-      })
-      if (priceAnualRes && priceAnualRes.successful && priceAnualRes.data) {
-        results.price_anual = priceAnualRes.data
-      }
-
-      // Vincula IDs nos registros de subscription_plans
-      if (results.price_mensal && results.price_mensal.id) {
-        try {
-          const plans = $app.findRecordsByFilter(
-            'subscription_plans',
-            "plan_type = 'mensal' && name ~ 'Black November'",
-            '-created',
-            1,
-            0,
-          )
-          if (plans.length > 0) {
-            plans[0].set('stripe_product_id', productId)
-            plans[0].set('stripe_price_id', results.price_mensal.id)
-            $app.save(plans[0])
-          }
-        } catch (_) {}
-      }
-      if (results.price_anual && results.price_anual.id) {
-        try {
-          const plans = $app.findRecordsByFilter(
-            'subscription_plans',
-            "plan_type = 'anual' && name ~ 'Black November'",
-            '-created',
-            1,
-            0,
-          )
-          if (plans.length > 0) {
-            plans[0].set('stripe_product_id', productId)
-            plans[0].set('stripe_price_id', results.price_anual.id)
-            $app.save(plans[0])
-          }
-        } catch (_) {}
-      }
+      const r = records[0]
+      const rawSecret = r.getString('secret_key') || ''
+      const rawWhsec = r.getString('webhook_signing_secret') || ''
 
       return e.json(200, {
-        success: true,
-        message: 'Produtos e preços da Black November criados com sucesso na sua conta Stripe!',
-        data: results,
+        configured: !!rawSecret.trim(),
+        has_secret_key: !!rawSecret.trim(),
+        has_webhook_signing_secret: !!rawWhsec.trim(),
+        masked_secret_key: inlineMaskKey(rawSecret),
+        masked_webhook_signing_secret: inlineMaskKey(rawWhsec),
+        price_id_mensal: r.getString('price_id_mensal') || '',
+        price_id_anual: r.getString('price_id_anual') || '',
+        updated: r.getString('updated') || '',
+        updated_by: r.getString('updated_by') || '',
       })
     } catch (err) {
-      console.log('[admin_billing] Erro ao provisionar na Stripe: ' + err)
+      console.log('[admin_stripe_config] Erro GET: ' + err)
       return e.json(500, { error: String(err) })
     }
   },
@@ -1083,7 +1334,100 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 9. GET /backend/v1/admin/billing/plans
+// 9. POST /backend/v1/admin/billing/stripe-config
+// Gravação das credenciais Stripe (somente admin)
+// Preserva chave existente se não fornecida nova.
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/admin/billing/stripe-config',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const col = $app.findCollectionByNameOrId('stripe_config')
+      const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+      let rec = records.length > 0 ? records[0] : new Record(col)
+
+      // Atualiza secret_key somente se enviado um valor não-mascarado
+      if (body.secret_key !== undefined) {
+        const rawKey = String(body.secret_key).trim()
+        if (rawKey && rawKey.indexOf('***') === -1) {
+          rec.set('secret_key', rawKey)
+        }
+      }
+
+      // Atualiza webhook_signing_secret se enviado valor não-mascarado
+      if (body.webhook_signing_secret !== undefined) {
+        const rawWhsec = String(body.webhook_signing_secret).trim()
+        if (rawWhsec.indexOf('***') === -1) {
+          rec.set('webhook_signing_secret', rawWhsec)
+        }
+      }
+
+      if (body.price_id_mensal !== undefined) {
+        rec.set('price_id_mensal', String(body.price_id_mensal).trim())
+      }
+      if (body.price_id_anual !== undefined) {
+        rec.set('price_id_anual', String(body.price_id_anual).trim())
+      }
+
+      rec.set('updated_by', email || authUser.id)
+      $app.save(rec)
+
+      // Se informou os price IDs, sincroniza também nos subscription_plans correspondentes
+      if (body.price_id_mensal) {
+        try {
+          const plansM = $app.findRecordsByFilter(
+            'subscription_plans',
+            "user_override = null && plan_type = 'mensal'",
+            '-created',
+            5,
+            0,
+          )
+          for (let m = 0; m < plansM.length; m++) {
+            plansM[m].set('stripe_price_id', String(body.price_id_mensal).trim())
+            $app.save(plansM[m])
+          }
+        } catch (_) {}
+      }
+      if (body.price_id_anual) {
+        try {
+          const plansA = $app.findRecordsByFilter(
+            'subscription_plans',
+            "user_override = null && plan_type = 'anual'",
+            '-created',
+            5,
+            0,
+          )
+          for (let a = 0; a < plansA.length; a++) {
+            plansA[a].set('stripe_price_id', String(body.price_id_anual).trim())
+            $app.save(plansA[a])
+          }
+        } catch (_) {}
+      }
+
+      return e.json(200, {
+        success: true,
+        message: 'Configuração da Stripe salva com sucesso!',
+      })
+    } catch (err) {
+      console.log('[admin_stripe_config] Erro POST: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 10. GET /backend/v1/admin/billing/plans
 // ----------------------------------------------------
 routerAdd(
   'GET',
@@ -1163,7 +1507,7 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 10. POST /backend/v1/admin/billing/plans
+// 11. POST /backend/v1/admin/billing/plans
 // ----------------------------------------------------
 routerAdd(
   'POST',
@@ -1216,7 +1560,7 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 11. POST /backend/v1/admin/billing/legal-info
+// 12. POST /backend/v1/admin/billing/legal-info
 // ----------------------------------------------------
 routerAdd(
   'POST',
@@ -1266,7 +1610,7 @@ routerAdd(
 )
 
 // ----------------------------------------------------
-// 12. GET /backend/v1/admin/billing/subscriptions
+// 13. GET /backend/v1/admin/billing/subscriptions
 // ----------------------------------------------------
 routerAdd(
   'GET',

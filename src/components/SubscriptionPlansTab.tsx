@@ -105,9 +105,20 @@ export const SubscriptionPlansTab: React.FC = () => {
       setErrorMsg('Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      setErrorMsg(
-        msg || 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
-      )
+      if (
+        msg.toLowerCase().includes('configurado') ||
+        msg.toLowerCase().includes('configura') ||
+        msg.toLowerCase().includes('stripe')
+      ) {
+        setErrorMsg(
+          msg ||
+            'O pagamento ainda não está configurado. Conclua a configuração no Backoffice Admin (aba Billing > Configuração Stripe).',
+        )
+      } else {
+        setErrorMsg(
+          msg || 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
+        )
+      }
     } finally {
       setActionLoading(null)
     }

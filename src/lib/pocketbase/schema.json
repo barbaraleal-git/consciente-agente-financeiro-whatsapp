@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T05:48:15.018Z",
+  "generatedAt": "2026-11-07T14:33:59.856Z",
   "collections": [
     {
       "name": "users",
@@ -1153,6 +1153,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "price_id_mensal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_id_anual",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

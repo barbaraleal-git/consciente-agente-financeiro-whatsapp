@@ -918,4 +918,30 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Resposta inválida: repete educadamente a lista de opções com número emoji e instrução clara.
    - Gastos com categoria clara e pontuação única: continuam gravando direto (se vínculo único) ou indo direto para a pergunta de caixinha (se 2+ caixinhas), com zero regressão.
    - Resumo determinístico das caixinhas: mantido 100% inline, com cálculo direto da base e sem intervenção de IA.
+
+---
+
+## AL) Assinatura (Billing Stripe) — Plano, Checkout, Carência e Bloqueio
+1. **Fluxo de Assinatura Bem-Sucedido (Caminho Feliz)**:
+   - Acesse \`/settings\` como cliente e abra a seção **Assinatura** (ou o deep-link \`/settings?section=assinatura\`).
+   - Na tela de planos, escolha o plano: **Mensal R$ 19,90** ou **Anual R$ 214,90** (preço promocional Black November; valores parametrizáveis no Backoffice Admin com vigência geral e por cliente).
+   - Clique em assinar: o checkout abre em produção no Stripe (página segura da Stripe, nunca com cartão dentro do app).
+   - Conclua um pagamento válido de teste.
+   - **Comportamento Esperado**:
+     - Após o pagamento, a conta do cliente fica com assinatura **"ativa"** (refletida na tela de Assinatura e na gestão de billing do Backoffice \`/admin\`).
+     - O agente do WhatsApp funciona normalmente: lançamentos por texto/áudio, desambiguações, resumo de caixinhas e consultas — 100% dos cenários A a AK íntegros.
+     - Nenhum aviso de carência ou bloqueio é exibido enquanto a assinatura está ativa.
+
+2. **Fluxo de Falha — Pagamento Recusado e Carência de 7 Dias**:
+   - Simule um pagamento falhado no Stripe (cartão recusado) ou marque a assinatura como inadimplente.
+   - **Comportamento Esperado — Período de Carência (7 dias)**:
+     - No app, o cliente mantém acesso **SOMENTE a consultas** (dashboard, caixinhas, extrato, relatórios — leitura).
+     - No WhatsApp, o envio de mensagens de gasto fica **suspenso**: o agente responde com gentileza, sem registrar lançamentos, convidando o cliente a reassinar e regularizar o pagamento.
+     - Nenhum lançamento novo é gravado na base durante a carência.
+
+3. **Após os 7 Dias de Carência — Bloqueio Total**:
+   - Passado o período de carência sem regularização, a conta entra em **bloqueio total**: sem lançamentos no WhatsApp e sem acesso às funções do app, apenas com orientação para reassinar.
+   - Ao regularizar o pagamento (reassinar via checkout Stripe), a conta volta a "ativa" imediatamente e todos os fluxos (WhatsApp + app) são restaurados sem perda de dados.
+
+---
 `

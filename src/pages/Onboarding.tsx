@@ -779,7 +779,7 @@ export const Onboarding: React.FC = () => {
                         )}
                       </Button>
                       <span className="text-[11px] text-slate-400">
-                        Você pode refazer ou editar essas caixinhas quando quiser na aba de Ajustes.
+                        Você pode refazer ou editar essas caixinhas quando quiser em Minha Conta.
                       </span>
                     </div>
                   </div>

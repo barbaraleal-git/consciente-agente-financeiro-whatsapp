@@ -1935,7 +1935,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       } catch (_) {}
 
       if (!token) {
-        const errMsg = 'Token da Meta ausente em Configurações'
+        const errMsg = 'Token da Meta ausente em Minha Conta'
         console.log('[whatsapp_bridge] Falha no envio: Token de acesso ausente')
         if (statusRecord) {
           try {
@@ -2031,7 +2031,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         friendly =
           'Token da Meta expirado ou inválido (code ' +
           metaCode +
-          '). Atualize o token em Configurações.'
+          '). Atualize o token em Minha Conta.'
       } else if (
         metaCode === 131047 ||
         metaSubcode === 2494010 ||
@@ -2606,7 +2606,7 @@ Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Expliq
 Se a mensagem for um gasto ou dúvida, convide a pessoa a criar conta ou entrar na conta existente fornecendo OBRIGATORIAMENTE os links oficiais:
 - Link de Cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register
 - Link de Login: https://agente-financeiro-whatsapp-37fd3.goskip.app/login
-Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Configurações > Perfil para sincronizar seus lançamentos na hora!"]: ${textContent}`
+Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!"]: ${textContent}`
             } else if (!hasCompletedOnboarding) {
               // Usuário cadastrado no banco mas que ainda não passou pelo onboarding de caixinhas
               promptForAgent = `[ATENÇÃO: Usuário cadastrado (${matchedUser.getString('name') || matchedUser.getString('email')}), porém ainda sem caixinhas configuradas. Incentive-o amigavelmente a acessar https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas primeiras caixinhas ou registre o gasto em categoria padrão se ele insistir]: ${textContent}`
@@ -3036,7 +3036,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             if (!agentReply) {
               if (!isRegistered) {
                 agentReply =
-                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está reconhecido no app.\n\n• Se ainda não tem conta, cadastre-se em: https://agente-financeiro-whatsapp-37fd3.goskip.app/register\n• Se já tem conta, faça login em: https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Configurações > Perfil para sincronizar seus lançamentos na hora!'
+                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está reconhecido no app.\n\n• Se ainda não tem conta, cadastre-se em: https://agente-financeiro-whatsapp-37fd3.goskip.app/register\n• Se já tem conta, faça login em: https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!'
               } else if (!hasCompletedOnboarding) {
                 agentReply =
                   'Olá! Seu cadastro no Consciente foi localizado, mas suas caixinhas ainda precisam ser configuradas. Acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas caixinhas de gastos!'
@@ -3170,7 +3170,7 @@ routerAdd(
 
       if (!token) {
         const msg =
-          'Token de Acesso da Meta não configurado. Por favor, cole seu Token Permanente em Configurações > Canal Oficial WhatsApp Business.'
+          'Token de Acesso da Meta não configurado. Por favor, cole seu Token Permanente em Minha Conta > Canal Oficial WhatsApp Business.'
         if (statusRecord) {
           try {
             statusRecord.set('last_send_status', 'failed_missing_token')
@@ -3271,7 +3271,7 @@ routerAdd(
         friendly =
           'Token da Meta expirado ou inválido (code ' +
           metaCode +
-          '). Atualize o token em Configurações.'
+          '). Atualize o token em Minha Conta.'
       } else if (
         metaCode === 131047 ||
         metaSubcode === 2494010 ||
@@ -3730,7 +3730,7 @@ Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Expliq
 Se a mensagem for um gasto ou dúvida, convide a pessoa a criar conta ou entrar na conta existente fornecendo OBRIGATORIAMENTE os links oficiais:
 - Link de Cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register
 - Link de Login: https://agente-financeiro-whatsapp-37fd3.goskip.app/login
-Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Configurações > Perfil para sincronizar seus lançamentos na hora!"]: ${message}`
+Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!"]: ${message}`
       }
 
       let agentReply = ''
@@ -4702,7 +4702,7 @@ routerAdd(
         return e.json(400, {
           success: false,
           error:
-            'Token Permanente da Meta não configurado. Salve seu Token em Configurações > Canal Oficial WhatsApp Business antes de alterar a foto.',
+            'Token Permanente da Meta não configurado. Salve seu Token em Minha Conta > Canal Oficial WhatsApp Business antes de alterar a foto.',
         })
       }
 

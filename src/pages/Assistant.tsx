@@ -449,7 +449,7 @@ export const Assistant: React.FC = () => {
                 to="/settings"
                 className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium pt-1"
               >
-                Gerenciar conexão em Configurações <ExternalLink className="w-3 h-3" />
+                Gerenciar conexão em Minha Conta <ExternalLink className="w-3 h-3" />
               </Link>
             </CardContent>
           </Card>

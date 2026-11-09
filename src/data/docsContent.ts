@@ -24,7 +24,7 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
      - Extrai o \`mediaId\` do objeto (\`msg.audio.id\` ou \`msg.voice.id\`).
      - **Download da mídia pela API da Meta**: consulta a Meta Graph API (\`GET https://graph.facebook.com/v21.0/{mediaId}\`) autenticando com o token permanente salvo em \`whatsapp_status.access_token\` para obter a URL temporária de download (\`url\`). Em seguida, baixa o arquivo de áudio binário utilizando o mesmo header de autorização, preservando os bytes intactos (\`res.body\` / \`res.raw\`).
      - **Conversão Base64 e Logs por Etapa**: converte o slice de bytes para Base64 em blocos eficientes via encoder Base64 puro em JavaScript, registrando logs analíticos detalhados por etapa com prefixo \`[whatsapp_bridge] [AUDIO]\` (tamanho em bytes, conversão base64 e status HTTP de cada tentativa).
-     - **Leitura da Chave de STT (\`stt_api_key\`) do Banco**: o hook consulta dinamicamente a coleção \`whatsapp_status\` pelo campo \`stt_api_key\` configurado pela admin em Configurações. Se presente, utiliza a chave primária; se ausente, faz fallback para variáveis de ambiente (\`GROQ_API_KEY\`, \`OPENAI_API_KEY\`, \`OPENROUTER_API_KEY\`).
+     - **Leitura da Chave de STT (\`stt_api_key\`) do Banco**: o hook consulta dinamicamente a coleção \`whatsapp_status\` pelo campo \`stt_api_key\` configurado pela admin em Minha Conta. Se presente, utiliza a chave primária; se ausente, faz fallback para variáveis de ambiente (\`GROQ_API_KEY\`, \`OPENAI_API_KEY\`, \`OPENROUTER_API_KEY\`).
      - **Tentativa 1 (Groq Whisper Large v3 Turbo / v3)**: utiliza obrigatoriamente a chave configurada em \`whatsapp_status.stt_api_key\` lida em tempo real, submetendo o áudio via multipart FormData com \`$filesystem.fileFromBytes(audioBytes, 'audio.ogg')\` ao endpoint \`https://api.groq.com/openai/v1/audio/transcriptions\` com modelo \`whisper-large-v3-turbo\` (fallback \`whisper-large-v3\`), idioma \`pt\` e \`response_format=json\`.
      - **Tentativa 2 (Fallback OpenAI Whisper Direto)**: caso a chave configurada seja padrão OpenAI (\`sk-...\`) ou ocorra falha, recorre à API OpenAI (\`https://api.openai.com/v1/audio/transcriptions\`) com modelo \`whisper-1\`.
      - **Mensagens Honestas e Claras ao Cliente (Contingência Empática)**: caso nenhuma chave esteja configurada ou ocorra ruído/áudio inaudível, o agente envia uma resposta amigável e honesta pelo WhatsApp orientando a digitar o gasto sem culpar a usuária.
@@ -73,12 +73,12 @@ O **Consciente - Seu parceiro nas finanças** é um agente financeiro autônomo 
 1. **Separação de Papéis e O Que Cada Um Vê**:
    - **Cliente (\`client\` - padrão)**:
      - Foco 100% na experiência pessoal de finanças e caixinhas.
-     - Vê: Dashboard, Caixinhas, Extrato de Transações, Categorias, Relatórios e Configurações de Perfil/Senha.
+     - Vê: Dashboard, Caixinhas, Extrato de Transações, Categorias, Relatórios e Minha Conta (Perfil/Senha).
      - **Não vê dados técnicos**: canal WhatsApp, token de acesso, Phone ID, WABA ID ou webhook URL.
      - **Não vê rota de Backoffice**: barrado com mensagem amigável de Acesso Restrito em \`/admin\`.
    - **Administrador (\`admin\`)**:
      - Conta da dona do produto (\`barbara.ferreira.leal@gmail.com\`) promovida automaticamente.
-     - Vê dados técnicos em Configurações (\`/settings\`), aviso oficial no Assistente (\`/assistant\`) e acesso ao Backoffice (\`/admin\`) e Documentação Técnica.
+     - Vê dados técnicos em Minha Conta (\`/settings\`), aviso oficial no Assistente (\`/assistant\`) e acesso ao Backoffice (\`/admin\`) e Documentação Técnica.
 
 2. **Proteção Estrita de Endpoints no Backend**:
    - Endpoints de infraestrutura do WhatsApp recusam usuários comuns com HTTP \`403 Forbidden\`.
@@ -133,7 +133,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens 1 a
 | **Item 13: Filtro padrão = mês corrente nas telas** | Telas de Transações, Dashboard e Relatórios iniciam automaticamente filtradas pelo mês corrente (1º dia até a data atual), com seletor flexível para outros períodos. | **Concluído** |
 | **Item 16: Correção do bug do backoffice (erro 500)** | Resolução definitiva da falha no endpoint \`/backend/v1/admin/overview\` com consultas seguras em \`whatsapp_contacts\` sem dependência de tabelas inexistentes. | **Concluído** |
 | **Item 19: Resumo visual das caixinhas no WhatsApp** | Resumo padronizado com barras em caracteres de bloco proporcionais (\`▓▓▓▓░░░░░░\`), percentual de consumo, cabeçalho ("📊 *Suas Caixinhas — Mês de [Mês]*"), rodapé com saldo/estouro consolidado e marcadores automáticos (\`⚠️\` para ≥80% e \`🚨\` para estouro). | **Concluído** |
-| **Item 20: Foto de perfil do WhatsApp via API (admin)** | Capacidade de atualizar o avatar oficial do número de atendimento diretamente pela tela de Configurações (\`/settings\`) via Resumable Upload da Meta API e \`whatsapp_business_profile\`, com nota explicativa sobre o nome de exibição. | **Concluído** |
+| **Item 20: Foto de perfil do WhatsApp via API (admin)** | Capacidade de atualizar o avatar oficial do número de atendimento diretamente pela tela Minha Conta (\`/settings\`) via Resumable Upload da Meta API e \`whatsapp_business_profile\`, com nota explicativa sobre o nome de exibição. | **Concluído** |
 | **Item 31: Bug do Backoffice — Detalhes por cliente zerados/em branco** | **BUG CORRIGIDO**: O endpoint \`/backend/v1/admin/clients/:id\` calculava caixinhas a partir de campos inexistentes (\`limit_cents\` em vez de \`amount\`) e não calculava o gasto real do mês. Além disso, as transações buscavam \`amount_cents\` e o histórico de mensagens buscava apenas em tabela não utilizada. Corrigido com agregação real de transações do mês vs teto, mapeamento de \`amount\` e leitura do histórico ativo de mensagens do agente via \`$ai.agent('financeiro-whatsapp')\`. | **Concluído** |
 | **Item 36: Bug do Upload de Foto de Perfil — Rejeição de JPEG pequeno com mensagem enganosa** | **BUG CORRIGIDO**: Causa raiz identificada e resolvida: o runtime JSVM (Goja) do PocketBase não populava \`findUploadedFile\` em chamadas multipart do browser, deixando \`fileBytes\` vazio e disparando a mensagem 400 antes de chegar à Meta. O frontend (\`finance.ts\`) agora converte a imagem para Base64/JSON antes do envio e o backend decodifica de forma segura via \`$security.base64Decode\`, com descoberta dinâmica de App ID e upload direto na Meta Graph API. A mensagem genérica foi removida e qualquer retorno da Meta é exibido com seu motivo real. | **Concluído** |
 | **Item 22: Guardrail de temas do agente** | Regras estritas de moderação no system prompt do agente (\`financeiro-whatsapp\`) para declinar educadamente assuntos fora de finanças pessoais (ex.: "Quem descobriu o Brasil?") e conduzir o cliente de volta com foco e empatia. | **Concluído** |
@@ -348,7 +348,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 ## O) Resumo Visual Padronizado das Caixinhas no WhatsApp (Item 19)
 1. **Passo a passo**:
-   - Abra o WhatsApp do cliente cadastrado ou acione o modal "Testar Mensagem" em Configurações.
+   - Abra o WhatsApp do cliente cadastrado ou acione o modal "Testar Mensagem" em Minha Conta.
    - Envie uma mensagem como *"quais são minhas caixinhas?"* ou *"resumo das minhas caixinhas"*.
    - **Comportamento Esperado**:
      - A resposta inicia com o cabeçalho padronizado: \`📊 *Suas Caixinhas — Mês de [Mês]*\`.

@@ -147,7 +147,7 @@ const RELEASES: ReleaseEntry[] = [
       'Item 19 — Resumo Visual Padronizado das Caixinhas no WhatsApp: Sempre que o cliente solicita visão geral de suas caixinhas ("quais são minhas caixinhas?", "resumo das caixinhas", etc.), a resposta segue estritamente um layout visual em texto com barras em caracteres de bloco proporcionais (▓▓▓▓░░░░░░), percentual de consumo e tetos.',
       'Cabeçalho e Rodapé Padronizados: Topo com mês corrente ("📊 Suas Caixinhas — Mês de X") e rodapé com consolidado do mês (total gasto, total dos tetos e saldo restante ou estouro geral).',
       'Alertas Visuais Embutidos: Caixinhas com ≥80% do teto ganham marcador de atenção (⚠️) com saldo restante em evidência; caixinhas estouradas (≥100%) recebem marcação crítica imediata (🚨 Estourada por R$ X).',
-      'Item 20 — Foto de Perfil do WhatsApp via API no Painel Admin: No painel exclusivo de administradores (Configurações > Canal Oficial WhatsApp Business), a administradora pode selecionar uma foto (JPEG/PNG) e atualizar o avatar oficial do número via Resumable Upload da Meta e whatsapp_business_profile.',
+      'Item 20 — Foto de Perfil do WhatsApp via API no Painel Admin: No painel exclusivo de administradores (Minha Conta > Canal Oficial WhatsApp Business), a administradora pode selecionar uma foto (JPEG/PNG) e atualizar o avatar oficial do número via Resumable Upload da Meta e whatsapp_business_profile.',
       'Nota Explicativa sobre Nome de Exibição: Aviso claro informando que o nome de exibição do WhatsApp exige revisão humana pela Meta no WhatsApp Manager e não pode ser trocado por API, enquanto a foto pode ser atualizada diretamente pelo painel.',
       'Segurança e Zero Regressão: Token da Meta e chaves permanecem estritamente mascarados; fluxos de áudio, despesas retroativas, webhook da Meta e Cenários A–N permanecem 100% íntegros.',
     ],
@@ -210,7 +210,7 @@ const RELEASES: ReleaseEntry[] = [
       'Campo Admin de Chave de Transcrição de Voz (STT) e Leitura Dinâmica pelo Hook do WhatsApp',
     tag: 'Estável',
     highlights: [
-      'Campo seguro no Painel Admin: em Configurações (exclusivo para administradores), adição de campo para colar a chave de transcrição de voz (Groq/OpenAI) com padrão seguro do token da Meta — o valor é persistido no banco e nunca é reexibido na tela.',
+      'Campo seguro no Painel Admin: em Minha Conta (exclusivo para administradores), adição de campo para colar a chave de transcrição de voz (Groq/OpenAI) com padrão seguro do token da Meta — o valor é persistido no banco e nunca é reexibido na tela.',
       'Indicador claro stt_configurado: badge dinâmico no painel indicando se a transcrição de voz está ativa ("Chave de transcrição configurada ✓" / "Não configurada").',
       'Leitura dinâmica no hook whatsapp_bridge.js: o pipeline de áudio lê a chave stt_api_key diretamente de whatsapp_status no momento da transcrição, priorizando Groq Whisper Large v3 (compatível com OpenAI whisper) ou OpenAI direta.',
       'Contingência empática preservada: caso nenhuma chave de transcrição esteja configurada ou ocorra ruído inaudível, o agente envia mensagem acolhedora orientando o usuário a digitar o gasto.',
@@ -305,11 +305,11 @@ const RELEASES: ReleaseEntry[] = [
     highlights: [
       'Áudio via WhatsApp: reconhecimento automático de mensagens de voz (audio/voice), download seguro do binário pela Meta Cloud API, transcrição inteligente de fala para texto (STT) e reuso do mesmo fluxo do agente financeiro para registro da despesa na caixinha correta em centavos.',
       'Tratamento amigável de áudio inaudível: resposta empática e imediata caso o áudio esteja silencioso ou com ruído, orientando o cliente a gravar mais perto do microfone ou enviar por texto.',
-      'Papéis Admin × Cliente e Restrição de Visão: cliente comum não vê dados técnicos de infraestrutura (token Meta, Phone Number ID, WABA ID, URL de Webhook ou listas de contatos). Configurações técnicas agora são exclusivas para admin.',
+      'Papéis Admin × Cliente e Restrição de Visão: cliente comum não vê dados técnicos de infraestrutura (token Meta, Phone Number ID, WABA ID, URL de Webhook ou listas de contatos). Dados técnicos exibidos em Minha Conta agora são exclusivos para admin.',
       'Proteção de API no Backend: endpoints técnicos (/backend/v1/whatsapp/status, /token, /send-test, /contacts) recusam clientes comuns com HTTP 403 Forbidden.',
       'Backoffice Administrativo (/admin): visão operacional para suporte com contagens e métricas (total de clientes, ativos 7d/30d, transações, conversas), lista com busca em tempo real/ordenação e modal de detalhe com caixinhas (gasto vs teto), extrato e histórico de mensagens.',
       'Ações de suporte no Backoffice: zerar fio da conversa (limpeza de thread travada) e vincular/desvincular o WhatsApp do cliente.',
-      'Ícone de Olho Fechado em Campos de Senha: novo componente de olho fechado realista (pálpebra curva com cílios, sem risco sobreposto) em Login, Cadastro, Recuperação e Configurações.',
+      'Ícone de Olho Fechado em Campos de Senha: novo componente de olho fechado realista (pálpebra curva com cílios, sem risco sobreposto) em Login, Cadastro, Recuperação e Minha Conta.',
       'Indicação de Leitura e Digitando via Meta Status API: confirmação imediata de recebimento no WhatsApp com checks azuis (read) e três pontinhos (typing indicator) com custo zero de mensagens.',
       'Auto-promoção idempotente da dona do produto (barbara.ferreira.leal@gmail.com) para o papel admin via migração e no login.',
     ],
@@ -328,7 +328,7 @@ const RELEASES: ReleaseEntry[] = [
     title: 'Novo Ícone Olho Fechado em Senhas e Indicação Imediata de Recebimento no WhatsApp',
     tag: 'Estável',
     highlights: [
-      'Ícone do campo de senha reformulado: padrão oculto com desenho de olho fechado de verdade (pálpebra curva com cílios, sem barra por cima), abrindo para olho aberto ao clicar em Login, Cadastro, Redefinição e Configurações.',
+      'Ícone do campo de senha reformulado: padrão oculto com desenho de olho fechado de verdade (pálpebra curva com cílios, sem barra por cima), abrindo para olho aberto ao clicar em Login, Cadastro, Redefinição e Minha Conta.',
       'Indicação imediata de recebimento no WhatsApp: ao receber mensagem no webhook, marca imediatamente como lida (checks azuis) e ativa os três pontinhos ("digitando...") via Meta Status API.',
       'Custo ZERO na Meta: a API de status não consome mensagens nem gera cobrança de conversa.',
       'Tolerância a falha estrita (fail-safe): qualquer oscilação da Meta é apenas logada e nunca atrasa nem bloqueia a resposta do agente.',
@@ -363,7 +363,7 @@ const RELEASES: ReleaseEntry[] = [
     highlights: [
       'Correção definitiva do reconhecimento de contas recém-cadastradas no WhatsApp.',
       'Critério unificado de cadastro completo: usuário existente + tolerância de email + onboarding de caixinhas.',
-      'Inclusão opcional do telefone com DDD na tela de cadastro e gestão direta em Configurações > Perfil.',
+      'Inclusão opcional do telefone com DDD na tela de cadastro e gestão direta em Minha Conta > Perfil.',
       'Mensagem para números não vinculados agora inclui links diretos para Cadastro e Login com instruções claras.',
       'Documentação técnica oficial criada em docs/ARQUITETURA.md e roteiro em docs/TESTES_REGRESSIVOS.md.',
       'Script de reset permanente em scripts/reset-dev.js preservando canal Meta Cloud API intacto.',
@@ -546,7 +546,7 @@ export const ReleaseLog: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
             <Link to="/settings" className="hover:text-indigo-600 underline">
-              Configurações
+              Minha Conta
             </Link>
             <Link to="/onboarding" className="hover:text-indigo-600 underline">
               Onboarding

@@ -2543,7 +2543,26 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               // Estados: 'active', 'trial', 'carencia' (7 dias), 'bloqueado', 'cancelado'
               subStatus = matchedUser.getString('subscription_status') || 'trial'
               const carenciaUntil = matchedUser.getString('carencia_until') || ''
+              // Acesso pós-cancelamento: status 'cancelado' com access_until
+              // no futuro mantém o cliente ativo no WhatsApp até o fim do
+              // período já pago (mesma filosofia do gate do app).
+              const accessUntilWpp = matchedUser.getString('access_until') || ''
               const nowIso = new Date().toISOString()
+
+              if (subStatus === 'cancelado' && accessUntilWpp) {
+                const isAccessActive = accessUntilWpp > nowIso
+                console.log(
+                  '[whatsapp_bridge] Cancelado com access_until=' +
+                    accessUntilWpp +
+                    ' agora=' +
+                    nowIso +
+                    ' → acesso ' +
+                    (isAccessActive ? 'MANTIDO' : 'expirado'),
+                )
+                if (isAccessActive) {
+                  subStatus = 'active'
+                }
+              }
 
               if (subStatus === 'carencia') {
                 if (carenciaUntil && nowIso > carenciaUntil) {

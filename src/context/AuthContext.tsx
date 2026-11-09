@@ -16,6 +16,7 @@ export interface AuthUser extends RecordModel {
   subscription_plan?: 'mensal' | 'anual'
   subscription_expires_at?: string
   carencia_until?: string
+  access_until?: string
 }
 
 interface AuthContextType {

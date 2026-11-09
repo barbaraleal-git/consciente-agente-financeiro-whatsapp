@@ -921,8 +921,8 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 ---
 
-## AL) Assinatura (Billing Stripe) — Plano, Checkout, Carência e Bloqueio
-> **Status (v0.0.80)**: integração DIRETA com a API da Stripe via \`$http\` concluída e em produção (sem depender de conectores Skip). Antes de testar o checkout, a administradora deve colar a Secret Key (\`sk_live_...\`), o Webhook Signing Secret (\`whsec_...\`) e os Price IDs dos planos Mensal e Anual na aba **Billing > Configuração Stripe** do Backoffice Admin (\`/admin\`). Se as credenciais ainda não estiverem preenchidas, clicar em "Assinar" exibe mensagem amigável e clara orientando a configuração no Backoffice (sem erro 500 nem falha silenciosa). Após preencher as credenciais, o botão "Assinar" abre imediatamente o checkout seguro oficial da Stripe (\`checkout.stripe.com\`).
+## AL) Assinatura (Billing Stripe) — Plano, Checkout, Carência, Bloqueio e Cancelamento
+> **Status (v0.0.92)**: integração DIRETA com a API da Stripe via \`$http\` concluída e em produção (sem depender de conectores Skip). Antes de testar o checkout, a administradora deve colar a Secret Key (\`sk_live_...\`), o Webhook Signing Secret (\`whsec_...\`) e os Price IDs dos planos Mensal e Anual na aba **Billing > Configuração Stripe** do Backoffice Admin (\`/admin\`). Se as credenciais ainda não estiverem preenchidas, clicar em "Assinar" exibe mensagem amigável e clara orientando a configuração no Backoffice (sem erro 500 nem falha silenciosa). Após preencher as credenciais, o botão "Assinar" abre imediatamente o checkout seguro oficial da Stripe (\`checkout.stripe.com\`).
 
 1. **Fluxo de Assinatura Bem-Sucedido (Caminho Feliz)**:
    - Acesse \`/settings\` como cliente e abra a seção **Assinatura** (ou o deep-link \`/settings?section=assinatura\`).
@@ -941,9 +941,22 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - No WhatsApp, o envio de mensagens de gasto fica **suspenso**: o agente responde com gentileza, sem registrar lançamentos, convidando o cliente a reassinar e regularizar o pagamento.
      - Nenhum lançamento novo é gravado na base durante a carência.
 
-3. **Após os 7 Dias de Carência — Bloqueio Total**:
+3. **Após os 7 Dias de Carência — Bloqueio Total** (válido para inadimplência, NÃO para cancelamento voluntário):
    - Passado o período de carência sem regularização, a conta entra em **bloqueio total**: sem lançamentos no WhatsApp e sem acesso às funções do app, apenas com orientação para reassinar.
    - Ao regularizar o pagamento (reassinar via checkout Stripe), a conta volta a "ativa" imediatamente e todos os fluxos (WhatsApp + app) são restaurados sem perda de dados.
+
+4. **Cancelamento Voluntário — Acesso Garantido até o Fim do Período Pago** (decisão da usuária, v0.0.93):
+   - **Filosofia**: a Stripe encerra a assinatura **imediatamente** (garantia de que nenhuma cobrança futura será feita), MAS o cliente continua usando o app e o WhatsApp **até o fim do período que já pagou** (~30 dias no plano mensal; ~12 meses no anual).
+   - A data final de acesso é persistida no campo \`access_until\` do usuário (vem do \`current_period_end\` da resposta do cancelamento na Stripe; fallback: vigência já gravada em \`subscription_expires_at\`).
+   - Na tela **Minha Conta**, o status exibido passa a "Cancelado" imediatamente, SEMPRE acompanhado da data final em destaque: **"Cancelado — acesso garantido até 09/12/2026"** (bloco âmbar de alta visibilidade).
+   - O toast de confirmação do cancelamento informa a mesma data real (ex.: "Acesso garantido até 09/12/2026") — sem prometer nada diferente.
+   - O agente no WhatsApp continua aceitando lançamentos normalmente durante o período de acesso garantido (o gate trata cancelado-com-access_until-futuro como ativo).
+   - **Depois da data**: o cliente cai no fluxo normal de não-assinante (bloqueio de lançamentos no WhatsApp e no app, com convite a reassinar). Nenhum dado é perdido; a conta nunca é excluída.
+   - **Reativação**: ao assinar de novo (checkout Stripe), o campo \`access_until\` é limpo e a assinatura volta a "ativa" com nova vigência — sem resíduo do cancelamento anterior.
+   - A blindagem anti-fantasma do \`/billing/status\` (que rebaixa "ativa" sem evidência Stripe para trial) NUNCA rebaixa um registro "cancelado" com access_until futuro — estados distintos por design.
+   - Nada de logout ou reset de dados ao cancelar (comportamento preservado desde sempre).
+   - _Teste AL-4 (cancelamento):_ logada como cliente com assinatura ativa → Minha Conta → "Cancelar assinatura" → confirmar → status vira "Cancelado" com o bloco âmbar mostrando a data final de acesso; o app segue 100% utilizável e o WhatsApp segue registrando lançamentos; nenhuma nova fatura é gerada na Stripe.
+   - _Teste AL-5 (pós-período):_ com \`access_until\` no passado (ajuste manual em Admin → Collections → users ou esperando a data chegar), o /billing/status retorna "cancelado" sem acesso; o WhatsApp recusa lançamentos com convite a reassinar; Minha Conta exibe "período já pago foi encerrado".
 
 ---
 `

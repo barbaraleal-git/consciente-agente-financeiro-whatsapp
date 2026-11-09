@@ -164,7 +164,16 @@ export const SubscriptionPlansTab: React.FC = () => {
     setCancelling(true)
     try {
       const res = await billingService.cancelSubscription()
-      toast({ title: 'Assinatura cancelada', description: res.message || 'Status atualizado.' })
+      // O toast informa a data real de fim de acesso (retornada pelo backend) —
+      // sem prometer nada diferente da realidade.
+      const accessIso = res.access_until || ''
+      const accessMsg = accessIso
+        ? `Acesso garantido até ${formatDate(accessIso)}.`
+        : 'Seu período já pago foi encerrado.'
+      toast({
+        title: 'Assinatura cancelada',
+        description: accessMsg,
+      })
       await loadBilling()
       await refreshUser()
     } catch (err: unknown) {
@@ -180,6 +189,11 @@ export const SubscriptionPlansTab: React.FC = () => {
 
   const statusInfo = billing ? STATUS_BADGE[billing.status] || STATUS_BADGE.trial : null
   const isActive = billing?.status === 'active'
+  // Cliente que cancelou mas ainda está dentro do período já pago: o status
+  // exibido é "Cancelado" SEMPRE acompanhado da data final de acesso.
+  const accessUntilDate = billing?.access_until ? new Date(billing.access_until) : null
+  const hasGuaranteedAccess = !!(accessUntilDate && accessUntilDate.getTime() > Date.now())
+  const accessUntilLabel = accessUntilDate ? formatDate(billing!.access_until!) : ''
   const planLabel = billing?.plan === 'anual' ? 'Anual' : 'Mensal'
   const trialDaysLeft = useMemo(() => {
     if (!billing || billing.status !== 'trial' || !billing.expires_at) return null
@@ -292,6 +306,25 @@ export const SubscriptionPlansTab: React.FC = () => {
                 <p className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg p-2.5">
                   Sua assinatura está bloqueada por falta de pagamento. Atualize o pagamento no
                   portal para reativar.
+                </p>
+              )}
+              {billing.status === 'cancelado' && hasGuaranteedAccess && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-sm text-amber-900 flex items-center gap-1.5 font-semibold">
+                    <CalendarDays className="w-4 h-4 shrink-0 text-amber-700" />
+                    Cancelado — acesso garantido até {accessUntilLabel}
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    Nenhuma nova cobrança será feita. Você continua usando o app e o WhatsApp com
+                    tudo funcionando até essa data; depois, sua conta passa ao modo gratuito
+                    (somente leitura) e você pode reassinar quando quiser.
+                  </p>
+                </div>
+              )}
+              {billing.status === 'cancelado' && !hasGuaranteedAccess && (
+                <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                  Sua assinatura foi cancelada e o período já pago foi encerrado. Para voltar a
+                  registrar gastos no WhatsApp, reassine quando quiser.
                 </p>
               )}
 

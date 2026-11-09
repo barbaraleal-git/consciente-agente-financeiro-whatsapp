@@ -827,6 +827,8 @@ export interface BillingStatusResponse {
   plan: 'mensal' | 'anual'
   expires_at?: string
   carencia_until?: string
+  access_until?: string
+  access_active?: boolean
   has_stripe_customer: boolean
   has_stripe_subscription: boolean
   user_info: {
@@ -948,7 +950,12 @@ export const billingService = {
     })
   },
 
-  cancelSubscription: async (): Promise<{ success: boolean; status: string; message: string }> => {
+  cancelSubscription: async (): Promise<{
+    success: boolean
+    status: string
+    access_until?: string
+    message: string
+  }> => {
     return pb.send('/backend/v1/billing/cancel-subscription', {
       method: 'POST',
     })

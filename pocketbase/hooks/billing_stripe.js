@@ -163,6 +163,7 @@ routerAdd(
       const subPlan = userRec.getString('subscription_plan') || 'mensal'
       const subExpires = userRec.getString('subscription_expires_at') || ''
       const carenciaUntil = userRec.getString('carencia_until') || ''
+      const accessUntilRaw = userRec.getString('access_until') || ''
       const customerId = userRec.getString('stripe_customer_id') || ''
       const subId = userRec.getString('stripe_subscription_id') || ''
 
@@ -173,6 +174,12 @@ routerAdd(
       // ou sync-session, que gravam stripe_subscription_id.
       let effectiveStatus = subStatus
       try {
+        // Um registro 'cancelado' com access_until no futuro é um cliente que
+        // cancelou mas ainda está dentro do período já pago: ele mantém acesso
+        // total até essa data e NUNCA deve ser rebaixado pela blindagem
+        // (a blindagem só rebaixa 'active' fantasma, nunca 'cancelado').
+        const accessUntilValid =
+          accessUntilRaw !== '' && new Date(accessUntilRaw).getTime() > Date.now()
         if (subStatus === 'active' && !subId && !customerId) {
           effectiveStatus = 'trial'
           userRec.set('subscription_status', 'trial')
@@ -223,6 +230,8 @@ routerAdd(
         plan: subPlan,
         expires_at: subExpires,
         carencia_until: carenciaUntil,
+        access_until: accessUntilRaw,
+        access_active: accessUntilValid,
         has_stripe_customer: !!customerId,
         has_stripe_subscription: !!subId,
         user_info: {
@@ -753,6 +762,8 @@ routerAdd(
         if (customerId) userRec.set('stripe_customer_id', customerId)
         if (subId) userRec.set('stripe_subscription_id', subId)
         userRec.set('carencia_until', '')
+        // Reativação: o período de acesso pós-cancelamento deixa de existir.
+        userRec.set('access_until', '')
 
         const addDays = planType === 'anual' ? 365 : 30
         const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
@@ -873,6 +884,12 @@ routerAdd(
       const subId = userRec.getString('stripe_subscription_id')
       const oldStatus = userRec.getString('subscription_status')
 
+      // Filosofia de cancelamento: a Stripe encerra a assinatura IMEDIATAMENTE
+      // (nada de cobranças futuras), mas o cliente mantém acesso total até o
+      // fim do período que já pagou. A data final (access_until) vem do
+      // current_period_end da resposta do DELETE; se não vier, usa a vigência
+      // já gravada no registro (subscription_expires_at).
+      let accessUntil = ''
       const stripeCfg = inlineGetStripeConfig()
       if (subId && stripeCfg && stripeCfg.secret_key) {
         try {
@@ -883,25 +900,58 @@ routerAdd(
             '/subscriptions/' + subId,
           )
           console.log('[billing] Cancelamento Stripe status: ' + delRes.statusCode)
+          const delData = delRes.data
+          if (delData) {
+            const cpe =
+              delData.current_period_end || (delData.items && delData.items.current_period_end) || 0
+            if (cpe) {
+              accessUntil = new Date(cpe * 1000).toISOString()
+            }
+            console.log(
+              '[billing] current_period_end da Stripe: ' +
+                (cpe || 'não retornado') +
+                ' → access_until: ' +
+                (accessUntil || '—'),
+            )
+          }
         } catch (cErr) {
           console.log('[billing] Erro ao cancelar na Stripe via API: ' + cErr)
         }
       }
 
+      // Fallback: se a resposta do DELETE não trouxe a data, usa a vigência
+      // já gravada no registro (fim do período pago calculado no checkout).
+      if (!accessUntil) {
+        const storedExpires = userRec.getString('subscription_expires_at') || ''
+        if (storedExpires && new Date(storedExpires).getTime() > Date.now()) {
+          accessUntil = storedExpires
+        }
+      }
+
       userRec.set('subscription_status', 'cancelado')
+      userRec.set('access_until', accessUntil)
       $app.save(userRec)
 
       inlineLogHistory(userRec.id, 'subscription.cancelled', {
         status_from: oldStatus,
         status_to: 'cancelado',
-        details: { cancelled_by: 'user_self_service', subscription_id: subId },
+        details: {
+          cancelled_by: 'user_self_service',
+          subscription_id: subId,
+          access_until: accessUntil,
+        },
       })
 
+      const accessMsg = accessUntil
+        ? ' Seu acesso ao app permanece garantido até ' +
+          new Date(accessUntil).toLocaleDateString('pt-BR') +
+          '.'
+        : ' Seu período de acesso já pago já foi encerrado.'
       return e.json(200, {
         success: true,
         status: 'cancelado',
-        message:
-          'Assinatura cancelada com sucesso. Você ainda pode usar o app até o fim do período já pago.',
+        access_until: accessUntil,
+        message: 'Assinatura cancelada com sucesso.' + accessMsg,
       })
     } catch (err) {
       console.log('[billing] Erro em cancel-subscription: ' + err)
@@ -1318,6 +1368,8 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
         if (customerId) targetUser.set('stripe_customer_id', customerId)
         if (subId) targetUser.set('stripe_subscription_id', subId)
         targetUser.set('carencia_until', '')
+        // Reativação via webhook: período pós-cancelamento deixa de existir.
+        targetUser.set('access_until', '')
         const addDays = planType === 'anual' ? 365 : 30
         const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
         targetUser.set('subscription_expires_at', expiresAt)
@@ -1436,6 +1488,18 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
           if (targetUser) {
             const oldSt = targetUser.getString('subscription_status')
             targetUser.set('subscription_status', 'cancelado')
+            // Filosofia de cancelamento: NUNCA apagar um access_until no
+            // futuro — o cliente cancelou e segue com acesso garantido até o
+            // fim do período já pago, mesmo que este webhook chegue depois.
+            const keepAccess = targetUser.getString('access_until') || ''
+            if (!keepAccess) {
+              // Cancelamento vindo só do portal sem passar pelo nosso botão:
+              // garante a data de acesso a partir da vigência gravada.
+              const storedExpires = targetUser.getString('subscription_expires_at') || ''
+              if (storedExpires && new Date(storedExpires).getTime() > Date.now()) {
+                targetUser.set('access_until', storedExpires)
+              }
+            }
             $app.save(targetUser)
 
             inlineLogHistory(targetUser.id, 'stripe.subscription.deleted', {

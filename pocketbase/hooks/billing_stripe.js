@@ -458,13 +458,45 @@ routerAdd(
       const body = e.requestInfo().body || {}
       const planType = body.plan_type === 'anual' ? 'anual' : 'mensal'
       const appOrigin = 'https://agente-financeiro-whatsapp-37fd3.goskip.app'
+
+      // UX pós-checkout: o cliente SEMPRE volta para o MESMO front de onde
+      // saiu, preservando a sessão local do PocketBase (authStore). URLs de
+      // retorno são aceitas apenas de hosts na allowlist (*.goskip.app, o
+      // próprio backend, localhost) — host desconhecido cai no fallback do
+      // front de produção, nunca num domínio arbitrário (open redirect) nem
+      // num host sem sessão (que forçaria a tela de login).
+      let requestHost = ''
+      try {
+        requestHost = String(e.request.header.get('Host') || '').toLowerCase()
+      } catch (_) {}
+      const isAllowedReturnUrl = function (url) {
+        const s = String(url || '')
+        if (s.indexOf('https://') !== 0 && s.indexOf('http://') !== 0) return false
+        const host = s
+          .slice(s.indexOf('://') + 3)
+          .split('/')[0]
+          .split(':')[0]
+          .toLowerCase()
+        if (!host) return false
+        if (requestHost && host === requestHost) return true
+        if (host.indexOf('localhost') === 0 || host.indexOf('127.0.0.1') === 0) return true
+        if (host === 'agente-financeiro-whatsapp-37fd3.goskip.app') return true
+        if (host.length > 11 && host.slice(-11) === '.goskip.app') return true
+        return false
+      }
+      if (body.success_url && !isAllowedReturnUrl(body.success_url)) {
+        console.log(
+          '[billing] success_url fora da allowlist, usando fallback do front de produção: ' +
+            body.success_url,
+        )
+      }
       const successUrl =
-        body.success_url && String(body.success_url).indexOf('http') === 0
+        body.success_url && isAllowedReturnUrl(body.success_url)
           ? body.success_url
           : appOrigin +
             '/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}'
       const cancelUrl =
-        body.cancel_url && String(body.cancel_url).indexOf('http') === 0
+        body.cancel_url && isAllowedReturnUrl(body.cancel_url)
           ? body.cancel_url
           : appOrigin + '/settings?section=assinatura&checkout=cancelled'
 
@@ -972,9 +1004,41 @@ routerAdd(
         return e.json(400, { error: 'Configuração Stripe ausente.' })
       }
 
+      const bodyPortal = e.requestInfo().body || {}
+      const appOrigin = 'https://agente-financeiro-whatsapp-37fd3.goskip.app'
+
+      // Mesma allowlist do checkout: o cliente volta para o MESMO front de
+      // onde saiu, preservando a sessão do PocketBase (sem cair no login).
+      let requestHost = ''
+      try {
+        requestHost = String(e.request.header.get('Host') || '').toLowerCase()
+      } catch (_) {}
+      const isAllowedReturnUrl = function (url) {
+        const s = String(url || '')
+        if (s.indexOf('https://') !== 0 && s.indexOf('http://') !== 0) return false
+        const host = s
+          .slice(s.indexOf('://') + 3)
+          .split('/')[0]
+          .split(':')[0]
+          .toLowerCase()
+        if (!host) return false
+        if (requestHost && host === requestHost) return true
+        if (host.indexOf('localhost') === 0 || host.indexOf('127.0.0.1') === 0) return true
+        if (host === 'agente-financeiro-whatsapp-37fd3.goskip.app') return true
+        if (host.length > 11 && host.slice(-11) === '.goskip.app') return true
+        return false
+      }
+      const rawReturnUrl = bodyPortal.return_url || ''
+      if (rawReturnUrl && !isAllowedReturnUrl(rawReturnUrl)) {
+        console.log(
+          '[billing] return_url do portal fora da allowlist, usando fallback do front de produção: ' +
+            rawReturnUrl,
+        )
+      }
       const returnUrl =
-        e.requestInfo().body?.return_url ||
-        'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings'
+        rawReturnUrl && isAllowedReturnUrl(rawReturnUrl)
+          ? rawReturnUrl
+          : appOrigin + '/settings?section=assinatura&checkout=portal_return'
 
       const portalRes = inlineStripeRequest(
         stripeCfg.secret_key,

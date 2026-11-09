@@ -1,533 +1,432 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { billingService, type BillingStatusResponse } from '@/services/finance'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Check,
-  Zap,
-  Sparkles,
-  ShieldCheck,
   CreditCard,
-  AlertTriangle,
-  Clock,
+  Sparkles,
   Loader2,
-  Calendar,
-  ExternalLink,
-  Ban,
-  CheckCircle2,
+  ShieldCheck,
+  MessageCircle,
+  CalendarDays,
 } from 'lucide-react'
-import { formatCurrency } from '@/lib/formatters'
-import LegalFooter from '@/components/LegalFooter'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { useToast } from '@/hooks/use-toast'
+import pb from '@/lib/pocketbase/client'
+import { formatCurrency, formatDate } from '@/lib/formatters'
+import { billingService, BillingStatusResponse, CompanyLegalInfo } from '@/services/finance'
+import { useAuth } from '@/context/AuthContext'
+import { LegalFooter } from '@/components/LegalFooter'
+import { CheckoutReturnBanner, CheckoutReturnState } from '@/components/CheckoutReturnBanner'
+
+type PlanType = 'mensal' | 'anual'
+
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  active: {
+    label: 'Assinatura Ativa',
+    className: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  },
+  trial: { label: 'Período de Teste', className: 'bg-sky-100 text-sky-800 border-sky-300' },
+  carencia: { label: 'Em Carência', className: 'bg-amber-100 text-amber-800 border-amber-300' },
+  bloqueado: { label: 'Bloqueado', className: 'bg-red-100 text-red-800 border-red-300' },
+  cancelado: { label: 'Cancelado', className: 'bg-slate-100 text-slate-700 border-slate-300' },
+}
+
+const FEATURE_LIST = [
+  'Registro de despesas e receitas ilimitado pelo WhatsApp',
+  'Caixinhas (orçamentos) com alertas inteligentes',
+  'Resumo financeiro diário/semanal/mensal no WhatsApp',
+  'Relatórios e exportação',
+  'Suporte prioritário',
+]
 
 export const SubscriptionPlansTab: React.FC = () => {
-  const [searchParams] = useSearchParams()
-  const [data, setData] = useState<BillingStatusResponse | null>(null)
+  const { toast } = useToast()
+  const { refreshUser } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState<
-    'mensal' | 'anual' | 'portal' | 'cancel' | null
-  >(null)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [starting, setStarting] = useState<PlanType | null>(null)
+  const [managing, setManaging] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [billing, setBilling] = useState<BillingStatusResponse | null>(null)
+  const [legal, setLegal] = useState<CompanyLegalInfo | null>(null)
+  const [dismissedBanner, setDismissedBanner] = useState(false)
 
-  const loadStatus = async () => {
+  const checkoutParam = searchParams.get('checkout') as CheckoutReturnState | null
+  const sessionIdParam = searchParams.get('session_id') || undefined
+  const returnState: CheckoutReturnState | null =
+    checkoutParam === 'success' ||
+    checkoutParam === 'cancelled' ||
+    checkoutParam === 'portal_return'
+      ? checkoutParam
+      : null
+
+  const loadBilling = useCallback(async () => {
     try {
-      setLoading(true)
-      const res = await billingService.getStatus()
-      setData(res)
-    } catch (err: unknown) {
-      console.error(err)
-      setErrorMsg('Não foi possível carregar os dados de assinatura.')
+      const status = await billingService.getStatus()
+      setBilling(status)
+      setLegal(status.legal_info || null)
+    } catch {
+      toast({
+        title: 'Erro ao carregar assinatura',
+        description: 'Não foi possível obter o status atual. Tente recarregar a página.',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
 
   useEffect(() => {
-    loadStatus()
-    // Checa se voltou do checkout com sucesso
-    const checkoutResult = searchParams.get('checkout')
-    const sessionId = searchParams.get('session_id')
-    if (checkoutResult === 'success' && sessionId) {
-      setSuccessMsg('Pagamento recebido com sucesso! Sincronizando assinatura...')
-      billingService
-        .syncSession(sessionId)
-        .then((res) => {
-          if (res.success) {
-            setSuccessMsg(
-              'Assinatura ativada com sucesso! Seu agente no WhatsApp já está 100% liberado.',
-            )
-            loadStatus()
-          } else {
-            setSuccessMsg(
-              'Pagamento confirmado! A ativação pode levar alguns instantes; se o status não mudar, aguarde um minuto e recarregue a página.',
-            )
-            loadStatus()
-          }
-        })
-        .catch(() => {
-          // Sincronização falhou, mas o webhook da Stripe também ativa a
-          // assinatura — orientamos a recarregar em vez de alarmar.
-          setSuccessMsg(
-            'Pagamento confirmado! Se o status não atualizar em instantes, recarregue a página.',
-          )
-          loadStatus()
-        })
-    } else if (checkoutResult === 'cancelled') {
-      setErrorMsg('Processo de pagamento cancelado. Você pode tentar novamente a qualquer momento.')
-    }
-  }, [searchParams])
+    loadBilling()
+  }, [loadBilling])
 
-  const handleCheckout = async (planType: 'mensal' | 'anual') => {
-    setErrorMsg(null)
-    setSuccessMsg(null)
-    setActionLoading(planType)
+  // Ao voltar do checkout/portal: recarrega status + usuário logado (sem logout)
+  useEffect(() => {
+    if (!returnState) return
+    refreshUser()
+  }, [returnState, refreshUser])
+
+  const clearReturnParams = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('checkout')
+        next.delete('session_id')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setSearchParams])
+
+  const handleCheckout = useCallback(
+    async (planType: PlanType): Promise<unknown> => {
+      setStarting(planType)
+      try {
+        const origin = window.location.origin
+        const successUrl = `${origin}/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}`
+        const cancelUrl = `${origin}/settings?section=assinatura&checkout=cancelled`
+        const res = await billingService.createCheckoutSession(planType, successUrl, cancelUrl)
+        if (res?.url) {
+          // Redirect na MESMA aba — sessão do PocketBase (authStore localStorage)
+          // é preservada porque o retorno é no MESMO host de onde o usuário saiu.
+          window.location.href = res.url
+          return null
+        }
+        throw new Error('sem url')
+      } catch (err: unknown) {
+        const msg =
+          err && typeof err === 'object' && 'message' in err
+            ? String((err as { message?: unknown }).message)
+            : 'Falha ao iniciar o checkout. Tente novamente.'
+        toast({
+          title: 'Não foi possível iniciar o checkout',
+          description: msg,
+          variant: 'destructive',
+        })
+        return null
+      } finally {
+        setStarting(null)
+      }
+    },
+    [toast],
+  )
+
+  const handleManage = useCallback(async () => {
+    setManaging(true)
     try {
-      const origin = window.location.origin
-      // URLs de retorno apontam para a seção real da aba de assinatura
-      const successUrl = `${origin}/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}`
-      const cancelUrl = `${origin}/settings?section=assinatura&checkout=cancelled`
-
-      const res = await billingService.createCheckoutSession(planType, successUrl, cancelUrl)
+      const res = await billingService.createPortalSession(
+        `${window.location.origin}/settings?section=assinatura&checkout=portal_return`,
+      )
       if (res?.url) {
         window.location.href = res.url
         return
       }
-      setErrorMsg('Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.')
+      throw new Error('sem url')
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (
-        msg.toLowerCase().includes('configurado') ||
-        msg.toLowerCase().includes('configura') ||
-        msg.toLowerCase().includes('stripe')
-      ) {
-        setErrorMsg(
-          msg ||
-            'O pagamento ainda não está configurado. Conclua a configuração no Backoffice Admin (aba Billing > Configuração Stripe).',
-        )
-      } else {
-        setErrorMsg(
-          msg || 'Não foi possível iniciar o checkout. Tente novamente ou fale com o suporte.',
-        )
-      }
-    } finally {
-      setActionLoading(null)
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message?: unknown }).message)
+          : 'Falha ao abrir o portal. Tente novamente.'
+      toast({ title: 'Erro', description: msg, variant: 'destructive' })
+      setManaging(false)
     }
-  }
+  }, [toast])
 
-  const handleCancel = async () => {
-    if (
-      !window.confirm(
-        'Tem certeza que deseja cancelar sua assinatura do Consciente? Você perderá acesso às caixinhas e ao agente no WhatsApp.',
-      )
-    ) {
-      return
-    }
-    setErrorMsg(null)
-    setSuccessMsg(null)
-    setActionLoading('cancel')
+  const handleCancel = useCallback(async () => {
+    setCancelling(true)
     try {
       const res = await billingService.cancelSubscription()
-      if (res.success) {
-        setSuccessMsg('Assinatura cancelada com sucesso.')
-        loadStatus()
-      } else {
-        setErrorMsg(res.message || 'Erro ao cancelar assinatura.')
-      }
+      toast({ title: 'Assinatura cancelada', description: res.message || 'Status atualizado.' })
+      await loadBilling()
+      await refreshUser()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setErrorMsg(msg || 'Falha ao cancelar assinatura.')
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message?: unknown }).message)
+          : 'Falha ao cancelar. Tente novamente.'
+      toast({ title: 'Erro ao cancelar', description: msg, variant: 'destructive' })
     } finally {
-      setActionLoading(null)
+      setCancelling(false)
     }
-  }
+  }, [loadBilling, refreshUser, toast])
 
-  const handlePortal = async () => {
-    setActionLoading('portal')
-    try {
-      const res = await billingService.createPortalSession(window.location.href)
-      if (res?.url) {
-        window.location.href = res.url
-        return
-      }
-      setErrorMsg(
-        'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
-      )
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setErrorMsg(
-        msg ||
-          'Não foi possível acessar o portal de faturamento. Tente novamente ou fale com o suporte.',
-      )
-    } finally {
-      setActionLoading(null)
-    }
-  }
+  const statusInfo = billing ? STATUS_BADGE[billing.status] || STATUS_BADGE.trial : null
+  const isActive = billing?.status === 'active'
+  const planLabel = billing?.plan === 'anual' ? 'Anual' : 'Mensal'
+  const trialDaysLeft = useMemo(() => {
+    if (!billing || billing.status !== 'trial' || !billing.expires_at) return null
+    const diff = new Date(billing.expires_at).getTime() - Date.now()
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+  }, [billing])
 
-  if (loading && !data) {
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 space-y-3">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-        <p className="text-sm text-slate-500">Carregando planos e dados de assinatura...</p>
+      <div className="flex items-center justify-center py-12 text-slate-500">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        Carregando sua assinatura…
       </div>
     )
   }
 
-  const status = data?.status || 'trial'
-  const mensalPlan = data?.plans?.mensal
-  const anualPlan = data?.plans?.anual
-
   return (
-    <div className="space-y-8">
-      {/* Mensagens de Alerta */}
-      {errorMsg && (
-        <Alert
-          variant="destructive"
-          className="bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800"
-        >
-          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-          <AlertDescription className="text-red-700 dark:text-red-300">{errorMsg}</AlertDescription>
-        </Alert>
+    <div className="space-y-4">
+      {/* Banner de retorno do checkout/portal — nunca silêncio */}
+      {returnState && !dismissedBanner && (
+        <CheckoutReturnBanner
+          returnState={returnState}
+          sessionId={sessionIdParam}
+          billing={billing}
+          onDismiss={() => {
+            setDismissedBanner(true)
+            clearReturnParams()
+          }}
+          onRetryCheckout={handleCheckout}
+        />
       )}
 
-      {successMsg && (
-        <Alert className="bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-          <AlertDescription className="text-emerald-700 dark:text-emerald-300">
-            {successMsg}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Banner de Status Atual */}
-      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      {/* Status atual */}
+      <Card className="border-slate-200">
         <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <div>
-              <CardTitle className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                Status da sua Assinatura
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                Sua Assinatura
               </CardTitle>
-              <CardDescription>
-                Acompanhe o estado da sua conta, renovação e funcionalidades liberadas
+              <CardDescription className="text-xs text-slate-500 mt-1">
+                Status atual da sua conta Consciente.
               </CardDescription>
             </div>
-            <div>
-              {status === 'active' && (
-                <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-3 py-1 text-xs">
-                  <Check className="w-3.5 h-3.5 mr-1" /> Assinatura Ativa (
-                  {data?.plan === 'anual' ? 'Anual' : 'Mensal'})
-                </Badge>
-              )}
-              {status === 'trial' && (
-                <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 text-xs">
-                  <Sparkles className="w-3.5 h-3.5 mr-1" /> Período de Avaliação (Trial)
-                </Badge>
-              )}
-              {status === 'carencia' && (
-                <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-3 py-1 text-xs">
-                  <Clock className="w-3.5 h-3.5 mr-1" /> Em Carência (7 dias)
-                </Badge>
-              )}
-              {status === 'bloqueado' && (
-                <Badge className="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-3 py-1 text-xs">
-                  <Ban className="w-3.5 h-3.5 mr-1" /> Bloqueado por Inadimplência
-                </Badge>
-              )}
-              {status === 'cancelado' && (
-                <Badge className="bg-slate-600 text-white font-semibold px-3 py-1 text-xs">
-                  Assinatura Cancelada
-                </Badge>
-              )}
-            </div>
+            {statusInfo && (
+              <Badge variant="outline" className={`text-[11px] ${statusInfo.className}`}>
+                {statusInfo.label}
+              </Badge>
+            )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-3 pt-2 text-sm text-slate-600 dark:text-slate-300">
-          {status === 'carencia' && (
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs leading-relaxed space-y-1">
-              <div className="font-semibold flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                Aviso de Carência por Falha no Pagamento
+        <CardContent className="space-y-3 text-sm">
+          {billing && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">
+                    Plano
+                  </p>
+                  <p className="font-semibold text-slate-900 mt-0.5">{planLabel}</p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">
+                    {billing.status === 'active'
+                      ? 'Válida até'
+                      : billing.status === 'trial'
+                        ? 'Teste até'
+                        : 'Renova em'}
+                  </p>
+                  <p className="font-semibold text-slate-900 mt-0.5 flex items-center gap-1.5">
+                    <CalendarDays className="w-4 h-4 text-slate-500" />
+                    {billing.expires_at ? formatDate(billing.expires_at) : '—'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">
+                    Valor
+                  </p>
+                  <p className="font-semibold text-slate-900 mt-0.5">
+                    {billing.plans?.[billing.plan]
+                      ? formatCurrency(billing.plans[billing.plan].price_cents)
+                      : '—'}
+                    <span className="text-xs font-normal text-slate-500">
+                      {billing.plan === 'anual' ? ' /ano' : ' /mês'}
+                    </span>
+                  </p>
+                  {isActive && billing.plans?.[billing.plan]?.is_override && (
+                    <p className="text-[10px] text-amber-700 mt-1">Preço promocional no cadastro</p>
+                  )}
+                </div>
               </div>
-              <p>
-                Houve uma falha na renovação da sua assinatura. Durante a carência de 7 dias você
-                mantém acesso às consultas aqui no app, mas o agente no WhatsApp fica suspenso até a
-                regularização do pagamento.
-              </p>
-              {data?.carencia_until && (
-                <p className="font-semibold">
-                  Prazo de carência até: {new Date(data.carencia_until).toLocaleDateString('pt-BR')}
+
+              {billing.status === 'trial' && trialDaysLeft !== null && (
+                <p className="text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg p-2.5">
+                  Você tem <strong>{trialDaysLeft} dia(s)</strong> de teste. Assine para continuar
+                  usando o agente no WhatsApp sem interrupções.
                 </p>
               )}
-            </div>
-          )}
+              {billing.status === 'carencia' && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  O último pagamento não passou. Você está em carência até{' '}
+                  <strong>
+                    {billing.carencia_until ? formatDate(billing.carencia_until) : '—'}
+                  </strong>
+                  . Atualize seu cartão no portal para evitar o bloqueio.
+                </p>
+              )}
+              {billing.status === 'bloqueado' && (
+                <p className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg p-2.5">
+                  Sua assinatura está bloqueada por falta de pagamento. Atualize o pagamento no
+                  portal para reativar.
+                </p>
+              )}
 
-          {status === 'bloqueado' && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs leading-relaxed space-y-1">
-              <div className="font-semibold flex items-center gap-1.5">
-                <Ban className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                Conta Bloqueada por Inadimplência
-              </div>
-              <p>
-                O prazo de carência expirou. Reative seu plano abaixo para desbloquear imediatamente
-                todas as funcionalidades do aplicativo e o envio pelo WhatsApp.
-              </p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-              <span className="text-xs text-slate-500 block">Titular</span>
-              <strong className="text-slate-900 dark:text-slate-100">
-                {data?.user_info.full_name || data?.user_info.name}
-              </strong>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-              <span className="text-xs text-slate-500 block">CPF Cadastrado</span>
-              <strong className="text-slate-900 dark:text-slate-100">
-                {data?.user_info.cpf
-                  ? `${data.user_info.cpf.slice(0, 3)}.***.***-${data.user_info.cpf.slice(-2)}`
-                  : 'Não informado'}
-              </strong>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-              <span className="text-xs text-slate-500 block">Vigência / Renovação</span>
-              <strong className="text-slate-900 dark:text-slate-100">
-                {data?.expires_at
-                  ? new Date(data.expires_at).toLocaleDateString('pt-BR')
-                  : 'Sem data de expiração'}
-              </strong>
-            </div>
-          </div>
-
-          {status === 'active' && (
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePortal}
-                disabled={actionLoading === 'portal'}
-                className="text-xs text-slate-700 dark:text-slate-200"
-              >
-                {actionLoading === 'portal' ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                ) : (
-                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+              {/* Ações */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {!isActive && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleCheckout(billing?.plan === 'anual' ? 'anual' : 'mensal')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    {billing.status === 'trial' ? 'Assinar agora' : 'Reativar assinatura'}
+                  </Button>
                 )}
-                Gerenciar Cartão e Faturas na Stripe
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCancel}
-                disabled={actionLoading === 'cancel'}
-                className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-              >
-                {actionLoading === 'cancel' ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                ) : null}
-                Cancelar Assinatura
-              </Button>
-            </div>
+                {(isActive || billing.has_stripe_customer) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleManage}
+                    disabled={managing}
+                    className="border-slate-300 text-slate-700 hover:bg-slate-100"
+                  >
+                    {managing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Gerenciar assinatura (cartão, faturas)
+                  </Button>
+                )}
+                {isActive && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancel}
+                    disabled={cancelling}
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                  >
+                    {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Cancelar assinatura
+                  </Button>
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* Grid de Planos: Mensal e Anual */}
-      <div>
-        <div className="text-center max-w-2xl mx-auto mb-8 space-y-2">
-          <Badge className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100">
-            Oferta Especial Black November
-          </Badge>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            Escolha o Plano Ideal para seu Controle Financeiro
-          </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Acesso total ao parceiro financeiro no WhatsApp (áudio, texto e fotos) + painel de
-            Caixinhas completo. Cancele a qualquer momento com apenas 1 clique.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-          {/* Card Mensal */}
-          <Card className="relative border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between hover:border-indigo-400 dark:hover:border-indigo-600 transition-all">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                  {mensalPlan?.name || 'Plano Mensal'}
-                </CardTitle>
-                <Badge
-                  variant="outline"
-                  className="border-indigo-300 text-indigo-600 dark:text-indigo-400 text-xs"
-                >
-                  Recorrente
-                </Badge>
-              </div>
-              <CardDescription>Flexibilidade mensal total sem fidelidade</CardDescription>
-              <div className="pt-4 flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-slate-900 dark:text-slate-100">
-                  {mensalPlan ? formatCurrency(mensalPlan.price_cents) : 'R$ 19,90'}
-                </span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">/mês</span>
-              </div>
-              {mensalPlan?.is_override && (
-                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  ✓ Desconto especial individual aplicado à sua conta
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <ul className="space-y-2 text-slate-600 dark:text-slate-300">
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  <span>Envio de gastos no WhatsApp por texto e voz</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  <span>Classificação automática com Caixinhas inteligentes</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  <span>Resumo do dia determinístico e relatórios</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  <span>Cancelamento fácil a qualquer momento</span>
-                </li>
-              </ul>
-            </CardContent>
-            <CardFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button
-                onClick={() => handleCheckout('mensal')}
-                disabled={actionLoading !== null}
-                className="w-full bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white text-white font-medium"
+      {/* Planos */}
+      <Card className="border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            Planos disponíveis
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500 mt-1">
+            Cancele quando quiser. Sem multa, sem burocracia.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(['mensal', 'anual'] as PlanType[]).map((pt) => {
+            const plan = billing?.plans?.[pt]
+            const isCurrent = isActive && billing?.plan === pt
+            return (
+              <div
+                key={pt}
+                className={`rounded-xl border p-4 flex flex-col ${
+                  isCurrent ? 'border-emerald-400 bg-emerald-50/40' : 'border-slate-200'
+                }`}
               >
-                {actionLoading === 'mensal' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Abrindo Stripe...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Assinar Mensal
-                  </>
-                )}
-              </Button>
-            </CardFooter>
-          </Card>
-
-          {/* Card Anual (Destaque) */}
-          <Card className="relative border-indigo-500 dark:border-indigo-500 bg-white dark:bg-slate-900 shadow-lg flex flex-col justify-between ring-2 ring-indigo-500/20">
-            <div className="absolute -top-3 right-6 bg-indigo-600 text-white text-[11px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider shadow">
-              Mais Econômico (10% OFF)
-            </div>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  {anualPlan?.name || 'Plano Anual'}
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                </CardTitle>
-                <Badge className="bg-indigo-600 text-white text-xs">Recomendado</Badge>
-              </div>
-              <CardDescription>Economia garantida com tranquilidade o ano todo</CardDescription>
-              <div className="pt-4 flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-slate-900 dark:text-slate-100">
-                  {anualPlan ? formatCurrency(anualPlan.price_cents) : 'R$ 214,90'}
-                </span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">/ano</span>
-              </div>
-              <div className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
-                Equivalente a apenas{' '}
-                {anualPlan ? formatCurrency(Math.round(anualPlan.price_cents / 12)) : 'R$ 17,90'}
-                /mês
-              </div>
-              {anualPlan?.is_override && (
-                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  ✓ Desconto especial individual aplicado à sua conta
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <ul className="space-y-2 text-slate-600 dark:text-slate-300">
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
-                  <span>
-                    <strong>Tudo do plano mensal</strong>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-900">
+                    {plan?.name || (pt === 'anual' ? 'Anual' : 'Mensal')}
                   </span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
-                  <span>Economia de 10% no valor anual total</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
-                  <span>Proteção contra reajustes de preço durante 12 meses</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
-                  <span>Acesso prioritário a novas funcionalidades e relatórios</span>
-                </li>
-              </ul>
-            </CardContent>
-            <CardFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button
-                onClick={() => handleCheckout('anual')}
-                disabled={actionLoading !== null}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/30"
-              >
-                {actionLoading === 'anual' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Abrindo Stripe...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 mr-2" />
-                    Assinar Anual (10% OFF)
-                  </>
+                  {pt === 'anual' && (
+                    <Badge
+                      className="bg-indigo-100 text-indigo-700 border-indigo-200"
+                      variant="outline"
+                    >
+                      Economize 10%
+                    </Badge>
+                  )}
+                  {isCurrent && (
+                    <Badge
+                      className="bg-emerald-600 text-white border-emerald-700"
+                      variant="outline"
+                    >
+                      <Check className="w-3 h-3 mr-1" /> Atual
+                    </Badge>
+                  )}
+                </div>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {plan ? formatCurrency(plan.price_cents) : '—'}
+                  <span className="text-sm font-normal text-slate-500">
+                    {pt === 'anual' ? ' /ano' : ' /mês'}
+                  </span>
+                </p>
+                <Separator className="my-3" />
+                <ul className="space-y-1.5 text-xs text-slate-600 flex-1">
+                  {FEATURE_LIST.map((f) => (
+                    <li key={f} className="flex items-start gap-1.5">
+                      <Check className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-600" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                {!isActive && (
+                  <Button
+                    className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={starting !== null}
+                    onClick={() => handleCheckout(pt)}
+                  >
+                    {starting === pt ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Redirecionando…
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Assinar {pt === 'anual' ? 'Anual' : 'Mensal'}
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      </div>
+              </div>
+            )
+          })}
+        </CardContent>
+      </Card>
 
-      {/* Caixa de Segurança e Termos de Recorrência */}
-      <div className="max-w-4xl mx-auto p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-600 dark:text-slate-400 space-y-2">
-        <div className="font-semibold text-slate-900 dark:text-slate-200 flex items-center gap-2">
+      {/* Segurança e suporte */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 flex flex-wrap items-center gap-4">
+        <span className="flex items-center gap-1.5">
           <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          Transparência, Segurança e Garantia CDC
-        </div>
-        <p className="leading-relaxed">
-          • <strong>Pagamento 100% seguro:</strong> processado diretamente pela Stripe com
-          certificado PCI-DSS Nível 1. O Consciente nunca armazena seus dados de cartão de crédito.
-        </p>
-        <p className="leading-relaxed">
-          • <strong>Consentimento de renovação:</strong> a assinatura é recorrente e renovada
-          automaticamente no final de cada período (mensal ou anual) até que você solicite o
-          cancelamento.
-        </p>
-        <p className="leading-relaxed">
-          • <strong>Direito de arrependimento (Art. 49 do CDC):</strong> você pode cancelar sua
-          compra e solicitar reembolso integral em até 7 dias corridos após a primeira contratação
-          via suporte.
-        </p>
-        <p className="leading-relaxed">
-          • <strong>Cancelamento sem burocracia:</strong> cancele quando quiser diretamente nesta
-          página ou pelo portal da Stripe sem taxas ou multas de rescisão.
-        </p>
+          Pagamento processado pela Stripe (PCI-DSS)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <MessageCircle className="w-4 h-4 text-emerald-600" />
+          Dúvidas: {legal?.support_phone_or_bot || '+55 (11) 94998-9868'}
+        </span>
       </div>
 
-      {/* Rodapé Legal conforme Decreto 7.962/2013 */}
       <LegalFooter />
     </div>
   )

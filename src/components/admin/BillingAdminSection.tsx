@@ -78,7 +78,7 @@ const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; icon: R
       icon: <Ban className="w-3 h-3 mr-1" />,
     },
     cancelado: {
-      label: 'Cancelado',
+      label: 'Cancelada',
       badgeClass: 'bg-slate-100 text-slate-600 border-slate-200',
       icon: <XCircle className="w-3 h-3 mr-1" />,
     },
@@ -384,7 +384,7 @@ export const BillingAdminSection: React.FC = () => {
                   Bloqueados: {statusMetrics?.bloqueado ?? 0}
                 </Badge>
                 <Badge className="bg-slate-100 text-slate-600 border border-slate-200">
-                  Cancelados: {statusMetrics?.cancelado ?? 0}
+                  Canceladas: {statusMetrics?.cancelado ?? 0}
                 </Badge>
                 <div className="ml-auto flex items-center gap-2">
                   <span className="text-slate-400">Total: {subsData.clients.length}</span>

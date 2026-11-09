@@ -948,14 +948,14 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 4. **Cancelamento Voluntário — Acesso Garantido até o Fim do Período Pago** (decisão da usuária, v0.0.89):
    - **Filosofia**: a Stripe encerra a assinatura **imediatamente** (garantia de que nenhuma cobrança futura será feita), MAS o cliente continua usando o app e o WhatsApp **até o fim do período que já pagou** (~30 dias no plano mensal; ~12 meses no anual).
    - A data final de acesso é persistida no campo \`access_until\` do usuário (vem do \`current_period_end\` da resposta do cancelamento na Stripe; fallback: vigência já gravada em \`subscription_expires_at\`).
-   - Na tela **Minha Conta**, o status exibido passa a "Cancelado" imediatamente, SEMPRE acompanhado da data final em destaque: **"Cancelado — acesso garantido até 09/12/2026"** (bloco âmbar de alta visibilidade).
+   - Na tela **Minha Conta**, o status exibido passa a "Cancelada" imediatamente, SEMPRE acompanhado da data final em destaque: **"Cancelada — acesso garantido até 09/12/2026"** (bloco âmbar de alta visibilidade).
    - O toast de confirmação do cancelamento informa a mesma data real (ex.: "Acesso garantido até 09/12/2026") — sem prometer nada diferente.
    - O agente no WhatsApp continua aceitando lançamentos normalmente durante o período de acesso garantido (o gate trata cancelado-com-access_until-futuro como ativo).
    - **Depois da data**: o cliente cai no fluxo normal de não-assinante (bloqueio de lançamentos no WhatsApp e no app, com convite a reassinar). Nenhum dado é perdido; a conta nunca é excluída.
    - **Reativação**: ao assinar de novo (checkout Stripe), o campo \`access_until\` é limpo e a assinatura volta a "ativa" com nova vigência — sem resíduo do cancelamento anterior.
    - A blindagem anti-fantasma do \`/billing/status\` (que rebaixa "ativa" sem evidência Stripe para trial) NUNCA rebaixa um registro "cancelado" com access_until futuro — estados distintos por design.
    - Nada de logout ou reset de dados ao cancelar (comportamento preservado desde sempre).
-   - _Teste AL-4 (cancelamento):_ logada como cliente com assinatura ativa → Minha Conta → "Cancelar assinatura" → confirmar → status vira "Cancelado" com o bloco âmbar mostrando a data final de acesso; o app segue 100% utilizável e o WhatsApp segue registrando lançamentos; nenhuma nova fatura é gerada na Stripe.
+   - _Teste AL-4 (cancelamento):_ logada como cliente com assinatura ativa → Minha Conta → "Cancelar assinatura" → confirmar → status vira "Cancelada" com o bloco âmbar mostrando a data final de acesso; o app segue 100% utilizável e o WhatsApp segue registrando lançamentos; nenhuma nova fatura é gerada na Stripe.
    - _Teste AL-5 (pós-período):_ com \`access_until\` no passado (ajuste manual em Admin → Collections → users ou esperando a data chegar), o /billing/status retorna "cancelado" sem acesso; o WhatsApp recusa lançamentos com convite a reassinar; Minha Conta exibe "período já pago foi encerrado".
 
 ---

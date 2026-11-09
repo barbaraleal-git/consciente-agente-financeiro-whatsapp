@@ -31,7 +31,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   trial: { label: 'Período de Teste', className: 'bg-sky-100 text-sky-800 border-sky-300' },
   carencia: { label: 'Em Carência', className: 'bg-amber-100 text-amber-800 border-amber-300' },
   bloqueado: { label: 'Bloqueado', className: 'bg-red-100 text-red-800 border-red-300' },
-  cancelado: { label: 'Cancelado', className: 'bg-slate-100 text-slate-700 border-slate-300' },
+  cancelado: { label: 'Cancelada', className: 'bg-slate-100 text-slate-700 border-slate-300' },
 }
 
 const FEATURE_LIST = [
@@ -190,7 +190,7 @@ export const SubscriptionPlansTab: React.FC = () => {
   const statusInfo = billing ? STATUS_BADGE[billing.status] || STATUS_BADGE.trial : null
   const isActive = billing?.status === 'active'
   // Cliente que cancelou mas ainda está dentro do período já pago: o status
-  // exibido é "Cancelado" SEMPRE acompanhado da data final de acesso.
+  // exibido é "Cancelada" SEMPRE acompanhado da data final de acesso.
   const accessUntilDate = billing?.access_until ? new Date(billing.access_until) : null
   const hasGuaranteedAccess = !!(accessUntilDate && accessUntilDate.getTime() > Date.now())
   const accessUntilLabel = accessUntilDate ? formatDate(billing!.access_until!) : ''
@@ -312,7 +312,7 @@ export const SubscriptionPlansTab: React.FC = () => {
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
                   <p className="text-sm text-amber-900 flex items-center gap-1.5 font-semibold">
                     <CalendarDays className="w-4 h-4 shrink-0 text-amber-700" />
-                    Cancelado — acesso garantido até {accessUntilLabel}
+                    Cancelada — acesso garantido até {accessUntilLabel}
                   </p>
                   <p className="text-xs text-amber-800 mt-1">
                     Nenhuma nova cobrança será feita. Você continua usando o app e o WhatsApp com

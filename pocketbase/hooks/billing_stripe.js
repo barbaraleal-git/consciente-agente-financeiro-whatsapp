@@ -9,9 +9,12 @@
  *    devem ser declaradas 100% INLINE dentro do corpo de cada callback routerAdd.
  * 2. Integração DIRETA com a API REST da Stripe (https://api.stripe.com/v1) via $http.send:
  *    - Credenciais armazenadas na coleção `stripe_config` (secret_key, webhook_signing_secret, price_id_mensal, price_id_anual).
- *    - Chave secreta enviada via Basic Auth (username: secret_key, password: "").
+ *    - Chave secreta enviada via Authorization Bearer (base64Encode não existe na JSVM).
  *    - A chave NUNCA é enviada em texto claro ao cliente: mascarada na leitura admin (sk_live_***abc) e nunca logada.
  *    - Se `stripe_config` estiver sem secret_key, retorna 400 amigável orientando Backoffice Admin (sem 500 cru).
+ *    - CORPO DA RESPOSTA $http.send: { statusCode, headers, cookies, body (bytes), raw (texto), json (parseado) }.
+ *      res.rawText NÃO existe — usar res.json (parseado) ou res.raw (texto); JSON.parse(res.rawText||'{}') causava
+ *      o 502 "undefined" no checkout (status 200 da Stripe lido como corpo indefinido).
  * 3. Rotas criadas:
  *    - GET  /backend/v1/billing/status (dados da assinatura, dados legais e planos vigentes)
  *    - POST /backend/v1/billing/create-checkout-session (cria Checkout Session na Stripe via $http)
@@ -317,15 +320,47 @@ routerAdd(
           timeout: 30,
         })
 
-        let parsed = null
+        // Resposta da $http.send na JSVM: { statusCode, headers, cookies, body (bytes), raw (texto), json (parseado) }.
+        // res.rawText NÃO existe (undefined) — era a causa do 502 no checkout com status 200 da Stripe.
+        let data = null
         try {
-          parsed = JSON.parse(res.rawText || '{}')
-        } catch (_) {}
+          if (res.json && typeof res.json === 'object') {
+            data = res.json
+          } else {
+            const rawStr = res.raw || ''
+            if (rawStr) {
+              try {
+                data = JSON.parse(rawStr)
+              } catch (_) {
+                data = null
+              }
+            }
+          }
+        } catch (pErr) {
+          console.log('[billing] Erro ao parsear resposta Stripe: ' + pErr)
+          data = null
+        }
+
+        // Diagnóstico temporário: quando não conseguimos extrair corpo, imprime as chaves do objeto
+        if (!data) {
+          try {
+            const keys = []
+            for (let k in res) keys.push(k + '=' + typeof res[k])
+            console.log(
+              '[billing][diag] Resposta $http.send sem corpo legível. Chaves: ' +
+                keys.join(', ') +
+                ' | raw: ' +
+                String(res.raw || '').slice(0, 500),
+            )
+          } catch (dErr) {
+            console.log('[billing][diag] Falha ao inspecionar resposta: ' + dErr)
+          }
+        }
 
         return {
           statusCode: res.statusCode,
-          data: parsed,
-          rawText: res.rawText,
+          data: data,
+          rawText: res.raw || '',
         }
       }
 
@@ -530,15 +565,25 @@ routerAdd(
         )
         const stripeErrorMsg =
           (sessRes.data && sessRes.data.error && sessRes.data.error.message) || ''
+        // Mensagem amigável em português (o front exibe err.message direto ao usuário)
+        let friendlyMsg = 'Não foi possível iniciar o checkout. '
+        if (stripeErrorMsg) {
+          if (stripeErrorMsg.indexOf('Invalid API key') !== -1) {
+            friendlyMsg += 'A Secret Key da Stripe parece inválida. Revise no Backoffice Admin.'
+          } else if (stripeErrorMsg.indexOf('No such price') !== -1) {
+            friendlyMsg +=
+              'O Price ID configurado não existe na Stripe. Revise no Backoffice Admin.'
+          } else {
+            friendlyMsg += 'Motivo informado pela Stripe: ' + stripeErrorMsg
+          }
+        } else {
+          friendlyMsg += 'Verifique os dados no Backoffice Admin (Billing > Configuração Stripe).'
+        }
         return e.json(502, {
-          error:
-            'Não foi possível iniciar o checkout da Stripe. ' +
-            (stripeErrorMsg
-              ? '(' + stripeErrorMsg + ')'
-              : 'Verifique os dados no Backoffice Admin.'),
+          error: friendlyMsg,
+          code: 'STRIPE_CHECKOUT_FAILED',
         })
       }
-
       return e.json(200, {
         session_id: sessRes.data.id,
         url: sessRes.data.url,
@@ -593,14 +638,28 @@ routerAdd(
           headers: headers,
           timeout: 30,
         })
+        // Corpo da resposta $http.send: res.json (parseado) ou res.raw (texto). res.rawText não existe.
         let parsed = null
         try {
-          parsed = JSON.parse(res.rawText || '{}')
-        } catch (_) {}
+          if (res.json && typeof res.json === 'object') {
+            parsed = res.json
+          } else {
+            const rawStr = res.raw || ''
+            if (rawStr) {
+              try {
+                parsed = JSON.parse(rawStr)
+              } catch (_) {
+                parsed = null
+              }
+            }
+          }
+        } catch (_) {
+          parsed = null
+        }
         return {
           statusCode: res.statusCode,
           data: parsed,
-          rawText: res.rawText,
+          rawText: res.raw || '',
         }
       }
 
@@ -740,14 +799,28 @@ routerAdd(
           headers: headers,
           timeout: 30,
         })
+        // Corpo da resposta $http.send: res.json (parseado) ou res.raw (texto). res.rawText não existe.
         let parsed = null
         try {
-          parsed = JSON.parse(res.rawText || '{}')
-        } catch (_) {}
+          if (res.json && typeof res.json === 'object') {
+            parsed = res.json
+          } else {
+            const rawStr = res.raw || ''
+            if (rawStr) {
+              try {
+                parsed = JSON.parse(rawStr)
+              } catch (_) {
+                parsed = null
+              }
+            }
+          }
+        } catch (_) {
+          parsed = null
+        }
         return {
           statusCode: res.statusCode,
           data: parsed,
-          rawText: res.rawText,
+          rawText: res.raw || '',
         }
       }
 
@@ -863,14 +936,28 @@ routerAdd(
           body: bodyStr || undefined,
           timeout: 30,
         })
+        // Corpo da resposta $http.send: res.json (parseado) ou res.raw (texto). res.rawText não existe.
         let parsed = null
         try {
-          parsed = JSON.parse(res.rawText || '{}')
-        } catch (_) {}
+          if (res.json && typeof res.json === 'object') {
+            parsed = res.json
+          } else {
+            const rawStr = res.raw || ''
+            if (rawStr) {
+              try {
+                parsed = JSON.parse(rawStr)
+              } catch (_) {
+                parsed = null
+              }
+            }
+          }
+        } catch (_) {
+          parsed = null
+        }
         return {
           statusCode: res.statusCode,
           data: parsed,
-          rawText: res.rawText,
+          rawText: res.raw || '',
         }
       }
 

@@ -173,13 +173,16 @@ routerAdd(
       // — a ativação real acontece SOMENTE via webhook checkout.session.completed
       // ou sync-session, que gravam stripe_subscription_id.
       let effectiveStatus = subStatus
+      // Um registro 'cancelado' com access_until no futuro é um cliente que
+      // cancelou mas ainda está dentro do período já pago: ele mantém acesso
+      // total até essa data e NUNCA deve ser rebaixado pela blindagem
+      // (a blindagem só rebaixa 'active' fantasma, nunca 'cancelado').
+      // IMPORTANTE (padrão JSVM/v0.0.66): 'const' dentro de try{} tem escopo
+      // apenas do bloco — referenciado fora dele vira ReferenceError
+      // (bug da v0.0.90). Calculado no escopo do callback, antes do try.
+      const accessUntilValid =
+        accessUntilRaw !== '' && new Date(accessUntilRaw).getTime() > Date.now()
       try {
-        // Um registro 'cancelado' com access_until no futuro é um cliente que
-        // cancelou mas ainda está dentro do período já pago: ele mantém acesso
-        // total até essa data e NUNCA deve ser rebaixado pela blindagem
-        // (a blindagem só rebaixa 'active' fantasma, nunca 'cancelado').
-        const accessUntilValid =
-          accessUntilRaw !== '' && new Date(accessUntilRaw).getTime() > Date.now()
         if (subStatus === 'active' && !subId && !customerId) {
           effectiveStatus = 'trial'
           userRec.set('subscription_status', 'trial')
@@ -231,7 +234,7 @@ routerAdd(
         expires_at: subExpires,
         carencia_until: carenciaUntil,
         access_until: accessUntilRaw,
-        access_active: accessUntilValid,
+        access_active: accessUntilValid && effectiveStatus !== 'bloqueado',
         has_stripe_customer: !!customerId,
         has_stripe_subscription: !!subId,
         user_info: {

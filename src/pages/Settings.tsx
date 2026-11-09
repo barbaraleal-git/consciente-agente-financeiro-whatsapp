@@ -154,7 +154,13 @@ export const Settings: React.FC = () => {
     if (isAdmin) {
       loadAllWhatsAppInfo()
     }
-  }, [user, isAdmin])
+    // Somente na montagem: rodar a cada mudança de `user` (ex.: refreshUser
+    // no retorno do portal/checkout da Stripe) disparava loadAllWhatsAppInfo
+    // de novo, gerando uma rajada de chamadas /whatsapp/status, /contacts e
+    // leitura da coleção whatsapp_status — com 401/429 em cascata quando o
+    // backend limita taxa momentaneamente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadAllWhatsAppInfo = async () => {
     if (!isAdmin) return

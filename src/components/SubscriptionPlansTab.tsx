@@ -83,11 +83,16 @@ export const SubscriptionPlansTab: React.FC = () => {
     loadBilling()
   }, [loadBilling])
 
-  // Ao voltar do checkout/portal: recarrega status + usuário logado (sem logout)
+  // Ao voltar do checkout/portal: recarrega o usuário logado (sem logout).
+  // Dependência apenas de returnState: refreshUser muda de identidade a cada
+  // render do AuthProvider (authStore.onChange) e isso re-disparava o effect
+  // em loop, martelando authRefresh até o rate limiter responder 429 — que,
+  // antes da blindagem no AuthContext, derrubava a sessão e mandava pro login.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!returnState) return
     refreshUser()
-  }, [returnState, refreshUser])
+  }, [returnState])
 
   const clearReturnParams = useCallback(() => {
     setSearchParams(

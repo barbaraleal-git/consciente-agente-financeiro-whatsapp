@@ -136,8 +136,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const updated = await pb.collection('users').authRefresh<AuthUser>()
         setUser(updated.record)
-      } catch {
-        logout()
+      } catch (err) {
+        // Só derruba a sessão quando o servidor diz que o token é
+        // definitivamente inválido (400/401). Erros transitórios — 429
+        // (rate limit), 5xx e falha de rede — NÃO devem deslogar: no retorno
+        // do portal/checkout da Stripe o app dispara vários pedidos em
+        // sequência e um 429 momentâneo não significa sessão perdida.
+        const status = (err as { status?: number })?.status
+        if (status === 400 || status === 401) {
+          logout()
+          return
+        }
+        console.warn('authRefresh falhou de forma transitória, tentando novamente:', err)
+        // Uma única tentativa com espera curta resolve o 429 do rate limiter.
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        try {
+          const retry = await pb.collection('users').authRefresh<AuthUser>()
+          setUser(retry.record)
+        } catch (retryErr) {
+          const retryStatus = (retryErr as { status?: number })?.status
+          if (retryStatus === 400 || retryStatus === 401) {
+            logout()
+          } else {
+            console.warn('authRefresh transitório persistiu, sessão preservada:', retryErr)
+          }
+        }
       }
     }
   }

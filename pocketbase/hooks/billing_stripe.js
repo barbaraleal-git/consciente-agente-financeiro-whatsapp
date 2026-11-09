@@ -163,12 +163,50 @@ routerAdd(
       const customerId = userRec.getString('stripe_customer_id') || ''
       const subId = userRec.getString('stripe_subscription_id') || ''
 
+      // Blindagem anti-fantasma: 'active' só é aceito se houver evidência real
+      // de pagamento na Stripe (assinatura OU customer criado no checkout).
+      // Um 'active' gravado sem evidência (seed/demo) é rebaixado para 'trial'
+      // — a ativação real acontece SOMENTE via webhook checkout.session.completed
+      // ou sync-session, que gravam stripe_subscription_id.
+      let effectiveStatus = subStatus
+      try {
+        if (subStatus === 'active' && !subId && !customerId) {
+          effectiveStatus = 'trial'
+          userRec.set('subscription_status', 'trial')
+          const trialDays = 7
+          const trialUntil = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString()
+          userRec.set('subscription_expires_at', trialUntil)
+          $app.save(userRec)
+          console.log(
+            '[billing] Status active sem evidencia Stripe (seed/demo). Usuario ' +
+              userRec.id +
+              ' rebaixado para trial.',
+          )
+          try {
+            const histCol = $app.findCollectionByNameOrId('subscriptions_history')
+            const histRec = new Record(histCol)
+            histRec.set('user', userRec.id)
+            histRec.set('event_type', 'billing.fix.ghost_active_to_trial')
+            histRec.set('plan_type', subPlan)
+            histRec.set('status_from', 'active')
+            histRec.set('status_to', 'trial')
+            histRec.set('details', {
+              reason: 'status active sem stripe_subscription_id e sem stripe_customer_id',
+            })
+            $app.save(histRec)
+          } catch (hErr) {
+            console.log('[billing] Falha ao registrar subscriptions_history: ' + hErr)
+          }
+        }
+      } catch (gErr) {
+        console.log('[billing] Erro na blindagem anti-fantasma: ' + gErr)
+      }
+
       const legal = inlineGetLegal()
       const planMensal = inlineResolvePlan(userRec.id, 'mensal')
       const planAnual = inlineResolvePlan(userRec.id, 'anual')
 
       const nowIso = new Date().toISOString()
-      let effectiveStatus = subStatus
       if (subStatus === 'carencia' && carenciaUntil && nowIso > carenciaUntil) {
         effectiveStatus = 'bloqueado'
         try {

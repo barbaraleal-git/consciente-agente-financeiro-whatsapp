@@ -945,7 +945,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Passado o período de carência sem regularização, a conta entra em **bloqueio total**: sem lançamentos no WhatsApp e sem acesso às funções do app, apenas com orientação para reassinar.
    - Ao regularizar o pagamento (reassinar via checkout Stripe), a conta volta a "ativa" imediatamente e todos os fluxos (WhatsApp + app) são restaurados sem perda de dados.
 
-4. **Cancelamento Voluntário — Acesso Garantido até o Fim do Período Pago** (decisão da usuária, v0.0.93):
+4. **Cancelamento Voluntário — Acesso Garantido até o Fim do Período Pago** (decisão da usuária, v0.0.89):
    - **Filosofia**: a Stripe encerra a assinatura **imediatamente** (garantia de que nenhuma cobrança futura será feita), MAS o cliente continua usando o app e o WhatsApp **até o fim do período que já pagou** (~30 dias no plano mensal; ~12 meses no anual).
    - A data final de acesso é persistida no campo \`access_until\` do usuário (vem do \`current_period_end\` da resposta do cancelamento na Stripe; fallback: vigência já gravada em \`subscription_expires_at\`).
    - Na tela **Minha Conta**, o status exibido passa a "Cancelado" imediatamente, SEMPRE acompanhado da data final em destaque: **"Cancelado — acesso garantido até 09/12/2026"** (bloco âmbar de alta visibilidade).

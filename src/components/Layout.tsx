@@ -27,7 +27,7 @@ const baseNavItems = [
   { path: '/budgets', label: 'Caixinhas', icon: PiggyBank },
   { path: '/reports', label: 'Relatórios', icon: BarChart3 },
   { path: '/assistant', label: 'Assistente', icon: Bot },
-  { path: '/settings', label: 'Configurações', icon: Settings },
+  { path: '/settings', label: 'Minha Conta', icon: Settings },
 ]
 
 export const Layout: React.FC = () => {
@@ -235,7 +235,7 @@ export const Layout: React.FC = () => {
           }
         >
           <Settings className="w-4 h-4" />
-          <span>Ajustes</span>
+          <span>Minha Conta</span>
         </NavLink>
       </nav>
 

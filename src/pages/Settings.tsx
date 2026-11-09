@@ -544,7 +544,7 @@ export const Settings: React.FC = () => {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Configurações</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Minha Conta</h1>
         <p className="text-sm text-slate-500">
           Gerencie seu perfil, preferências e a integração com o WhatsApp
         </p>

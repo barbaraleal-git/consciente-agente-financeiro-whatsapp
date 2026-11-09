@@ -290,7 +290,7 @@ routerAdd(
 
       function inlineStripeRequest(secretKey, method, path, formParams) {
         const url = 'https://api.stripe.com/v1' + path
-        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const authHeader = 'Bearer ' + secretKey
         const headers = {
           Authorization: authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -583,7 +583,7 @@ routerAdd(
 
       function inlineStripeRequest(secretKey, method, path) {
         const url = 'https://api.stripe.com/v1' + path
-        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const authHeader = 'Bearer ' + secretKey
         const headers = {
           Authorization: authHeader,
         }
@@ -730,7 +730,7 @@ routerAdd(
 
       function inlineStripeRequest(secretKey, method, path) {
         const url = 'https://api.stripe.com/v1' + path
-        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const authHeader = 'Bearer ' + secretKey
         const headers = {
           Authorization: authHeader,
         }
@@ -837,7 +837,7 @@ routerAdd(
 
       function inlineStripeRequest(secretKey, method, path, formParams) {
         const url = 'https://api.stripe.com/v1' + path
-        const authHeader = 'Basic ' + $security.base64Encode(secretKey + ':')
+        const authHeader = 'Bearer ' + secretKey
         const headers = {
           Authorization: authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',

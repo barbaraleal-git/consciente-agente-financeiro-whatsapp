@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-10T05:30:58.129Z",
+  "generatedAt": "2026-11-10T14:41:34.045Z",
   "collections": [
     {
       "name": "users",
@@ -1174,6 +1174,89 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "proactive_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.email = 'barbara.ferreira.leal@gmail.com')"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "channel",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["whatsapp", "email"]
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dedupe_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recipient",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["sent", "failed", "skipped"]
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_proactive_logs_dedupe ON proactive_logs (dedupe_key)",
+        "CREATE INDEX idx_proactive_logs_user_kind ON proactive_logs (user, kind)",
+        "CREATE INDEX idx_proactive_logs_created ON proactive_logs (created)"
+      ]
     }
   ]
 }

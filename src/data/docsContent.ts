@@ -151,6 +151,8 @@ Documento oficial de controle de pendências e prioridades do produto (itens his
 | **Parametrização Categoria↔Caixinhas por Cliente (Vínculos N:N Personalizados)** | Atendimento ao pedido da usuária: o próprio cliente define quais categorias de lançamentos podem ser consideradas em quais caixinhas (ex.: *"Alimentação Essencial"* alimentando tanto a caixinha *Alimentação VR* quanto *Alimentação VA*; *"Alimentação Não Essencial"* em *VR* e em *Lazer*). Modelada nova coleção idempotente \`category_caixinha_links\`, aba *"Categorias Vinculadas"* no modal de edição de caixinhas (\`/budgets\`), matcher unificado (\`caixinhaMatcher.ts\` e \`caixinhas_summary_helper.js\`) com fallback retrocompatível de zero regressão para clientes sem vínculos e isolamento total de cancelados. **Registro**: atendido e reconfirmado como ex-Item 40 (novo) da lista da usuária — sem item duplicado. | **Concluído** |
 | **Indicador visual coerente quando a assinatura está Cancelada (ex-Item 43 — novo, v0.0.97)** | O escudo da tela Minha Conta (\`/settings\`) nunca mais fica verde quando a assinatura está cancelada: com status \`cancelado\` e \`access_until\` futuro, o indicador vira **ShieldAlert âmbar** com badge "Cancelada" (amber-100/800) e o bloco âmbar **"Cancelada — acesso garantido até DD/MM/AAAA"**. Assinatura ativa e trial permanecem verdes (zero regressão); cancelada sem acesso (período encerrado) fica cinza-slate neutro. | **Concluído** |
 | **Teste de Eco no WhatsApp (ex-Item 39 — novo, v0.0.98)** | **Escopo definido e implementado**: comando de diagnóstico \`#eco\` ou \`/eco\` (ex.: \`#eco olá isso é um teste\`) interceptado no webhook REAL do WhatsApp logo após a resolução de identidade/persistência da mensagem e ANTES da chamada à IA. O agente devolve a MESMA mensagem de volta confirmando o caminho completo (recebimento pela Meta → persistência por wamid → envio pela Meta Graph API), SEM consumir IA, mantendo deduplicação por wamid, rate limit e demais interceptações intactas. Mesma interceptação espelhada no \`/simulate\` do Backoffice (resposta no simulador + envio remoto quando habilitado) e log de diagnóstico \`[ECO]\` nos hooks. | **Concluído** |
+| **Lembrete Noturno Amigável via WhatsApp (ex-Item 38 — novo, v0.0.99)** | **Lembrete noturno proativo implementado**: rotina agendada diária às 20h30 BRT (\`cronAdd proactive_nightly_reminder\`) que monitora clientes ativos (assinatura ativa, trial ou cancelada com vigência futura). Se a pessoa não tiver nenhum lançamento de gasto no dia corrente (fuso de Brasília, \`America/Sao_Paulo\`), o sistema envia uma mensagem amigável via WhatsApp perguntando se está tudo bem e se realmente não tem gastos para lançar ou se gostaria de aproveitar e lançar agora. Clientes que já lançaram no dia NÃO recebem. Mensagens iniciadas fora da janela de 24h usam o template Meta utility \`lembrete_noturno_lancamento\`; dentro da janela de 24h usa texto amigável ou template com fallback inteligente. Deduplicação estrita na coleção \`proactive_logs\` (chave \`user:nightly_reminder:YYYY-MM-DD\`) garante zero duplicatas no mesmo dia. Canceladas sem vigência, expiradas e inadimplentes são barradas. Rotas admin \`/backend/v1/proactive/status\` e \`/trigger-nightly\` com dry-run para auditoria e teste operacional. | **Concluído** |
+| **E-mail de Aviso Pré-Cobrança (ex-Item 42 — novo, v0.0.99)** | **Aviso pré-cobrança recorrente implementado**: rotina agendada diária às 09h00 BRT (\`cronAdd proactive_precharge_email\`) que monitora assinaturas mensais recorrentes ativas com cartão (\`stripe_subscription_id\` ativo). Calcula janelas exatas de 3 dias e 1 dia antes da próxima data de cobrança (\`current_period_end\` sincronizado da Stripe ou \`subscription_expires_at\` do cadastro). Envia e-mail em HTML responsivo com tom empático Consciente informando plano ("Plano Mensal Consciente"), valor (R$ 19,90), data exata da cobrança e link direto para a tela Minha Conta para gestão de faturas ou cancelamento sem atrito. Deduplicação atômica em \`proactive_logs\` (\`user:precharge_3d:YYYY-MM-DD\` / \`user:precharge_1d:YYYY-MM-DD\`). Blindagem estrita: clientes no Plano Anual à vista (pagamento único via Pix/cartão, v0.0.95), contas canceladas, expiradas, em trial ou sem cobrança futura NUNCA recebem e-mail. Rotas admin \`/trigger-precharge\` e \`/test-email\` disponíveis para validação operacional. | **Concluído** |
 | **Escolha Obrigatória de Caixinha / Regra de Não Duplicação (v0.0.56)** | **REGRA DE OURO ATENDIDA**: Cada transação ativa soma em exatamente UMA única caixinha, nunca duplicando valores no histórico nem em novos gastos. Se a categoria tem múltiplas caixinhas vinculadas: no WhatsApp, a IA suspende a gravação, pergunta em qual caixinha deseja registrar numerando as opções amigavelmente e grava na caixinha escolhida após a resposta do cliente; no App (\`TransactionModal.tsx\`), o sistema exige a seleção obrigatória da caixinha antes de salvar. Se houver vínculo único, grava direto e informa. Se não houver vínculos, mantém fallback retrocompatível estável. Campo \`budget\` em \`transactions\` e \`pending_caixinha\` em \`whatsapp_contacts\`. | **Concluído** |
 | **Remanejamento de Caixinha no App e Paridade WhatsApp vs. App (v0.0.57)** | **NOVO RECURSO + BUGFIX**: O cliente pode editar qualquer transação existente de despesa em \`/transactions\` e remanejar para qualquer caixinha do mês (ou desvincular para "Automático / Sem caixinha fixa"). Ao salvar, o valor sai imediatamente da caixinha anterior e entra na nova caixinha, mantendo zero duplicação e exclusão de cancelados. Corrigida a paridade de visualização de caixinhas entre o App (\`/budgets\`) e o resumo do WhatsApp adicionando os vínculos reativos de \`userLinks\` nas dependências do \`useMemo\` de \`budgetStats\` em \`Budgets.tsx\` e \`Dashboard.tsx\`. | **Concluído** |
 | **Persistência Obrigatória de Budget no WhatsApp e Paridade Total App × WhatsApp (v0.0.58)** | **BUGFIX CRÍTICO DE PARIDADE**: Corrigida a causa raiz da divergência entre a resposta conversacional do WhatsApp e a tela \`/budgets\` do App. Em todos os caminhos de criação no WhatsApp (texto, áudio, fluxo conversacional de desambiguação e hook \`transactions_integrity.js\`), a caixinha decidida/anunciada é imediatamente persistida no campo \`budget\` de \`transactions\`. Backfill idempotente executado (migração 0031) garantindo que transações ativas antigas com budget vazio tenham o campo preenchido fielmente pelo resolver determinístico único, corrigindo os lançamentos Mercado Violeta e Rascal para 100% de paridade e mantendo isolamento de cancelados. | **Concluído** |
@@ -182,7 +184,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens his
 | Item | Funcionalidade | Descrição / Sinergias |
 | :--- | :--- | :--- |
 | **Item 7 (ex-Item 3)** | Mensagem da manhã via WhatsApp | Envio pró-ativo matinal com status financeiro e lembrete de gastos. **Dependência**: Requer modelo de mensagem (utility template) aprovado pela Meta no WhatsApp Manager. |
-| **Item 8 (ex-Item 38 — novo)** | Lembrete noturno de lançamento | Monitorar a atividade do cliente e, ao perceber que já está anoitecendo e a pessoa ainda não fez nenhum lançamento de gasto, enviar mensagem amigável via WhatsApp perguntando se está tudo bem e se realmente não tem nenhum gasto para lançar (caso tenha, se gostaria de aproveitar e lançar agora). **Complexidade**: Média. **Sinergia forte**: mesma infraestrutura de job agendado + utility template da Meta do Item 7 (ex-Item 3, mensagem da manhã) — registrada explicitamente para implementação conjunta. |
+| **Item 8 (ex-Item 38 — novo) → MOVIDO PARA CONCLUÍDOS (v0.0.99)** | ~~Lembrete noturno de lançamento~~ | Atendido na v0.0.99: monitoramento diário da base ativa (ativa, trial ou cancelada com vigência futura), verificação de gastos no dia (fuso BRT) e envio automático via WhatsApp às 20h30 BRT com template Meta utility (\`lembrete_noturno_lancamento\`), fallback para texto quando dentro da janela de 24h, deduplicação em \`proactive_logs\` e rotas de teste/diagnóstico para admin. Ver tabela de Concluídos e Cenário AO. |
 | **Item 9 (ex-Item 32)** | Rotina de fechamento de mês via WhatsApp | Visão geral do fechamento mensal das caixinhas, parabenizando o empenho ou incentivando caso tenha estourado, com oferta de ajuda para planejar o mês seguinte. **Sinergia**: Mesma infraestrutura de job agendado e aprovação de template Meta dos Itens 7 (ex-Item 3) e 8 (ex-Item 38), aproveitando a formatação visual do Item 19 (concluído). |
 | **Item 10 (ex-Item 26)** | Feedbacks via WhatsApp + alerta imediato | Canal conversacional para o cliente enviar sugestões e elogios, gerando alerta imediato para a administradora. |
 
@@ -193,7 +195,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens his
 | **Item 12 (ex-Item 24)** | Billing + dashboard de assinaturas | Módulo financeiro de cobrança e controle de planos pagos/recorrentes. **Status**: Implementado com integração DIRETA à API Stripe via \`$http\` (sem dependência de conectores Skip, padrão Meta Cloud API). Parametrização no Backoffice Admin (\`stripe_config\`: secret key mascarada, webhook signing secret whsec, price IDs mensal/anual). **Pendente**: usuária colar a secret key (\`sk_live_...\`), o whsec e os price IDs na sub-seção "Configuração Stripe" do Backoffice e validar um pagamento real ponta a ponta (ver cenário AL). |
 | **Item 13 (ex-Item 34)** | Billing: visão acumulada de custos vs faturamento bruto | No módulo de billing, exibir a visão comparativa acumulada de custos operacionais da infraestrutura (Meta + Groq + IA) versus faturamento bruto (receita líquida até o momento). **Sinergia**: Complementa diretamente o Item 12 (ex-Item 24) e se alimenta da modelagem de custos do Item 9 (concluído). |
 | **Item 14 (ex-Item 37)** | Billing próprio — tela de tarifas ajustáveis no backoffice | Hoje os custos de fornecedores estão fixos em real cravados no código (áudio R$ 0,001 por transcrição, mensagem de IA R$ 0,02, utility R$ 0,04). Na fase de escala, criar tela de 'Tarifas' no backoffice para ajustar esses valores (e eventual conversão de câmbio) sem mexer em código. Faz parte do módulo de billing, que tem duas faces: billing dos clientes (assinatura/trial — o que eles pagam) e billing próprio (o que pagamos aos fornecedores). **Status**: Backlog — fase de escala. **Sinergia**: Complementa os Itens 9 (concluído), 12 e 13. |
-| **Item 15 (ex-Item 42 — novo)** | E-mail de aviso pré-cobrança (3 dias e 1 dia antes) | Implementar e-mail de aviso três dias antes e também um dia antes de efetivar a próxima cobrança da assinatura, para que o cliente não seja pego de surpresa. **Complexidade**: Rápida/média. **Nota técnica**: aplica-se às assinaturas recorrentes (mensal via cartão); o plano anual é pagamento único (Pix ou cartão à vista, validade +12 meses) e não tem próxima cobrança — o aviso não se aplica a ele. **Sinergia**: infraestrutura de e-mails transacionais já existente com marca Consciente (cenário F do roteiro regressivo). |
+| **Item 15 (ex-Item 42 — novo) → MOVIDO PARA CONCLUÍDOS (v0.0.99)** | ~~E-mail de aviso pré-cobrança (3 dias e 1 dia antes)~~ | Atendido na v0.0.99: envio automático diário às 09h00 BRT com aviso de 3 dias e 1 dia antes da renovação da assinatura mensal recorrente com cartão, template HTML responsivo Consciente, deduplicação em \`proactive_logs\` (cliente + kind + data) e proteção estrita: plano anual à vista (pagamento único), canceladas, trial e expiradas NUNCA recebem. Ver tabela de Concluídos e Cenário AP. |
 
 ### (c) Suporte e relacionamento
 | Item | Funcionalidade | Descrição / Sinergias |
@@ -1048,4 +1050,86 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Com \`access_until\` no passado (AL-5): badge "Cancelada" cinza-slate neutro, sem bloco âmbar de acesso — mensagem de "período já pago foi encerrado" com convite a reassinar. Nunca verde, nunca âmbar sem acesso.
 
 ---
-`
+
+## AO) Lembrete Noturno Amigável via WhatsApp (ex-Item 38, v0.0.99)
+> **Escopo definido (v0.0.99)**: rotina agendada diária às 20h30 BRT (\`cronAdd proactive_nightly_reminder\`) que monitora clientes ativos (assinatura ativa, trial gratuito ou cancelada com vigência futura em \`access_until\`). Para quem NÃO fez nenhum lançamento de gasto no dia corrente (fuso \`America/Sao_Paulo\`), envia mensagem amigável via WhatsApp perguntando se está tudo bem e se a pessoa realmente não tem nenhum gasto para lançar — caso tenha, se gostaria de aproveitar e lançar agora. Clientes que já registraram gasto no dia NÃO recebem nada.
+
+1. **Cliente sem lançamentos no dia (caminho feliz)**:
+   - Cliente ativo que passou o dia sem mandar nenhum gasto (0 transações ativas do tipo \`expense\` com data de hoje).
+   - Às 20h30 BRT (ou via disparo manual admin \`POST /backend/v1/proactive/trigger-nightly\` com \`dry_run: false\`):
+   - **Comportamento Esperado**:
+     - O sistema identifica elegibilidade do cliente (\`eligible: true\`, \`today_expenses_count: 0\`).
+     - Se o cliente mandou mensagem nas últimas 24h, o sistema envia o texto amigável humanizado diretamente via Meta Cloud API; se a conversa estiver fora da janela de 24h, dispara via **template Meta utility** \`lembrete_noturno_lancamento\` com o primeiro nome do cliente na variável {{1}}.
+     - Grava registro na coleção \`proactive_logs\` com \`kind = 'nightly_reminder'\`, \`status = 'sent'\`, canal \`whatsapp\` e chave de deduplicação \`user:nightly_reminder:YYYY-MM-DD\`.
+     - Mensagem recebida no WhatsApp do cliente:
+       > *"Oi, [Nome]! Tudo bem por aí? Passando rapidinho para saber se o seu dia foi tranquilo e se você realmente não teve nenhum gasto para anotar hoje. Se tiver tido algum, quer aproveitar e mandar agora? Estou por aqui para te ajudar! 😊"*
+
+2. **Cliente que já lançou gasto no dia (não envio)**:
+   - Cliente ativo que já mandou ao menos um gasto hoje (ex.: R$ 15 no café ou R$ 50 no mercado registrado via WhatsApp ou App).
+   - **Comportamento Esperado**:
+     - A rotina calcula \`today_expenses_count > 0\` e pula o cliente (\`status = 'skipped'\`, motivo *"Cliente já registrou N gasto(s) hoje"*).
+     - **NENHUMA mensagem** é enviada no WhatsApp.
+     - Zero ruído e zero interrupção para o cliente que já alimentou o sistema.
+
+3. **Deduplicação estrita (zero mensagens duplicadas no mesmo dia)**:
+   - Se o job rodar novamente ou for acionado manualmente uma segunda vez na mesma data:
+   - **Comportamento Esperado**:
+     - O sistema consulta a coleção \`proactive_logs\` pelo \`dedupe_key\` (\`user:nightly_reminder:YYYY-MM-DD\`).
+     - Constatando registro existente, pula o envio com status \`skipped\` ("Lembrete noturno já enviado hoje para este usuário").
+     - Nenhuma mensagem duplicada é enviada.
+
+4. **Portão de vigência e inadimplência**:
+   - Assinatura ativa ou trial: elegível.
+   - Cancelada COM vigência futura (\`access_until > agora\`): elegível (WhatsApp trata vigência futura como ativo, com acesso total).
+   - Cancelada SEM vigência (\`access_until < agora\` ou inexistente): NÃO elegível (\`status = 'skipped'\`, motivo *"Sem assinatura/acesso ativo"*).
+   - Inadimplente (\`past_due\`, \`unpaid\`): NÃO elegível.
+
+5. **Validação e auditoria operacional (Admin)**:
+   - Endpoint \`GET /backend/v1/proactive/status\` (autenticado como admin) retorna status da rotina, contagem de logs recentes e detalhes do template \`lembrete_noturno_lancamento\`.
+   - Endpoint \`POST /backend/v1/proactive/trigger-nightly\` aceita \`{ dry_run: true }\` para simular a varredura sem enviar WhatsApp de verdade, inspecionando quantos clientes receberiam.
+
+---
+
+## AP) E-mail de Aviso Pré-Cobrança da Assinatura Recorrente (ex-Item 42, v0.0.99)
+> **Escopo definido (v0.0.99)**: rotina agendada diária às 09h00 BRT (\`cronAdd proactive_precharge_email\`) que monitora clientes com assinatura mensal recorrente via cartão (\`stripe_subscription_id\` preenchido e status ativo). Envia e-mail de aviso prévio com 3 dias de antecedência e novamente com 1 dia de antecedência da próxima renovação.
+
+1. **Janela de 3 dias antes da renovação (caminho feliz)**:
+   - Cliente mensal recorrente ativo cuja próxima data de cobrança (\`current_period_end\` retornado da Stripe ou \`subscription_expires_at\` sincronizado) cai exatamente daqui a 3 dias (fuso BRT).
+   - **Comportamento Esperado**:
+     - O job identifica a janela de 3 dias e dispara e-mail com assunto:
+       > *"Lembrete: sua assinatura do Consciente renova em 3 dias 💳"*
+     - Corpo do e-mail em HTML responsivo com branding oficial Consciente (gradiente esmeralda, tipografia clara, razão social BFL Soluções em Tecnologia), informando:
+       - Nome do cliente;
+       - Nome do plano ("Plano Mensal Consciente");
+       - Valor da renovação (R$ 19,90);
+       - Data exata da cobrança formatada em português (DD/MM/AAAA);
+       - Botão com link direto para a tela Minha Conta (\`/settings?section=assinatura\`) para gerenciar cartão ou cancelar a qualquer momento sem atrito.
+     - Grava log em \`proactive_logs\` com \`kind = 'precharge_3d'\`, canal \`email\` e dedupe key \`user:precharge_3d:YYYY-MM-DD\`.
+
+2. **Janela de 1 dia antes da renovação (caminho feliz)**:
+   - Cliente mensal recorrente ativo cuja próxima cobrança cai amanhã (1 dia).
+   - **Comportamento Esperado**:
+     - O job identifica a janela de 1 dia e dispara e-mail com assunto:
+       > *"Sua assinatura do Consciente renova amanhã 💳"*
+     - Grava log em \`proactive_logs\` com \`kind = 'precharge_1d'\`, canal \`email\` e dedupe key \`user:precharge_1d:YYYY-MM-DD\`.
+
+3. **Plano Anual à vista (pagamento único via Pix/cartão) NUNCA recebe**:
+   - Cliente com plano anual (v0.0.95: \`billing_mode = one_time\`, validade de 12 meses, sem assinatura recorrente Stripe e sem \`stripe_subscription_id\`).
+   - **Comportamento Esperado**:
+     - O job identifica a ausência de assinatura recorrente (\`stripe_subscription_id\` vazio ou status não recorrente).
+     - **NENHUM e-mail** é enviado.
+     - Motivo documentado: o anual é pagamento único à vista e não possui cobrança futura automática.
+
+4. **Contas canceladas, expiradas e em trial NUNCA recebem**:
+   - Assinatura já cancelada (mesmo que com dias restantes de vigência): NÃO tem próxima cobrança futura → **NÃO recebe**.
+   - Assinatura expirada ou inativa: **NÃO recebe**.
+   - Usuário em período de teste gratuito (trial) sem cartão/assinatura recorrente criada: **NÃO recebe**.
+
+5. **Deduplicação estrita (uma mensagem por janela por ciclo)**:
+   - Se o job rodar múltiplas vezes no mesmo dia, o \`dedupe_key\` atômico impede reenvio do aviso de 3 dias ou de 1 dia para o mesmo ciclo.
+
+6. **Validação operacional via Backoffice (Admin)**:
+   - Endpoint \`POST /backend/v1/proactive/trigger-precharge\` com \`{ dry_run: true }\` lista os clientes nas janelas de 3d e 1d sem enviar e-mails reais.
+   - Endpoint \`POST /backend/v1/proactive/test-email\` permite enviar um e-mail de teste real para o e-mail da administradora (\`to\`, \`days_ahead = 3\` ou \`1\`) para homologar a formatação visual e entregabilidade do SMTP.
+
+---`

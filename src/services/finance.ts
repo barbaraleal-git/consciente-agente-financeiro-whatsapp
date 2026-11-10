@@ -926,16 +926,38 @@ export const billingService = {
     cancelUrl?: string,
     billingMode?: 'recurring' | 'one_time',
   ): Promise<{ session_id: string; url: string; plan: unknown }> => {
-    return pb.send('/backend/v1/billing/create-checkout-session', {
-      method: 'POST',
-      body: {
-        plan_type: planType,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        // ANUAL VIA PIX (pagamento único): mode=payment com Pix+cartão.
-        billing_mode: billingMode || 'recurring',
-      },
-    })
+    try {
+      return await pb.send('/backend/v1/billing/create-checkout-session', {
+        method: 'POST',
+        body: {
+          plan_type: planType,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          // ANUAL VIA PIX (pagamento único): mode=payment com Pix+cartão.
+          billing_mode: billingMode || 'recurring',
+        },
+      })
+    } catch (err) {
+      // pb.send() não popula err.message com o corpo { error: "..." } de rotas
+      // custom: só o hook pb_hook_beforeSend captura essa resposta antes da
+      // serialização e injeta err.response.error em ClientResponseError — sem
+      // isso o front mostra "Something went wrong" genérico e esconde o motivo
+      // amigável que o backend preparou em português (v0.0.94).
+      const friendly =
+        err &&
+        typeof err === 'object' &&
+        'response' in err &&
+        err.response &&
+        typeof err.response === 'object' &&
+        'error' in (err.response as Record<string, unknown>) &&
+        typeof (err.response as Record<string, unknown>).error === 'string'
+          ? String((err.response as Record<string, unknown>).error)
+          : ''
+      if (friendly) {
+        throw new Error(friendly)
+      }
+      throw err
+    }
   },
 
   syncSession: async (

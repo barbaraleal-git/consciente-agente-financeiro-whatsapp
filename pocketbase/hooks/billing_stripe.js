@@ -613,14 +613,16 @@ routerAdd(
         sessParams['customer_email'] = userEmail
       }
 
-      // Pix (pagamento único): habilitado via payment_method_types explícitos
-      // no mesmo checkout do cartão. O webhook de checkout.session.completed
-      // decide o que fazer pelo metadata.billing_mode (one_time → +12 meses,
-      // sem subscription).
-      if (billingMode === 'one_time') {
-        sessParams['payment_method_types[0]'] = 'card'
-        sessParams['payment_method_types[1]'] = 'pix'
-      }
+      // Pix (pagamento único): NÃO enviamos payment_method_types — a Stripe
+      // RECUSA esse parâmetro na criação de Checkout Session com 400 ("The
+      // `payment_method_types` parameter is no longer supported… Payment
+      // methods are now managed from your Dashboard Payment Method settings"),
+      // que chegava ao front como 502 em ~80ms (v0.0.93). Com os métodos
+      // automáticos do Dashboard, o checkout exibe sozinho os métodos
+      // habilitados na conta (cartão + Pix para contas domiciliadas no
+      // Brasil). O webhook de checkout.session.completed decide o que fazer
+      // pelo metadata.billing_mode (one_time → +12 meses, sem subscription).
+      // (Bloco vazio mantido como marcador documentado da decisão.)
 
       if (billingMode === 'one_time') {
         // DECISÃO (documentada): em mode=payment a Stripe RECUSA price_ com
@@ -662,7 +664,14 @@ routerAdd(
         !sessRes.data.url
       ) {
         console.log(
-          '[billing] Falha Stripe Checkout (' + sessRes.statusCode + '): ' + sessRes.rawText,
+          '[billing] Falha Stripe Checkout (mode=' +
+            billingMode +
+            ', plan=' +
+            planType +
+            ', status=' +
+            sessRes.statusCode +
+            '): ' +
+            sessRes.rawText,
         )
         const stripeErrorMsg =
           (sessRes.data && sessRes.data.error && sessRes.data.error.message) || ''

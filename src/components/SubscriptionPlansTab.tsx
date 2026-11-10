@@ -7,6 +7,7 @@ import {
   Sparkles,
   Loader2,
   ShieldCheck,
+  ShieldAlert,
   MessageCircle,
   CalendarDays,
   BadgeCheck,
@@ -207,13 +208,24 @@ export const SubscriptionPlansTab: React.FC = () => {
     }
   }, [loadBilling, refreshUser, toast])
 
-  const statusInfo = billing ? STATUS_BADGE[billing.status] || STATUS_BADGE.trial : null
   const isActive = billing?.status === 'active'
   // Cliente que cancelou mas ainda está dentro do período já pago: o status
   // exibido é "Cancelada" SEMPRE acompanhado da data final de acesso.
   const accessUntilDate = billing?.access_until ? new Date(billing.access_until) : null
   const hasGuaranteedAccess = !!(accessUntilDate && accessUntilDate.getTime() > Date.now())
   const accessUntilLabel = accessUntilDate ? formatDate(billing!.access_until!) : ''
+  // ESCUDO NUNCA VERDE PARA CANCELADA (ex-Item 43): com assinatura cancelada
+  // (cancelled com access_until futuro) o indicador de escudo muda de verde
+  // para âmbar de alerta suave — "Cancelada" não pode parecer "verde/ok".
+  // Ativa e trial seguem verdes sem mudança; cancelada sem acesso fica cinza.
+  const isCanceled = billing?.status === 'cancelado'
+  const statusInfo = !billing
+    ? null
+    : isCanceled
+      ? hasGuaranteedAccess
+        ? { label: 'Cancelada', className: 'bg-amber-100 text-amber-800 border-amber-300' }
+        : STATUS_BADGE.cancelado
+      : STATUS_BADGE[billing.status] || STATUS_BADGE.trial
   const planLabel = billing?.plan === 'anual' ? 'Anual' : 'Mensal'
   // ANUAL VIA PIX (pagamento único): ativa sem assinatura recorrente na Stripe
   // (sem stripe_subscription_id) e com access_until no futuro. Para esse perfil
@@ -264,7 +276,11 @@ export const SubscriptionPlansTab: React.FC = () => {
           <div className="flex items-start justify-between gap-2">
             <div>
               <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                {isCanceled ? (
+                  <ShieldAlert className="w-4 h-4 text-amber-600" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                )}
                 Sua Assinatura
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 mt-1">

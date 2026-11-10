@@ -2526,6 +2526,61 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
             $app.save(contact)
 
+            // -----------------------------------------------------------------
+            // TESTE DE ECO (ex-Item 39): comando de diagnóstico "#eco ..." ou
+            // "/eco ..." — valida o caminho completo do webhook (recebimento pela
+            // Meta → persistência por wamid → envio de volta pela Meta Graph API)
+            // SEM consumir IA. Posição: APÓS a resolução de identidade/persistência
+            // e ANTES do gate de assinatura e de qualquer chamada ao $ai.agent.
+            // Padrão localXxx estrito (nada declarado em try e usado fora).
+            // -----------------------------------------------------------------
+            const localEchoLower = textContent.toLowerCase().trim()
+            const localEchoIsEco =
+              localEchoLower === '#eco' ||
+              localEchoLower === '/eco' ||
+              localEchoLower.indexOf('#eco ') === 0 ||
+              localEchoLower.indexOf('/eco ') === 0
+            if (localEchoIsEco) {
+              const localEchoPayload = textContent.replace(/^\s*(#eco|\/eco)\s*/i, '').trim()
+              const localEchoReply =
+                '🔁 Teste de Eco — Consciente\n\n' +
+                'Mensagem recebida, persistida e devolvida ponta a ponta ' +
+                '(webhook Meta → persistência wamid → envio Meta Graph API), SEM passar pela IA. ✅\n\n' +
+                'Você enviou: "' +
+                (localEchoPayload || '(comando #eco sem conteúdo)') +
+                '"\n\n' +
+                'wamid: ' +
+                (incomingMsgId || 's/id') +
+                '\n\nCanal de diagnóstico OK — se esta mensagem chegou, o caminho completo do webhook está íntegro!'
+              console.log(
+                '[whatsapp_bridge] [ECO] Interceptação de Teste de Eco: from=' +
+                  fromRaw +
+                  ' wamid=' +
+                  (incomingMsgId || 's/id') +
+                  ' payload="' +
+                  localEchoPayload.slice(0, 80) +
+                  '"',
+              )
+              try {
+                const localEchoSendRes = sendMetaMessage(fromRaw, localEchoReply)
+                console.log(
+                  '[whatsapp_bridge] [ECO] Envio Meta Graph API: success=' +
+                    localEchoSendRes.success +
+                    (localEchoSendRes.error ? ' erro=' + localEchoSendRes.error : ''),
+                )
+              } catch (localEchoErr) {
+                console.log('[whatsapp_bridge] [ECO] Erro no envio do eco:', localEchoErr)
+              }
+              try {
+                const localEchoCount = contact.getInt('messages_count') || 0
+                contact.set('messages_count', localEchoCount + 1)
+                contact.set('last_message_at', new Date().toISOString())
+                $app.save(contact)
+              } catch (_) {}
+              processedCount++
+              continue
+            }
+
             // 3. Determina usuário ativo para o agente e status de cadastro completo
             let activeUserId = ''
             let isRegistered = false
@@ -3748,6 +3803,77 @@ routerAdd(
         contact.set('name', senderName)
       }
       $app.save(contact)
+
+      // -------------------------------------------------------------------
+      // TESTE DE ECO (ex-Item 39, v0.0.98) — espelho da interceptação do
+      // webhook real, para validar pelo Backoffice (/simulate) sem número
+      // real. Responde a MESMA mensagem de volta SEM consumir IA. Padrão
+      // localXxx estrito. Intercepta ANTES da resolução do usuário ativo —
+      // funciona também para números não cadastrados (uso no Backoffice).
+      // -------------------------------------------------------------------
+      const localSimEchoLower = String(message || '')
+        .toLowerCase()
+        .trim()
+      const localSimEchoIsEco =
+        localSimEchoLower === '#eco' ||
+        localSimEchoLower === '/eco' ||
+        localSimEchoLower.indexOf('#eco ') === 0 ||
+        localSimEchoLower.indexOf('/eco ') === 0
+      if (localSimEchoIsEco) {
+        const localSimEchoPayload = String(message || '')
+          .replace(/^\s*(#eco|\/eco)\s*/i, '')
+          .trim()
+        const localSimEchoReply =
+          '🔁 Teste de Eco — Consciente\n\n' +
+          'Mensagem recebida, persistida e devolvida ponta a ponta ' +
+          '(simulador Backoffice → persistência → envio Meta Graph API), SEM passar pela IA. ✅\n\n' +
+          'Você enviou: "' +
+          (localSimEchoPayload || '(comando #eco sem conteúdo)') +
+          '"\n\n' +
+          'Canal de diagnóstico OK — se esta resposta apareceu no simulador, a interceptação de eco está íntegra!'
+        console.log(
+          '[whatsapp_bridge] [simulate] [ECO] Interceptação de Teste de Eco: phone=' +
+            phoneDigits +
+            ' payload="' +
+            localSimEchoPayload.slice(0, 80) +
+            '"',
+        )
+        let localSimEchoRemoteSent = false
+        let localSimEchoRemoteError = null
+        if (sendRemote) {
+          try {
+            const localSimEchoMetaRes = sendMetaMessage(phoneDigits, localSimEchoReply)
+            localSimEchoRemoteSent = localSimEchoMetaRes.success
+            localSimEchoRemoteError = localSimEchoMetaRes.error || null
+            console.log(
+              '[whatsapp_bridge] [simulate] [ECO] Envio Meta Graph API: success=' +
+                localSimEchoRemoteSent +
+                (localSimEchoRemoteError ? ' erro=' + localSimEchoRemoteError : ''),
+            )
+          } catch (localSimEchoErr) {
+            console.log('[whatsapp_bridge] [simulate] [ECO] Erro no envio do eco:', localSimEchoErr)
+          }
+        }
+        try {
+          const localSimEchoCount = contact.getInt('messages_count') || 0
+          contact.set('messages_count', localSimEchoCount + 1)
+          contact.set('last_message_at', new Date().toISOString())
+          $app.save(contact)
+        } catch (_) {}
+        return e.json(200, {
+          success: true,
+          simulation: true,
+          echo_test: true,
+          phone: phoneDigits,
+          user_id: matchedUser ? matchedUser.id : '',
+          user_name: matchedUser ? matchedUser.getString('name') : 'Visitante',
+          is_registered: !!matchedUser,
+          conversation_id: contact.getString('conversation_id') || null,
+          reply: localSimEchoReply,
+          remote_sent: localSimEchoRemoteSent,
+          remote_error: localSimEchoRemoteError,
+        })
+      }
 
       // 3. Determina usuário ativo para o agente
       let activeUserId = ''

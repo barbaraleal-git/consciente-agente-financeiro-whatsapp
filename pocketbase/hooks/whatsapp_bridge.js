@@ -2549,6 +2549,31 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
               const accessUntilWpp = matchedUser.getString('access_until') || ''
               const nowIso = new Date().toISOString()
 
+              // ANUAL VIA PIX (pagamento único): conta 'active' SEM assinatura
+              // recorrente (sem stripe_subscription_id) com access_until
+              // gravado. Quando a validade de 12 meses expira, a conta cai no
+              // fluxo de não-assinante (mesma filosofia do gate do app).
+              const stripeSubWpp = matchedUser.getString('stripe_subscription_id') || ''
+              if (
+                subStatus === 'active' &&
+                !stripeSubWpp &&
+                accessUntilWpp &&
+                accessUntilWpp <= nowIso
+              ) {
+                console.log(
+                  '[whatsapp_bridge] Pagamento único expirado (access_until=' +
+                    accessUntilWpp +
+                    ' agora=' +
+                    nowIso +
+                    ') → conta volta a não-assinante.',
+                )
+                subStatus = 'cancelado'
+                try {
+                  matchedUser.set('subscription_status', 'cancelado')
+                  $app.save(matchedUser)
+                } catch (_) {}
+              }
+
               if (subStatus === 'cancelado' && accessUntilWpp) {
                 const isAccessActive = accessUntilWpp > nowIso
                 console.log(

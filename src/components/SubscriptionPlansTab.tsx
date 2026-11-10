@@ -3,11 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Check,
   CreditCard,
+  QrCode,
   Sparkles,
   Loader2,
   ShieldCheck,
   MessageCircle,
   CalendarDays,
+  BadgeCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,6 +45,9 @@ const FEATURE_LIST = [
 ]
 
 export const SubscriptionPlansTab: React.FC = () => {
+  // ANUAL VIA PIX (pagamento único): a assinatura mensal segue recorrente por
+  // cartão; o anual também pode ser pago à vista (Pix ou cartão) no checkout
+  // mode=payment — contas Stripe no Brasil não oferecem Pix recorrente.
   const { toast } = useToast()
   const { refreshUser } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -107,13 +112,18 @@ export const SubscriptionPlansTab: React.FC = () => {
   }, [setSearchParams])
 
   const handleCheckout = useCallback(
-    async (planType: PlanType): Promise<unknown> => {
+    async (planType: PlanType, billingMode?: 'recurring' | 'one_time'): Promise<unknown> => {
       setStarting(planType)
       try {
         const origin = window.location.origin
         const successUrl = `${origin}/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}`
         const cancelUrl = `${origin}/settings?section=assinatura&checkout=cancelled`
-        const res = await billingService.createCheckoutSession(planType, successUrl, cancelUrl)
+        const res = await billingService.createCheckoutSession(
+          planType,
+          successUrl,
+          cancelUrl,
+          billingMode,
+        )
         if (res?.url) {
           // Redirect na MESMA aba — sessão do PocketBase (authStore localStorage)
           // é preservada porque o retorno é no MESMO host de onde o usuário saiu.
@@ -163,6 +173,16 @@ export const SubscriptionPlansTab: React.FC = () => {
   const handleCancel = useCallback(async () => {
     setCancelling(true)
     try {
+      if (isOneTimePlan) {
+        toast({
+          title: 'Nada para cancelar',
+          description:
+            'Seu plano anual foi pago à vista (pagamento único). Não existe assinatura a cancelar — o acesso vale até ' +
+            accessUntilLabel +
+            '.',
+        })
+        return
+      }
       const res = await billingService.cancelSubscription()
       // O toast informa a data real de fim de acesso (retornada pelo backend) —
       // sem prometer nada diferente da realidade.
@@ -195,6 +215,17 @@ export const SubscriptionPlansTab: React.FC = () => {
   const hasGuaranteedAccess = !!(accessUntilDate && accessUntilDate.getTime() > Date.now())
   const accessUntilLabel = accessUntilDate ? formatDate(billing!.access_until!) : ''
   const planLabel = billing?.plan === 'anual' ? 'Anual' : 'Mensal'
+  // ANUAL VIA PIX (pagamento único): ativa sem assinatura recorrente na Stripe
+  // (sem stripe_subscription_id) e com access_until no futuro. Para esse perfil
+  // não existe portal de cancelamento — não há o que cancelar.
+  const isOneTimePlan = !!(
+    billing &&
+    billing.status === 'active' &&
+    billing.plan === 'anual' &&
+    !billing.has_stripe_subscription &&
+    hasGuaranteedAccess
+  )
+  const isPixPending = starting === 'anual'
   const trialDaysLeft = useMemo(() => {
     if (!billing || billing.status !== 'trial' || !billing.expires_at) return null
     const diff = new Date(billing.expires_at).getTime() - Date.now()
@@ -340,7 +371,7 @@ export const SubscriptionPlansTab: React.FC = () => {
                     {billing.status === 'trial' ? 'Assinar agora' : 'Reativar assinatura'}
                   </Button>
                 )}
-                {(isActive || billing.has_stripe_customer) && (
+                {(isActive || billing.has_stripe_customer) && !isOneTimePlan && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -352,7 +383,7 @@ export const SubscriptionPlansTab: React.FC = () => {
                     Gerenciar assinatura (cartão, faturas)
                   </Button>
                 )}
-                {isActive && (
+                {isActive && !isOneTimePlan && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -363,6 +394,13 @@ export const SubscriptionPlansTab: React.FC = () => {
                     {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Cancelar assinatura
                   </Button>
+                )}
+                {isOneTimePlan && (
+                  <p className="text-xs text-slate-500 flex items-center gap-1.5 w-full">
+                    <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Plano anual pago à vista (pagamento único) — válido até {accessUntilLabel}. Não
+                    há assinatura a cancelar nem portal de gerenciamento.
+                  </p>
                 )}
               </div>
             </>
@@ -429,23 +467,50 @@ export const SubscriptionPlansTab: React.FC = () => {
                   ))}
                 </ul>
                 {!isActive && (
-                  <Button
-                    className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                    disabled={starting !== null}
-                    onClick={() => handleCheckout(pt)}
-                  >
-                    {starting === pt ? (
+                  <div className="mt-4 space-y-2">
+                    <Button
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                      disabled={starting !== null}
+                      onClick={() => handleCheckout(pt)}
+                    >
+                      {starting === pt ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Redirecionando…
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Assinar {pt === 'anual' ? 'Anual' : 'Mensal'}
+                        </>
+                      )}
+                    </Button>
+                    {pt === 'anual' && (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Redirecionando…
-                      </>
-                    ) : (
-                      <>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Assinar {pt === 'anual' ? 'Anual' : 'Mensal'}
+                        <Button
+                          className="w-full bg-sky-600 hover:bg-sky-700 text-white"
+                          disabled={starting !== null}
+                          onClick={() => handleCheckout('anual', 'one_time')}
+                        >
+                          {isPixPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Redirecionando…
+                            </>
+                          ) : (
+                            <>
+                              <QrCode className="mr-2 h-4 w-4" />
+                              Anual à vista no Pix — pagamento único
+                            </>
+                          )}
+                        </Button>
+                        <p className="text-[11px] text-slate-500 text-center">
+                          Pix é pagamento único: 12 meses de acesso, sem renovação automática.
+                          Cartão também aceito nesta opção.
+                        </p>
                       </>
                     )}
-                  </Button>
+                  </div>
                 )}
               </div>
             )

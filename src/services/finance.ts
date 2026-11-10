@@ -924,6 +924,7 @@ export const billingService = {
     planType: 'mensal' | 'anual',
     successUrl?: string,
     cancelUrl?: string,
+    billingMode?: 'recurring' | 'one_time',
   ): Promise<{ session_id: string; url: string; plan: unknown }> => {
     return pb.send('/backend/v1/billing/create-checkout-session', {
       method: 'POST',
@@ -931,6 +932,8 @@ export const billingService = {
         plan_type: planType,
         success_url: successUrl,
         cancel_url: cancelUrl,
+        // ANUAL VIA PIX (pagamento único): mode=payment com Pix+cartão.
+        billing_mode: billingMode || 'recurring',
       },
     })
   },

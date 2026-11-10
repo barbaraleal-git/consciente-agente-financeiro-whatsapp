@@ -24,7 +24,10 @@ export interface CheckoutReturnBannerProps {
 }
 
 function isConfirmed(billing: BillingStatusResponse | null): boolean {
-  return billing?.status === 'active' && !!billing?.has_stripe_subscription
+  // ANUAL VIA PIX (pagamento único): a confirmação pode vir de uma assinatura
+  // recorrente OU de um pagamento único (access_until ativo, sem subscription).
+  if (billing?.status !== 'active') return false
+  return !!billing.has_stripe_subscription || !!billing.access_active
 }
 
 function formatDateOnly(iso?: string): string {

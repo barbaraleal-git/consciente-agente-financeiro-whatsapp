@@ -167,23 +167,50 @@ routerAdd(
       const customerId = userRec.getString('stripe_customer_id') || ''
       const subId = userRec.getString('stripe_subscription_id') || ''
 
+      // PLANO ANUAL VIA PIX (pagamento único): conta 'active' SEM assinatura
+      // recorrente (sem stripe_subscription_id) mas com access_until gravado.
+      // Quando a validade de 12 meses expira, a conta volta a não-assinante:
+      // status 'cancelado' com access_until já passado (fluxo de reassinatura).
+      // O 'active' RECURRENTE (com subId) nunca passa por aqui.
+      // IMPORTANTE (padrão JSVM/v0.0.66): declarações usadas em vários blocos
+      // ficam ANTES de qualquer try{} — const dentro de try tem escopo do bloco.
+      const accessUntilValid =
+        accessUntilRaw !== '' && new Date(accessUntilRaw).getTime() > Date.now()
+      let effectiveStatus = subStatus
+      if (subStatus === 'active' && !subId && accessUntilRaw && !accessUntilValid) {
+        effectiveStatus = 'cancelado'
+        try {
+          userRec.set('subscription_status', 'cancelado')
+          $app.save(userRec)
+          const histCol = $app.findCollectionByNameOrId('subscriptions_history')
+          const histRec = new Record(histCol)
+          histRec.set('user', userRec.id)
+          histRec.set('event_type', 'billing.one_time_expired')
+          histRec.set('plan_type', subPlan)
+          histRec.set('status_from', 'active')
+          histRec.set('status_to', 'cancelado')
+          histRec.set('details', { reason: 'access_until do pagamento único expirou' })
+          $app.save(histRec)
+        } catch (otErr) {
+          console.log('[billing] Erro ao expirar pagamento único: ' + otErr)
+        }
+      }
+
       // Blindagem anti-fantasma: 'active' só é aceito se houver evidência real
       // de pagamento na Stripe (assinatura OU customer criado no checkout).
       // Um 'active' gravado sem evidência (seed/demo) é rebaixado para 'trial'
       // — a ativação real acontece SOMENTE via webhook checkout.session.completed
       // ou sync-session, que gravam stripe_subscription_id.
-      let effectiveStatus = subStatus
+      // EXCEÇÃO — PLANO ANUAL VIA PIX (pagamento único): 'active' SEM
+      // stripe_subscription_id MAS com access_until válido é o pagamento único
+      // anual, e NUNCA deve ser rebaixado (só o bloco de expiração acima o
+      // rebaixa, quando access_until passa).
       // Um registro 'cancelado' com access_until no futuro é um cliente que
       // cancelou mas ainda está dentro do período já pago: ele mantém acesso
       // total até essa data e NUNCA deve ser rebaixado pela blindagem
       // (a blindagem só rebaixa 'active' fantasma, nunca 'cancelado').
-      // IMPORTANTE (padrão JSVM/v0.0.66): 'const' dentro de try{} tem escopo
-      // apenas do bloco — referenciado fora dele vira ReferenceError
-      // (bug da v0.0.90). Calculado no escopo do callback, antes do try.
-      const accessUntilValid =
-        accessUntilRaw !== '' && new Date(accessUntilRaw).getTime() > Date.now()
       try {
-        if (subStatus === 'active' && !subId && !customerId) {
+        if (subStatus === 'active' && !subId && !customerId && !accessUntilValid) {
           effectiveStatus = 'trial'
           userRec.set('subscription_status', 'trial')
           const trialDays = 7
@@ -469,6 +496,14 @@ routerAdd(
 
       const body = e.requestInfo().body || {}
       const planType = body.plan_type === 'anual' ? 'anual' : 'mensal'
+      // ANUAL VIA PIX (pagamento único): contas Stripe domiciliadas no Brasil não
+      // oferecem Pix recorrente — o plano anual passa a ser cobrado como
+      // one-time (mode=payment), com cartão+Pix habilitados no mesmo checkout.
+      // A assinatura MENSAL permanece mode=subscription (cartão recorrente).
+      const billingMode = body.billing_mode === 'one_time' ? 'one_time' : 'recurring'
+      if (billingMode === 'one_time' && planType !== 'anual') {
+        return e.json(400, { error: 'Pagamento único está disponível apenas no plano anual.' })
+      }
       const appOrigin = 'https://agente-financeiro-whatsapp-37fd3.goskip.app'
 
       // UX pós-checkout: o cliente SEMPRE volta para o MESMO front de onde
@@ -562,12 +597,13 @@ routerAdd(
 
       // Parâmetros da Checkout Session em form-encoded
       const sessParams = {
-        mode: 'subscription',
+        mode: billingMode === 'one_time' ? 'payment' : 'subscription',
         success_url: successUrl,
         cancel_url: cancelUrl,
         client_reference_id: userRec.id,
         'metadata[user_id]': userRec.id,
         'metadata[plan_type]': planType,
+        'metadata[billing_mode]': billingMode,
         'metadata[price_cents]': String(resolvedPlan.price_cents),
       }
 
@@ -577,7 +613,28 @@ routerAdd(
         sessParams['customer_email'] = userEmail
       }
 
-      if (resolvedPlan.stripe_price_id) {
+      // Pix (pagamento único): habilitado via payment_method_types explícitos
+      // no mesmo checkout do cartão. O webhook de checkout.session.completed
+      // decide o que fazer pelo metadata.billing_mode (one_time → +12 meses,
+      // sem subscription).
+      if (billingMode === 'one_time') {
+        sessParams['payment_method_types[0]'] = 'card'
+        sessParams['payment_method_types[1]'] = 'pix'
+      }
+
+      if (billingMode === 'one_time') {
+        // DECISÃO (documentada): em mode=payment a Stripe RECUSA price_ com
+        // recurring (erro "This price is not usable in payment mode"). Para
+        // reutilizar o valor parametrizado (R$ 214,90) sem tocar no price
+        // recorrente existente, cobramos com price_data one-time usando
+        // unit_amount do plano resolvido (override do Backoffice respeitado).
+        sessParams['line_items[0][price_data][currency]'] = 'brl'
+        sessParams['line_items[0][price_data][unit_amount]'] = String(resolvedPlan.price_cents)
+        sessParams['line_items[0][price_data][product_data][name]'] = resolvedPlan.name
+        sessParams['line_items[0][price_data][product_data][description]'] =
+          'Plano Anual Consciente — pagamento único (válido por 12 meses)'
+        sessParams['line_items[0][quantity]'] = '1'
+      } else if (resolvedPlan.stripe_price_id) {
         sessParams['line_items[0][price]'] = resolvedPlan.stripe_price_id
         sessParams['line_items[0][quantity]'] = '1'
       } else {
@@ -756,6 +813,8 @@ routerAdd(
       const subId = sess.subscription || ''
       const planType = (sess.metadata && sess.metadata.plan_type) || 'mensal'
       const priceCents = parseInt((sess.metadata && sess.metadata.price_cents) || '1990', 10)
+      const isOneTime =
+        (sess.metadata && sess.metadata.billing_mode) === 'one_time' || sess.mode === 'payment'
 
       if (paymentStatus === 'paid' || status === 'complete') {
         const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
@@ -763,14 +822,24 @@ routerAdd(
         userRec.set('subscription_status', 'active')
         userRec.set('subscription_plan', planType)
         if (customerId) userRec.set('stripe_customer_id', customerId)
-        if (subId) userRec.set('stripe_subscription_id', subId)
+        // ANUAL VIA PIX (one_time): NUNCA grava stripe_subscription_id —
+        // não existe subscription Stripe; a validade fica em access_until.
+        if (subId && !isOneTime) userRec.set('stripe_subscription_id', subId)
         userRec.set('carencia_until', '')
-        // Reativação: o período de acesso pós-cancelamento deixa de existir.
-        userRec.set('access_until', '')
 
-        const addDays = planType === 'anual' ? 365 : 30
-        const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
-        userRec.set('subscription_expires_at', expiresAt)
+        let expiresAt = ''
+        if (isOneTime) {
+          // Pagamento único anual: 12 meses de acesso a partir de agora.
+          expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+          userRec.set('access_until', expiresAt)
+          userRec.set('subscription_expires_at', expiresAt)
+        } else {
+          // Reativação: o período de acesso pós-cancelamento deixa de existir.
+          userRec.set('access_until', '')
+          const addDays = planType === 'anual' ? 365 : 30
+          expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
+          userRec.set('subscription_expires_at', expiresAt)
+        }
 
         $app.save(userRec)
 
@@ -780,7 +849,13 @@ routerAdd(
           status_from: oldStatus,
           status_to: 'active',
           stripe_event_id: sessionId,
-          details: { session_id: sessionId, customer_id: customerId, subscription_id: subId },
+          details: {
+            session_id: sessionId,
+            customer_id: customerId,
+            subscription_id: isOneTime ? '' : subId,
+            billing_mode: isOneTime ? 'one_time' : 'recurring',
+            payment_method: (sess.payment_method_types || []).join(','),
+          },
         })
 
         return e.json(200, {
@@ -788,7 +863,9 @@ routerAdd(
           status: 'active',
           plan: planType,
           expires_at: expiresAt,
-          message: 'Assinatura ativada com sucesso! Seu Consciente no WhatsApp já está liberado.',
+          message: isOneTime
+            ? 'Plano anual ativado com sucesso (pagamento único)! Acesso garantido por 12 meses.'
+            : 'Assinatura ativada com sucesso! Seu Consciente no WhatsApp já está liberado.',
         })
       }
 
@@ -1347,6 +1424,8 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
       const userId = sess.client_reference_id || (sess.metadata && sess.metadata.user_id) || ''
       const planType = (sess.metadata && sess.metadata.plan_type) || 'mensal'
       const priceCents = parseInt((sess.metadata && sess.metadata.price_cents) || '1990', 10)
+      const isOneTime =
+        (sess.metadata && sess.metadata.billing_mode) === 'one_time' || sess.mode === 'payment'
 
       let targetUser = null
       if (userId) {
@@ -1371,11 +1450,21 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
         if (customerId) targetUser.set('stripe_customer_id', customerId)
         if (subId) targetUser.set('stripe_subscription_id', subId)
         targetUser.set('carencia_until', '')
-        // Reativação via webhook: período pós-cancelamento deixa de existir.
-        targetUser.set('access_until', '')
-        const addDays = planType === 'anual' ? 365 : 30
-        const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
-        targetUser.set('subscription_expires_at', expiresAt)
+        if (isOneTime) {
+          // ANUAL VIA PIX (pagamento único): status ativa com validade de 12
+          // meses (access_until). NÃO cria subscription Stripe nem grava
+          // stripe_subscription_id — quando access_until expirar, a conta
+          // volta a não-assinante.
+          const accessDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+          targetUser.set('access_until', accessDate)
+          targetUser.set('subscription_expires_at', accessDate)
+        } else {
+          // Reativação via webhook: período pós-cancelamento deixa de existir.
+          targetUser.set('access_until', '')
+          const addDays = planType === 'anual' ? 365 : 30
+          const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
+          targetUser.set('subscription_expires_at', expiresAt)
+        }
         $app.save(targetUser)
 
         inlineLogHistory(targetUser.id, 'stripe.checkout.session.completed', {
@@ -1384,9 +1473,22 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
           status_from: oldSt,
           status_to: 'active',
           stripe_event_id: eventId,
-          details: sess,
+          details: {
+            session_id: sess.id,
+            mode: sess.mode,
+            billing_mode: isOneTime ? 'one_time' : 'recurring',
+            payment_method: (sess.payment_method_types || []).join(','),
+          },
         })
-        console.log('[stripe_webhook] Usuário ' + targetUser.id + ' ATIVADO.')
+        console.log(
+          '[stripe_webhook] Usuário ' +
+            targetUser.id +
+            ' ATIVADO (mode=' +
+            sess.mode +
+            ', access_until=' +
+            (targetUser.getString('access_until') || '—') +
+            ').',
+        )
       }
     }
 

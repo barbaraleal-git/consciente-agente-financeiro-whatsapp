@@ -226,6 +226,7 @@ export const SubscriptionPlansTab: React.FC = () => {
     hasGuaranteedAccess
   )
   const isPixPending = starting === 'anual'
+  const isMensalPending = starting === 'mensal'
   const trialDaysLeft = useMemo(() => {
     if (!billing || billing.status !== 'trial' || !billing.expires_at) return null
     const diff = new Date(billing.expires_at).getTime() - Date.now()
@@ -359,6 +360,43 @@ export const SubscriptionPlansTab: React.FC = () => {
                 </p>
               )}
 
+              {/* ANUAL VIA PIX (pagamento único): resumo dedicado — valor pago,
+                  data do pagamento e validade de 12 meses. Não há portal da
+                  Stripe nem cancelamento (não existe assinatura recorrente). */}
+              {isOneTimePlan && (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 space-y-2">
+                  <p className="text-sm text-emerald-900 flex items-center gap-1.5 font-semibold">
+                    <BadgeCheck className="w-4 h-4 shrink-0 text-emerald-600" />
+                    Plano anual pago à vista — acesso garantido até {accessUntilLabel}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md border border-emerald-200 bg-white p-2">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500 font-medium">
+                        Valor pago
+                      </p>
+                      <p className="font-semibold text-slate-900 mt-0.5">
+                        {formatCurrency(
+                          billing.payment_amount_cents ?? billing.plans?.anual?.price_cents ?? 0,
+                        )}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-emerald-200 bg-white p-2">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500 font-medium">
+                        Data do pagamento
+                      </p>
+                      <p className="font-semibold text-slate-900 mt-0.5">
+                        {billing.payment_paid_at ? formatDate(billing.payment_paid_at) : '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-emerald-800">
+                    Pagamento único (Pix ou cartão): nenhuma nova cobrança será feita e não há
+                    renovação automática. Não existe assinatura a cancelar nem portal de
+                    gerenciamento.
+                  </p>
+                </div>
+              )}
+
               {/* Ações */}
               <div className="flex flex-wrap gap-2 pt-1">
                 {!isActive && (
@@ -398,8 +436,7 @@ export const SubscriptionPlansTab: React.FC = () => {
                 {isOneTimePlan && (
                   <p className="text-xs text-slate-500 flex items-center gap-1.5 w-full">
                     <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Plano anual pago à vista (pagamento único) — válido até {accessUntilLabel}. Não
-                    há assinatura a cancelar nem portal de gerenciamento.
+                    Plano anual pago à vista — válido até {accessUntilLabel}.
                   </p>
                 )}
               </div>
@@ -468,25 +505,15 @@ export const SubscriptionPlansTab: React.FC = () => {
                 </ul>
                 {!isActive && (
                   <div className="mt-4 space-y-2">
-                    <Button
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={starting !== null}
-                      onClick={() => handleCheckout(pt)}
-                    >
-                      {starting === pt ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Redirecionando…
-                        </>
-                      ) : (
-                        <>
-                          <CreditCard className="mr-2 h-4 w-4" />
-                          Assinar {pt === 'anual' ? 'Anual' : 'Mensal'}
-                        </>
-                      )}
-                    </Button>
-                    {pt === 'anual' && (
+                    {pt === 'anual' ? (
                       <>
+                        {/* ANUAL: ÚNICO botão de pagamento — cobrança À VISTA (Pix e
+                            cartão na mesma tela do checkout Stripe), ativação com
+                            validade de 12 meses. O caminho recorrente antigo
+                            (mode=subscription com price anual) foi ELIMINADO: ele
+                            cobrava mensalmente (o price_id_anual configurado era
+                            recorrente mensal de valor menor) — sem sentido para o
+                            cliente. Pix não existe em assinatura recorrente no Brasil. */}
                         <Button
                           className="w-full bg-sky-600 hover:bg-sky-700 text-white"
                           disabled={starting !== null}
@@ -500,15 +527,35 @@ export const SubscriptionPlansTab: React.FC = () => {
                           ) : (
                             <>
                               <QrCode className="mr-2 h-4 w-4" />
-                              Anual à vista no Pix — pagamento único
+                              Assinar Anual —{' '}
+                              {plan ? formatCurrency(plan.price_cents) : 'R$ 214,90'} à vista (Pix
+                              ou cartão)
                             </>
                           )}
                         </Button>
                         <p className="text-[11px] text-slate-500 text-center">
-                          Pix é pagamento único: 12 meses de acesso, sem renovação automática.
-                          Cartão também aceito nesta opção.
+                          Pagamento único (Pix ou cartão): 12 meses de acesso, sem renovação
+                          automática.
                         </p>
                       </>
+                    ) : (
+                      <Button
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={starting !== null}
+                        onClick={() => handleCheckout('mensal')}
+                      >
+                        {isMensalPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Redirecionando…
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            Assinar Mensal
+                          </>
+                        )}
+                      </Button>
                     )}
                   </div>
                 )}

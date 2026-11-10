@@ -170,7 +170,9 @@ export function CheckoutReturnBanner({
             <Button
               size="sm"
               className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
-              onClick={() => onRetryCheckout('mensal')}
+              // Retoma o checkout do MESMO plano em que estava (anual volta
+              // como pagamento único — o hook resolve o default do plano).
+              onClick={() => onRetryCheckout(billing?.plan === 'anual' ? 'anual' : 'mensal')}
             >
               <RotateCcw className="mr-2 h-4 w-4" />
               Tentar novamente

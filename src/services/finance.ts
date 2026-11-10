@@ -831,6 +831,10 @@ export interface BillingStatusResponse {
   access_active?: boolean
   has_stripe_customer: boolean
   has_stripe_subscription: boolean
+  /** ANUAL VIA PIX (pagamento único): preenchidos pelo /billing/status para o resumo em Minha Conta */
+  billing_mode?: 'one_time' | 'recurring'
+  payment_amount_cents?: number
+  payment_paid_at?: string
   user_info: {
     id: string
     name: string

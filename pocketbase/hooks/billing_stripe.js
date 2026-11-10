@@ -246,6 +246,30 @@ routerAdd(
       const planMensal = inlineResolvePlan(userRec.id, 'mensal')
       const planAnual = inlineResolvePlan(userRec.id, 'anual')
 
+      // ANUAL VIA PIX (pagamento único): dados para a tela Minha Conta exibir
+      // valor pago e data do pagamento (o front monta o resumo do one-time).
+      // Padrão JSVM: variáveis declaradas ANTES do try (escopo de bloco).
+      let lastPaymentAmount = 0
+      let lastPaymentAt = ''
+      try {
+        const hists = $app.findRecordsByFilter(
+          'subscriptions_history',
+          "user = '" +
+            userRec.id +
+            "' && (event_type = 'stripe.checkout.session.completed' || event_type = 'checkout.completed')",
+          '-created',
+          1,
+          0,
+        )
+        if (hists.length > 0) {
+          lastPaymentAmount = hists[0].getInt('amount_cents')
+          lastPaymentAt = hists[0].getString('created')
+        }
+      } catch (pErr) {
+        console.log('[billing] Erro ao buscar último pagamento: ' + pErr)
+      }
+      const isOneTimeActive = effectiveStatus === 'active' && !subId && accessUntilValid
+
       const nowIso = new Date().toISOString()
       if (subStatus === 'carencia' && carenciaUntil && nowIso > carenciaUntil) {
         effectiveStatus = 'bloqueado'
@@ -264,6 +288,9 @@ routerAdd(
         access_active: accessUntilValid && effectiveStatus !== 'bloqueado',
         has_stripe_customer: !!customerId,
         has_stripe_subscription: !!subId,
+        billing_mode: isOneTimeActive ? 'one_time' : 'recurring',
+        payment_amount_cents: lastPaymentAmount,
+        payment_paid_at: lastPaymentAt,
         user_info: {
           id: userRec.id,
           name: userRec.getString('name') || '',
@@ -833,7 +860,13 @@ routerAdd(
         if (customerId) userRec.set('stripe_customer_id', customerId)
         // ANUAL VIA PIX (one_time): NUNCA grava stripe_subscription_id —
         // não existe subscription Stripe; a validade fica em access_until.
-        if (subId && !isOneTime) userRec.set('stripe_subscription_id', subId)
+        // v0.0.95: se sobrou um subId de assinatura recorrente antiga, LIMPA —
+        // mesmo comportamento defensivo do webhook checkout.session.completed.
+        if (isOneTime) {
+          userRec.set('stripe_subscription_id', '')
+        } else if (subId) {
+          userRec.set('stripe_subscription_id', subId)
+        }
         userRec.set('carencia_until', '')
 
         let expiresAt = ''
@@ -972,6 +1005,25 @@ routerAdd(
       const userRec = $app.findRecordById('_pb_users_auth_', authUser.id)
       const subId = userRec.getString('stripe_subscription_id')
       const oldStatus = userRec.getString('subscription_status')
+
+      // PLANO ANUAL VIA PIX (pagamento único, v0.0.95): não existe assinatura
+      // para cancelar — o acesso já está todo pago até access_until. Recusar
+      // com mensagem clara em vez de prosseguir sem o que cancelar.
+      const oneTimeAccess = userRec.getString('access_until') || ''
+      const oneTimeValid = oneTimeAccess !== '' && new Date(oneTimeAccess).getTime() > Date.now()
+      if (
+        oldStatus === 'active' &&
+        !subId &&
+        oneTimeValid &&
+        userRec.getString('subscription_plan') === 'anual'
+      ) {
+        return e.json(400, {
+          error:
+            'Seu plano anual foi pago à vista (pagamento único) e não possui assinatura a cancelar. O acesso vale até ' +
+            new Date(oneTimeAccess).toLocaleDateString('pt-BR') +
+            '.',
+        })
+      }
 
       // Filosofia de cancelamento: a Stripe encerra a assinatura IMEDIATAMENTE
       // (nada de cobranças futuras), mas o cliente mantém acesso total até o
@@ -1136,6 +1188,29 @@ routerAdd(
       const customerId = userRec.getString('stripe_customer_id')
       if (!customerId) {
         return e.json(400, { error: 'Nenhum cadastro de cliente na Stripe vinculado.' })
+      }
+
+      // PLANO ANUAL VIA PIX (pagamento único, v0.0.95): o portal da Stripe só
+      // gerencia ASSINATURAS — para quem pagou o anual à vista ele mostraria
+      // apenas faturas antigas (ex.: mensal anterior) e nenhuma ação útil,
+      // gerando confusão ("Gerenciar assinatura" que não gerencia nada).
+      // O front já oculta o botão para esse perfil (isOneTimePlan); o gate
+      // aqui é a última linha de defesa, com mensagem explicativa.
+      const portalAccess = userRec.getString('access_until') || ''
+      const portalOneTimeValid =
+        portalAccess !== '' && new Date(portalAccess).getTime() > Date.now()
+      if (
+        userRec.getString('subscription_status') === 'active' &&
+        !userRec.getString('stripe_subscription_id') &&
+        portalOneTimeValid &&
+        userRec.getString('subscription_plan') === 'anual'
+      ) {
+        return e.json(400, {
+          error:
+            'Seu plano anual foi pago à vista (pagamento único): não existe assinatura para gerenciar no portal. O acesso vale até ' +
+            new Date(portalAccess).toLocaleDateString('pt-BR') +
+            '.',
+        })
       }
 
       const stripeCfg = inlineGetStripeConfig()
@@ -1435,6 +1510,7 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
       const priceCents = parseInt((sess.metadata && sess.metadata.price_cents) || '1990', 10)
       const isOneTime =
         (sess.metadata && sess.metadata.billing_mode) === 'one_time' || sess.mode === 'payment'
+      const amountTotal = parseInt(String(sess.amount_total || '0'), 10) || 0
 
       let targetUser = null
       if (userId) {
@@ -1457,7 +1533,18 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
         targetUser.set('subscription_status', 'active')
         targetUser.set('subscription_plan', planType)
         if (customerId) targetUser.set('stripe_customer_id', customerId)
-        if (subId) targetUser.set('stripe_subscription_id', subId)
+        // ANUAL VIA PIX (pagamento único, v0.0.95): um 'active' one-time NUNCA
+        // pode carregar um stripe_subscription_id — se sobrou um subId de uma
+        // assinatura recorrente antiga (ex.: mensal cancelada antes de migrar
+        // para o Pix), ele é LIMPO aqui. Caso contrário, /billing/status
+        // reporta has_stripe_subscription=true, e a tela Minha Conta volta a
+        // mostrar "Gerenciar assinatura" (portal com a fatura antiga) para um
+        // cliente que pagou o anual à vista e não tem o que gerenciar.
+        if (isOneTime) {
+          targetUser.set('stripe_subscription_id', '')
+        } else if (subId) {
+          targetUser.set('stripe_subscription_id', subId)
+        }
         targetUser.set('carencia_until', '')
         if (isOneTime) {
           // ANUAL VIA PIX (pagamento único): status ativa com validade de 12
@@ -1478,7 +1565,7 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
 
         inlineLogHistory(targetUser.id, 'stripe.checkout.session.completed', {
           plan_type: planType,
-          amount_cents: priceCents,
+          amount_cents: amountTotal || priceCents,
           status_from: oldSt,
           status_to: 'active',
           stripe_event_id: eventId,

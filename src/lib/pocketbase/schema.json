@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-10T14:41:34.045Z",
+  "generatedAt": "2026-11-12T01:52:25.647Z",
   "collections": [
     {
       "name": "users",
@@ -1168,6 +1168,12 @@
         },
         {
           "name": "price_id_anual",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_id_anual_recorrente",
           "type": "text",
           "required": false,
           "system": false

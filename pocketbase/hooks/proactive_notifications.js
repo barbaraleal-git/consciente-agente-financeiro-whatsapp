@@ -36,6 +36,21 @@ cronAdd('proactive_precharge_email', '0 12 * * *', () => {
   }
 })
 
+// 3. Aviso de RENOVAÇÃO do plano anual à vista (Pix, one_time): e-mail + WhatsApp
+//    30 dias e 7 dias antes da validade. Todo dia às 10h30 BRT (13:30 UTC),
+//    logo após o pré-cobrança, para não competir com o job das 09h.
+cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
+  try {
+    console.log('[cron:proactive_pix_renewal] Disparo automático iniciado.')
+    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
+    if (engine && engine.runPixRenewalJob) {
+      engine.runPixRenewalJob(false)
+    }
+  } catch (err) {
+    console.log('[cron:proactive_pix_renewal] Erro na execução:', err)
+  }
+})
+
 // -----------------------------------------------------------------------------
 // ROTAS DE DIAGNÓSTICO E DISPARO MANUAL (ADMIN ONLY)
 // -----------------------------------------------------------------------------
@@ -86,6 +101,11 @@ routerAdd('GET', '/backend/v1/proactive/status', (e) => {
           id: 'proactive_precharge_email',
           schedule: '0 12 * * * (09h00 BRT)',
           description: 'E-mail de aviso pré-cobrança (3d e 1d antes)',
+        },
+        {
+          id: 'proactive_pix_renewal',
+          schedule: '30 13 * * * (10h30 BRT)',
+          description: 'Aviso de renovação Pix (one_time) 30d/7d antes da validade',
         },
       ],
     })
@@ -154,6 +174,37 @@ routerAdd('POST', '/backend/v1/proactive/trigger-precharge', (e) => {
     })
   } catch (err) {
     return e.json(500, { error: 'Erro ao acionar aviso pré-cobrança: ' + String(err) })
+  }
+})
+
+routerAdd('POST', '/backend/v1/proactive/trigger-pix-renewal', (e) => {
+  try {
+    const authUser = e.auth
+    const isAdmin =
+      authUser &&
+      (authUser.getString('role') === 'admin' ||
+        authUser.getString('email') === 'barbara.ferreira.leal@gmail.com')
+
+    if (!isAdmin) {
+      return e.json(403, { error: 'Acesso restrito à administração' })
+    }
+
+    let body = {}
+    try {
+      body = e.requestInfo().body || {}
+    } catch (_) {}
+
+    const dryRun = body.dry_run !== false && body.dry_run !== 'false'
+    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
+    const res = engine.runPixRenewalJob(dryRun)
+
+    return e.json(200, {
+      success: true,
+      dry_run: dryRun,
+      results: res,
+    })
+  } catch (err) {
+    return e.json(500, { error: 'Erro ao acionar aviso de renovação Pix: ' + String(err) })
   }
 })
 

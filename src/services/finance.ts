@@ -914,6 +914,8 @@ export interface StripeAdminConfig {
   masked_webhook_signing_secret: string
   price_id_mensal: string
   price_id_anual: string
+  /** v0.0.98: Price anual RECORRENTE ("Por ano", R$ 214,90) — usado no botão "Assinar Anual (recorrente)". */
+  price_id_anual_recorrente: string
   updated?: string
   updated_by?: string
 }
@@ -1062,6 +1064,7 @@ export const billingService = {
     webhook_signing_secret?: string
     price_id_mensal?: string
     price_id_anual?: string
+    price_id_anual_recorrente?: string
   }): Promise<{ success: boolean; message: string }> => {
     return pb.send('/backend/v1/admin/billing/stripe-config', {
       method: 'POST',

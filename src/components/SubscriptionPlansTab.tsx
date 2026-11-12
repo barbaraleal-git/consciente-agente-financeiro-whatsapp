@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Check,
   CreditCard,
   QrCode,
+  RefreshCw,
   Sparkles,
   Loader2,
   ShieldCheck,
@@ -115,6 +116,7 @@ export const SubscriptionPlansTab: React.FC = () => {
   const handleCheckout = useCallback(
     async (planType: PlanType, billingMode?: 'recurring' | 'one_time'): Promise<unknown> => {
       setStarting(planType)
+      lastCheckoutMode.current = billingMode || 'recurring'
       try {
         const origin = window.location.origin
         const successUrl = `${origin}/settings?section=assinatura&checkout=success&session_id={CHECKOUT_SESSION_ID}`
@@ -237,7 +239,11 @@ export const SubscriptionPlansTab: React.FC = () => {
     !billing.has_stripe_subscription &&
     hasGuaranteedAccess
   )
-  const isPixPending = starting === 'anual'
+  // v0.0.98: o anual tem DOIS botões (recorrente + à vista) — o estado "starting"
+  // guarda só o planType, então cada botão precisa saber qual caminho disparou.
+  const lastCheckoutMode = useRef<'recurring' | 'one_time' | undefined>(undefined)
+  const isPixPending = starting === 'anual' && lastCheckoutMode.current === 'one_time'
+  const isAnualRecurringPending = starting === 'anual' && lastCheckoutMode.current === 'recurring'
   const isMensalPending = starting === 'mensal'
   const trialDaysLeft = useMemo(() => {
     if (!billing || billing.status !== 'trial' || !billing.expires_at) return null
@@ -523,13 +529,35 @@ export const SubscriptionPlansTab: React.FC = () => {
                   <div className="mt-4 space-y-2">
                     {pt === 'anual' ? (
                       <>
-                        {/* ANUAL: ÚNICO botão de pagamento — cobrança À VISTA (Pix e
-                            cartão na mesma tela do checkout Stripe), ativação com
-                            validade de 12 meses. O caminho recorrente antigo
-                            (mode=subscription com price anual) foi ELIMINADO: ele
-                            cobrava mensalmente (o price_id_anual configurado era
-                            recorrente mensal de valor menor) — sem sentido para o
-                            cliente. Pix não existe em assinatura recorrente no Brasil. */}
+                        {/* ANUAL v0.0.98 — DOIS CAMINHOS COEXISTEM:
+                            1) Recorrente (mode=subscription) com o NOVO Price anual
+                               "Por ano" (price_id_anual_recorrente, Backoffice →
+                               Configuração Stripe). O antigo price_id_anual (era um
+                               Price mensal bugado) NUNCA é usado.
+                            2) À vista (mode=payment, Pix ou cartão) com validade de
+                               12 meses e sem renovação automática. */}
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={starting !== null}
+                          onClick={() => handleCheckout('anual', 'recurring')}
+                        >
+                          {isAnualRecurringPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Redirecionando…
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Assinar Anual (recorrente)
+                            </>
+                          )}
+                        </Button>
+                        <p className="text-[11px] text-slate-500 text-center">
+                          Assinatura recorrente: cobrança a cada 12 meses (cartão), cancele quando
+                          quiser. Requer cartão — Pix não existe em assinatura recorrente no Brasil.
+                        </p>
+                        <Separator className="my-1" />
                         <Button
                           className="w-full bg-sky-600 hover:bg-sky-700 text-white"
                           disabled={starting !== null}
@@ -543,9 +571,7 @@ export const SubscriptionPlansTab: React.FC = () => {
                           ) : (
                             <>
                               <QrCode className="mr-2 h-4 w-4" />
-                              Assinar Anual —{' '}
-                              {plan ? formatCurrency(plan.price_cents) : 'R$ 214,90'} à vista (Pix
-                              ou cartão)
+                              Anual à vista no Pix — pagamento único
                             </>
                           )}
                         </Button>

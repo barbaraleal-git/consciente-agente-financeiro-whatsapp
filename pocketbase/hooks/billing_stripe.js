@@ -349,6 +349,7 @@ routerAdd(
               webhook_signing_secret: (r.getString('webhook_signing_secret') || '').trim(),
               price_id_mensal: (r.getString('price_id_mensal') || '').trim(),
               price_id_anual: (r.getString('price_id_anual') || '').trim(),
+              price_id_anual_recorrente: (r.getString('price_id_anual_recorrente') || '').trim(),
             }
           }
         } catch (err) {
@@ -500,12 +501,15 @@ routerAdd(
           console.log('[billing] Erro ao resolver plano: ' + err)
         }
 
-        // Se o plano ainda não tem stripe_price_id mas stripe_config tem o price_id correspondente, usa-o
+        // Se o plano ainda não tem stripe_price_id mas stripe_config tem o price_id correspondente, usa-o.
+        // v0.0.98: o anual RECORRENTE usa EXCLUSIVAMENTE o price_id_anual_recorrente
+        // (Price novo "Por ano", R$ 214,90). O antigo price_id_anual era um Price
+        // recorrente MENSAL bugado (causa do bug da v0.0.95) e NUNCA é usado.
         if (!resolved.stripe_price_id && config) {
           if (planType === 'mensal' && config.price_id_mensal) {
             resolved.stripe_price_id = config.price_id_mensal
-          } else if (planType === 'anual' && config.price_id_anual) {
-            resolved.stripe_price_id = config.price_id_anual
+          } else if (planType === 'anual' && config.price_id_anual_recorrente) {
+            resolved.stripe_price_id = config.price_id_anual_recorrente
           }
         }
 
@@ -523,13 +527,28 @@ routerAdd(
 
       const body = e.requestInfo().body || {}
       const planType = body.plan_type === 'anual' ? 'anual' : 'mensal'
-      // ANUAL VIA PIX (pagamento único): contas Stripe domiciliadas no Brasil não
-      // oferecem Pix recorrente — o plano anual passa a ser cobrado como
-      // one-time (mode=payment), com cartão+Pix habilitados no mesmo checkout.
+      // v0.0.98 — DOIS CAMINHOS COEXISTEM no plano anual:
+      // - billing_mode=one_time → Pix à vista (mode=payment, access_until +12m);
+      // - billing_mode=recurring (default) → assinatura recorrente anual
+      //   (mode=subscription) usando o NOVO price_id_anual_recorrente da Stripe.
       // A assinatura MENSAL permanece mode=subscription (cartão recorrente).
       const billingMode = body.billing_mode === 'one_time' ? 'one_time' : 'recurring'
       if (billingMode === 'one_time' && planType !== 'anual') {
         return e.json(400, { error: 'Pagamento único está disponível apenas no plano anual.' })
+      }
+      // Anual recorrente exige o Price anual ("Por ano") parametrizado no
+      // Backoffice. Sem ele, o checkout recorrente anual é recusado com erro
+      // amigável (o cliente pode optar pelo Pix à vista, que não depende dele).
+      if (
+        billingMode === 'recurring' &&
+        planType === 'anual' &&
+        !stripeCfg.price_id_anual_recorrente
+      ) {
+        return e.json(400, {
+          error:
+            'A assinatura anual recorrente ainda não está configurada. Use o pagamento único via Pix ou fale com o suporte.',
+          code: 'ANUAL_RECORRENTE_NAO_CONFIGURADO',
+        })
       }
       const appOrigin = 'https://agente-financeiro-whatsapp-37fd3.goskip.app'
 
@@ -1009,6 +1028,8 @@ routerAdd(
       // PLANO ANUAL VIA PIX (pagamento único, v0.0.95): não existe assinatura
       // para cancelar — o acesso já está todo pago até access_until. Recusar
       // com mensagem clara em vez de prosseguir sem o que cancelar.
+      // v0.0.98: o anual RECORRENTE (com stripe_subscription_id) cancela
+      // normalmente aqui embaixo — o bloqueio vale apenas para o one_time.
       const oneTimeAccess = userRec.getString('access_until') || ''
       const oneTimeValid = oneTimeAccess !== '' && new Date(oneTimeAccess).getTime() > Date.now()
       if (
@@ -1533,13 +1554,17 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
         targetUser.set('subscription_status', 'active')
         targetUser.set('subscription_plan', planType)
         if (customerId) targetUser.set('stripe_customer_id', customerId)
-        // ANUAL VIA PIX (pagamento único, v0.0.95): um 'active' one-time NUNCA
-        // pode carregar um stripe_subscription_id — se sobrou um subId de uma
-        // assinatura recorrente antiga (ex.: mensal cancelada antes de migrar
-        // para o Pix), ele é LIMPO aqui. Caso contrário, /billing/status
-        // reporta has_stripe_subscription=true, e a tela Minha Conta volta a
-        // mostrar "Gerenciar assinatura" (portal com a fatura antiga) para um
-        // cliente que pagou o anual à vista e não tem o que gerenciar.
+        // v0.0.98 — DOIS CAMINHOS COEXISTEM no anual:
+        // - one_time (Pix à vista, mode=payment): um 'active' one-time NUNCA
+        //   pode carregar um stripe_subscription_id — se sobrou um subId de uma
+        //   assinatura recorrente antiga (ex.: mensal cancelada antes de migrar
+        //   para o Pix), ele é LIMPO aqui. Caso contrário, /billing/status
+        //   reporta has_stripe_subscription=true, e a tela Minha Conta volta a
+        //   mostrar "Gerenciar assinatura" (portal com a fatura antiga) para um
+        //   cliente que pagou o anual à vista e não tem o que gerenciar.
+        // - recurring (assinatura Stripe, subscription): grava o
+        //   stripe_subscription_id normalmente — a renovação a cada 12 meses é
+        //   via invoice.payment_succeeded (v0.0.98, price_id_anual_recorrente).
         if (isOneTime) {
           targetUser.set('stripe_subscription_id', '')
         } else if (subId) {
@@ -1550,12 +1575,15 @@ routerAdd('POST', '/backend/v1/stripe/webhook', (e) => {
           // ANUAL VIA PIX (pagamento único): status ativa com validade de 12
           // meses (access_until). NÃO cria subscription Stripe nem grava
           // stripe_subscription_id — quando access_until expirar, a conta
-          // volta a não-assinante.
+          // volta a não-assinante. (Nunca recebe o aviso de renovação
+          // pré-cobrança 3d/1d — esse é só para recorrentes.)
           const accessDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
           targetUser.set('access_until', accessDate)
           targetUser.set('subscription_expires_at', accessDate)
         } else {
-          // Reativação via webhook: período pós-cancelamento deixa de existir.
+          // Assinatura recorrente (mensal OU anual, v0.0.98): reativação via
+          // webhook — período pós-cancelamento deixa de existir. A renovação
+          // anual é a cada 12 meses (365 dias) pelo ciclo da Stripe.
           targetUser.set('access_until', '')
           const addDays = planType === 'anual' ? 365 : 30
           const expiresAt = new Date(Date.now() + addDays * 24 * 60 * 60 * 1000).toISOString()
@@ -1759,6 +1787,7 @@ routerAdd(
           masked_webhook_signing_secret: '',
           price_id_mensal: '',
           price_id_anual: '',
+          price_id_anual_recorrente: '',
           updated: '',
           updated_by: '',
         })
@@ -1776,6 +1805,7 @@ routerAdd(
         masked_webhook_signing_secret: inlineMaskKey(rawWhsec),
         price_id_mensal: r.getString('price_id_mensal') || '',
         price_id_anual: r.getString('price_id_anual') || '',
+        price_id_anual_recorrente: r.getString('price_id_anual_recorrente') || '',
         updated: r.getString('updated') || '',
         updated_by: r.getString('updated_by') || '',
       })
@@ -1832,6 +1862,11 @@ routerAdd(
       if (body.price_id_anual !== undefined) {
         rec.set('price_id_anual', String(body.price_id_anual).trim())
       }
+      // v0.0.98: Price anual recorrente novo ("Por ano"). Salvar vazio é permitido
+      // (limpa o campo), com o checkout anual recorrente recusando sem ele.
+      if (body.price_id_anual_recorrente !== undefined) {
+        rec.set('price_id_anual_recorrente', String(body.price_id_anual_recorrente).trim())
+      }
 
       rec.set('updated_by', email || authUser.id)
       $app.save(rec)
@@ -1867,6 +1902,9 @@ routerAdd(
           }
         } catch (_) {}
       }
+      // v0.0.98: price_id_anual_recorrente NÃO é propagado para
+      // subscription_plans.stripe_price_id (evita que o mensal bugado volte pelo
+      // plano); a resolução do checkout recorrente lê direto de stripe_config.
 
       return e.json(200, {
         success: true,

@@ -109,6 +109,9 @@ export const BillingAdminSection: React.FC = () => {
   const [stripeWhsecInput, setStripeWhsecInput] = useState('')
   const [stripePriceMensalInput, setStripePriceMensalInput] = useState('')
   const [stripePriceAnualInput, setStripePriceAnualInput] = useState('')
+  // v0.0.98: Price anual RECORRENTE ("Por ano", R$ 214,90) — novo campo. O antigo
+  // price_id_anual era um Price recorrente MENSAL bugado e nunca é usado.
+  const [stripePriceAnualRecorrenteInput, setStripePriceAnualRecorrenteInput] = useState('')
   const [savingStripe, setSavingStripe] = useState(false)
   const [showSecretKey, setShowSecretKey] = useState(false)
   const [showWhsec, setShowWhsec] = useState(false)
@@ -123,6 +126,7 @@ export const BillingAdminSection: React.FC = () => {
       setStripeConfig(res)
       setStripePriceMensalInput(res.price_id_mensal || '')
       setStripePriceAnualInput(res.price_id_anual || '')
+      setStripePriceAnualRecorrenteInput(res.price_id_anual_recorrente || '')
     } catch {
       toast({
         title: 'Aviso de configuração Stripe',
@@ -279,9 +283,11 @@ export const BillingAdminSection: React.FC = () => {
         webhook_signing_secret?: string
         price_id_mensal?: string
         price_id_anual?: string
+        price_id_anual_recorrente?: string
       } = {
         price_id_mensal: stripePriceMensalInput.trim(),
         price_id_anual: stripePriceAnualInput.trim(),
+        price_id_anual_recorrente: stripePriceAnualRecorrenteInput.trim(),
       }
 
       if (stripeSecretKeyInput.trim()) {
@@ -814,10 +820,10 @@ export const BillingAdminSection: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Price ID Anual */}
+                {/* Price ID Anual (legado, não usado) */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">
-                    Price ID Anual (R$ 214,90)
+                    Price ID Anual (legado — não usado)
                   </Label>
                   <Input
                     placeholder="price_1Q..."
@@ -826,7 +832,25 @@ export const BillingAdminSection: React.FC = () => {
                     className="text-xs font-mono bg-slate-50"
                   />
                   <p className="text-[11px] text-slate-500">
-                    ID do preço recorrente anual criado no painel da Stripe.
+                    Era um Price recorrente MENSAL bugado (v0.0.95). Mantido apenas para histórico —
+                    nunca é usado nos checkouts.
+                  </p>
+                </div>
+
+                {/* Price ID Anual Recorrente (v0.0.98) */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Price ID Anual Recorrente (R$ 214,90 /ano)
+                  </Label>
+                  <Input
+                    placeholder="price_1Q..."
+                    value={stripePriceAnualRecorrenteInput}
+                    onChange={(e) => setStripePriceAnualRecorrenteInput(e.target.value)}
+                    className="text-xs font-mono bg-slate-50"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Price com recorrência &quot;Por ano&quot; (faturamento a cada 12 meses), usado
+                    no botão &quot;Assinar Anual (recorrente)&quot; da Minha Conta.
                   </p>
                 </div>
               </div>

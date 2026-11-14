@@ -146,8 +146,9 @@ function sendMetaProactiveMessage(toNumber, firstName, templateTextFallback) {
     }
   }
 
+  // JSVM: res.rawText NÃO existe — $http.send retorna { statusCode, headers, body, raw, json }
   let statusCode = res.statusCode
-  let rawBody = res.rawText || ''
+  let rawBody = res.body || ''
   let responseJson = {}
   try {
     responseJson = JSON.parse(rawBody)
@@ -197,7 +198,7 @@ function sendMetaProactiveMessage(toNumber, firstName, templateTextFallback) {
         timeout: 30,
       })
       statusCode = resText.statusCode
-      rawBody = resText.rawText || ''
+      rawBody = resText.body || ''
       try {
         responseJson = JSON.parse(rawBody)
       } catch (_) {
@@ -1131,6 +1132,22 @@ function runPrechargeEmailJob(dryRun) {
   )
 
   return results
+}
+
+// Exporta também no globalThis (padrão comprovado da JSVM deste projeto): o
+// require() de módulos de hook falha com "GoError: Invalid module" dentro de
+// callbacks de cronAdd; os callbacks do proactive_notifications.js usam este
+// objeto como fallback quando o require não está disponível.
+if (typeof globalThis !== 'undefined') {
+  globalThis.__proactiveEngine = {
+    runNightlyReminderJob: runNightlyReminderJob,
+    runPrechargeEmailJob: runPrechargeEmailJob,
+    runPixRenewalJob: runPixRenewalJob,
+    sendPrechargeEmail: sendPrechargeEmail,
+    getBrtDateStr: getBrtDateStr,
+    formatDateBrt: formatDateBrt,
+    NIGHTLY_REMINDER_TEMPLATE: NIGHTLY_REMINDER_TEMPLATE,
+  }
 }
 
 module.exports = {

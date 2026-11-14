@@ -1,249 +1,316 @@
-// pocketbase/hooks/proactive_notifications.js
 /// <reference path="../pb_data/types.d.ts" />
-
 /**
- * Módulo de Notificações Proativas do Consciente:
- * 1. Lembrete Noturno Amigável via WhatsApp (Item 1 / ex-Item 38)
- * 2. E-mail de Aviso Pré-Cobrança (Item 2 / ex-Item 42)
+ * proactive_notifications.js — v0.0.101
  *
- * Cada callback carrega o engine internamente com require('./proactive_notifications_engine.js')
- * com try/catch e fallback, respeitando o isolamento de escopo da JSVM do PocketBase.
+ * Orquestrador das Notificações Proativas: 3 crons + rotas admin.
+ *   - proactive_nightly_reminder : 23h30 UTC (20h30 BRT) — lembrete noturno
+ *   - proactive_precharge_email  : 12h00 UTC (09h00 BRT) — aviso pré-cobrança 3d/1d
+ *   - proactive_pix_renewal      : 13h30 UTC (10h30 BRT) — aviso renovação Pix 30d/7d
+ *   - Rotas admin: /status, /trigger-nightly, /trigger-precharge,
+ *                  /trigger-pix-renewal e /test-email
+ *
+ * REGRA DE SCOPING DA JSVM (v0.0.101): callbacks (cronAdd/routerAdd) NÃO têm
+ * acesso a NENHUMA declaração top-level — nem de outros módulos, nem do
+ * PRÓPRIO arquivo (causa "Hook scoping error" / "GoError: Invalid module").
+ * POR ISSO:
+ *   1. NADA de require() aqui: além do Invalid module, o empacotador de hooks
+ *      interpreta require('nome') como dependência npm e quebra o deploy.
+ *   2. NENHUMA função/variável top-level é referenciada dentro dos callbacks:
+ *      toda a lógica de cada job é 100% inline no corpo do callback, e a
+ *      engine é resolvida lendo globalThis.__proactiveEngine (publicado pela
+ *      engine no boot dela — padrão do projeto, ver reliability_helper.js).
+ *   3. Variáveis locais são declaradas com var ANTES de blocos try
+ *      (padrão localXxx — bugs v0.0.66/v0.0.91 da JSVM).
+ *
+ * API da engine:
+ *   runNightlyReminderJob(targetDateStr, dryRun)
+ *   runPrechargeEmailJob(dryRun)
+ *   runPixRenewalJob(dryRun)
+ *   sendPrechargeEmail(to, name, daysAhead, dateStr, amountCents, planLabel)
  */
 
-// 1. Lembrete Noturno Amigável: todo dia às 20h30 BRT (23:30 UTC)
 cronAdd('proactive_nightly_reminder', '30 23 * * *', () => {
+  console.log('[cron:proactive_nightly_reminder] Disparo automático iniciado.')
+
+  var localEngine = null
   try {
-    console.log('[cron:proactive_nightly_reminder] Disparo automático iniciado.')
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    if (engine && engine.runNightlyReminderJob) {
-      engine.runNightlyReminderJob(null, false)
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
     }
-  } catch (err) {
-    console.log('[cron:proactive_nightly_reminder] Erro na execução:', err)
+  } catch (e) {
+    console.log('[cron:proactive_nightly_reminder] Falha ao resolver engine: ' + e)
+  }
+  if (!localEngine || typeof localEngine.runNightlyReminderJob !== 'function') {
+    console.log('[cron:proactive_nightly_reminder] engine indisponível — job abortado.')
+    return
+  }
+
+  try {
+    var jobRes = localEngine.runNightlyReminderJob('', false)
+    console.log('[cron:proactive_nightly_reminder] Concluído: ' + JSON.stringify(jobRes))
+  } catch (jobErr) {
+    console.log('[cron:proactive_nightly_reminder] Erro na execução: ' + jobErr)
   }
 })
 
-// 2. E-mail de Aviso Pré-Cobrança: todo dia às 09h00 BRT (12:00 UTC)
 cronAdd('proactive_precharge_email', '0 12 * * *', () => {
+  console.log('[cron:proactive_precharge_email] Disparo automático iniciado.')
+
+  var localEngine = null
   try {
-    console.log('[cron:proactive_precharge_email] Disparo automático iniciado.')
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    if (engine && engine.runPrechargeEmailJob) {
-      engine.runPrechargeEmailJob(false)
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
     }
-  } catch (err) {
-    console.log('[cron:proactive_precharge_email] Erro na execução:', err)
+  } catch (e) {
+    console.log('[cron:proactive_precharge_email] Falha ao resolver engine: ' + e)
+  }
+  if (!localEngine || typeof localEngine.runPrechargeEmailJob !== 'function') {
+    console.log('[cron:proactive_precharge_email] engine indisponível — job abortado.')
+    return
+  }
+
+  try {
+    var jobRes = localEngine.runPrechargeEmailJob(false)
+    console.log('[cron:proactive_precharge_email] Concluído: ' + JSON.stringify(jobRes))
+  } catch (jobErr) {
+    console.log('[cron:proactive_precharge_email] Erro na execução: ' + jobErr)
   }
 })
 
-// 3. Aviso de RENOVAÇÃO do plano anual à vista (Pix, one_time): e-mail + WhatsApp
-//    30 dias e 7 dias antes da validade. Todo dia às 10h30 BRT (13:30 UTC),
-//    logo após o pré-cobrança, para não competir com o job das 09h.
 cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
+  console.log('[cron:proactive_pix_renewal] Disparo automático iniciado.')
+
+  var localEngine = null
   try {
-    console.log('[cron:proactive_pix_renewal] Disparo automático iniciado.')
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    if (engine && engine.runPixRenewalJob) {
-      engine.runPixRenewalJob(false)
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
     }
-  } catch (err) {
-    console.log('[cron:proactive_pix_renewal] Erro na execução:', err)
+  } catch (e) {
+    console.log('[cron:proactive_pix_renewal] Falha ao resolver engine: ' + e)
+  }
+  if (!localEngine || typeof localEngine.runPixRenewalJob !== 'function') {
+    console.log('[cron:proactive_pix_renewal] engine indisponível — job abortado.')
+    return
+  }
+
+  try {
+    var jobRes = localEngine.runPixRenewalJob(false)
+    console.log('[cron:proactive_pix_renewal] Concluído: ' + JSON.stringify(jobRes))
+  } catch (jobErr) {
+    console.log('[cron:proactive_pix_renewal] Erro na execução: ' + jobErr)
   }
 })
 
-// -----------------------------------------------------------------------------
-// ROTAS DE DIAGNÓSTICO E DISPARO MANUAL (ADMIN ONLY)
-// -----------------------------------------------------------------------------
-
+// -------------------------------------------------------------
+// Rotas admin (auditoria e disparo manual com dry-run)
+// Autenticação: role='admin' ou e-mail da dona (padrão admin_backoffice.js).
+// Toda verificação é inline — nenhum helper top-level é referenciado aqui.
+// -------------------------------------------------------------
 routerAdd('GET', '/backend/v1/proactive/status', (e) => {
-  try {
-    const authUser = e.auth
-    const isAdmin =
-      authUser &&
-      (authUser.getString('role') === 'admin' ||
-        authUser.getString('email') === 'barbara.ferreira.leal@gmail.com')
-
-    if (!isAdmin) {
-      return e.json(403, { error: 'Acesso restrito à administração' })
-    }
-
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    const todayStr = engine.getBrtDateStr(new Date())
-
-    let logsCount = 0
-    let recentLogs = []
-    try {
-      recentLogs = $app.findRecordsByFilter('proactive_logs', '', '-created', 10, 0)
-      logsCount = recentLogs.length
-    } catch (_) {}
-
-    return e.json(200, {
-      success: true,
-      current_brt_date: todayStr,
-      template_info: engine.NIGHTLY_REMINDER_TEMPLATE,
-      recent_logs_count: logsCount,
-      recent_logs: recentLogs.map((l) => ({
-        id: l.id,
-        user: l.getString('user'),
-        channel: l.getString('channel'),
-        kind: l.getString('kind'),
-        dedupe_key: l.getString('dedupe_key'),
-        status: l.getString('status'),
-        created: l.getString('created'),
-      })),
-      scheduled_crons: [
-        {
-          id: 'proactive_nightly_reminder',
-          schedule: '30 23 * * * (20h30 BRT)',
-          description: 'Lembrete noturno de lançamento via WhatsApp',
-        },
-        {
-          id: 'proactive_precharge_email',
-          schedule: '0 12 * * * (09h00 BRT)',
-          description: 'E-mail de aviso pré-cobrança (3d e 1d antes)',
-        },
-        {
-          id: 'proactive_pix_renewal',
-          schedule: '30 13 * * * (10h30 BRT)',
-          description: 'Aviso de renovação Pix (one_time) 30d/7d antes da validade',
-        },
-      ],
-    })
-  } catch (err) {
-    return e.json(500, { error: 'Erro no status proativo: ' + String(err) })
+  var authUser = e.auth
+  var isAdmin = !!(
+    authUser &&
+    (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+      authUser.getString('role') === 'admin')
+  )
+  if (!isAdmin) {
+    return e.json(403, { error: 'Acesso restrito a administradores.' })
   }
+
+  var localEngine = null
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
+    }
+  } catch (e1) {}
+  var engineLoaded = !!(localEngine && typeof localEngine.runNightlyReminderJob === 'function')
+
+  var recentLogs = []
+  var totalLogs = 0
+  try {
+    var recs = $app.findRecordsByFilter('proactive_logs', '', '-created', 20, 0)
+    totalLogs = $app.countRecords('proactive_logs')
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i]
+      recentLogs.push({
+        kind: r.getString('kind'),
+        channel: r.getString('channel'),
+        status: r.getString('status'),
+        recipient: r.getString('recipient'),
+        dedupe_key: r.getString('dedupe_key'),
+        error: r.getString('error'),
+        created: r.getString('created'),
+      })
+    }
+  } catch (logErr) {
+    console.log('[proactive:status] Erro ao consultar proactive_logs: ' + logErr)
+  }
+
+  return e.json(200, {
+    version: '0.0.101',
+    engine_loaded: engineLoaded,
+    engine_source: 'globalThis.__proactiveEngine (publicado pela engine no boot)',
+    crons: {
+      proactive_nightly_reminder: '30 23 * * * (20h30 BRT)',
+      proactive_precharge_email: '0 12 * * * (09h00 BRT)',
+      proactive_pix_renewal: '30 13 * * * (10h30 BRT)',
+    },
+    total_logs: totalLogs,
+    recent_logs: recentLogs,
+  })
 })
 
 routerAdd('POST', '/backend/v1/proactive/trigger-nightly', (e) => {
+  var authUser = e.auth
+  var isAdmin = !!(
+    authUser &&
+    (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+      authUser.getString('role') === 'admin')
+  )
+  if (!isAdmin) {
+    return e.json(403, { error: 'Acesso restrito a administradores.' })
+  }
+
+  var localEngine = null
   try {
-    const authUser = e.auth
-    const isAdmin =
-      authUser &&
-      (authUser.getString('role') === 'admin' ||
-        authUser.getString('email') === 'barbara.ferreira.leal@gmail.com')
-
-    if (!isAdmin) {
-      return e.json(403, { error: 'Acesso restrito à administração' })
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
     }
+  } catch (e1) {}
+  if (!localEngine || typeof localEngine.runNightlyReminderJob !== 'function') {
+    return e.json(500, { error: 'engine proativa indisponível' })
+  }
 
-    let body = {}
-    try {
-      body = e.requestInfo().body || {}
-    } catch (_) {}
+  var body = {}
+  try {
+    body = e.readBody({}) || {}
+  } catch (bErr) {
+    body = {}
+  }
+  var dryRun = body.dry_run === true
 
-    const dryRun = body.dry_run !== false && body.dry_run !== 'false'
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    const targetDate = body.target_date || engine.getBrtDateStr(new Date())
-
-    const res = engine.runNightlyReminderJob(targetDate, dryRun)
-    return e.json(200, {
-      success: true,
-      dry_run: dryRun,
-      results: res,
-    })
-  } catch (err) {
-    return e.json(500, { error: 'Erro ao acionar lembrete noturno: ' + String(err) })
+  try {
+    var jobRes = localEngine.runNightlyReminderJob('', dryRun)
+    return e.json(200, jobRes)
+  } catch (jobErr) {
+    console.log('[proactive:trigger-nightly] Erro: ' + jobErr)
+    return e.json(500, { error: 'Erro no job de lembrete noturno: ' + jobErr })
   }
 })
 
 routerAdd('POST', '/backend/v1/proactive/trigger-precharge', (e) => {
+  var authUser = e.auth
+  var isAdmin = !!(
+    authUser &&
+    (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+      authUser.getString('role') === 'admin')
+  )
+  if (!isAdmin) {
+    return e.json(403, { error: 'Acesso restrito a administradores.' })
+  }
+
+  var localEngine = null
   try {
-    const authUser = e.auth
-    const isAdmin =
-      authUser &&
-      (authUser.getString('role') === 'admin' ||
-        authUser.getString('email') === 'barbara.ferreira.leal@gmail.com')
-
-    if (!isAdmin) {
-      return e.json(403, { error: 'Acesso restrito à administração' })
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
     }
+  } catch (e1) {}
+  if (!localEngine || typeof localEngine.runPrechargeEmailJob !== 'function') {
+    return e.json(500, { error: 'engine proativa indisponível' })
+  }
 
-    let body = {}
-    try {
-      body = e.requestInfo().body || {}
-    } catch (_) {}
+  var body = {}
+  try {
+    body = e.readBody({}) || {}
+  } catch (bErr) {
+    body = {}
+  }
+  var dryRun = body.dry_run === true
 
-    const dryRun = body.dry_run !== false && body.dry_run !== 'false'
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    const res = engine.runPrechargeEmailJob(dryRun)
-
-    return e.json(200, {
-      success: true,
-      dry_run: dryRun,
-      results: res,
-    })
-  } catch (err) {
-    return e.json(500, { error: 'Erro ao acionar aviso pré-cobrança: ' + String(err) })
+  try {
+    var jobRes = localEngine.runPrechargeEmailJob(dryRun)
+    return e.json(200, jobRes)
+  } catch (jobErr) {
+    console.log('[proactive:trigger-precharge] Erro: ' + jobErr)
+    return e.json(500, { error: 'Erro no job de pré-cobrança: ' + jobErr })
   }
 })
 
 routerAdd('POST', '/backend/v1/proactive/trigger-pix-renewal', (e) => {
+  var authUser = e.auth
+  var isAdmin = !!(
+    authUser &&
+    (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+      authUser.getString('role') === 'admin')
+  )
+  if (!isAdmin) {
+    return e.json(403, { error: 'Acesso restrito a administradores.' })
+  }
+
+  var localEngine = null
   try {
-    const authUser = e.auth
-    const isAdmin =
-      authUser &&
-      (authUser.getString('role') === 'admin' ||
-        authUser.getString('email') === 'barbara.ferreira.leal@gmail.com')
-
-    if (!isAdmin) {
-      return e.json(403, { error: 'Acesso restrito à administração' })
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
     }
+  } catch (e1) {}
+  if (!localEngine || typeof localEngine.runPixRenewalJob !== 'function') {
+    return e.json(500, { error: 'engine proativa indisponível' })
+  }
 
-    let body = {}
-    try {
-      body = e.requestInfo().body || {}
-    } catch (_) {}
+  var body = {}
+  try {
+    body = e.readBody({}) || {}
+  } catch (bErr) {
+    body = {}
+  }
+  var dryRun = body.dry_run === true
 
-    const dryRun = body.dry_run !== false && body.dry_run !== 'false'
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    const res = engine.runPixRenewalJob(dryRun)
-
-    return e.json(200, {
-      success: true,
-      dry_run: dryRun,
-      results: res,
-    })
-  } catch (err) {
-    return e.json(500, { error: 'Erro ao acionar aviso de renovação Pix: ' + String(err) })
+  try {
+    var jobRes = localEngine.runPixRenewalJob(dryRun)
+    return e.json(200, jobRes)
+  } catch (jobErr) {
+    console.log('[proactive:trigger-pix-renewal] Erro: ' + jobErr)
+    return e.json(500, { error: 'Erro no job de renovação Pix: ' + jobErr })
   }
 })
 
 routerAdd('POST', '/backend/v1/proactive/test-email', (e) => {
-  try {
-    const authUser = e.auth
-    const isAdmin =
-      authUser &&
-      (authUser.getString('role') === 'admin' ||
-        authUser.getString('email') === 'barbara.ferreira.leal@gmail.com')
-
-    if (!isAdmin) {
-      return e.json(403, { error: 'Acesso restrito à administração' })
-    }
-
-    let body = {}
-    try {
-      body = e.requestInfo().body || {}
-    } catch (_) {}
-
-    const engine = require(`${__hooks}/proactive_notifications_engine.js`)
-    const targetEmail = body.to || authUser.getString('email') || ''
-    const daysAhead = Number(body.days_ahead) === 1 ? 1 : 3
-    const chargeDate = body.charge_date || engine.formatDateBrt(new Date().toISOString())
-
-    const sendRes = engine.sendPrechargeEmail(
-      targetEmail,
-      authUser.getString('name') || 'Administradora Bárbara',
-      daysAhead,
-      chargeDate,
-      1990,
-      'Plano Mensal Recorrente',
-    )
-
-    return e.json(sendRes.success ? 200 : 500, {
-      success: sendRes.success,
-      details: sendRes,
-    })
-  } catch (err) {
-    return e.json(500, { error: 'Erro no teste de e-mail: ' + String(err) })
+  var authUser = e.auth
+  var isAdmin = !!(
+    authUser &&
+    (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+      authUser.getString('role') === 'admin')
+  )
+  if (!isAdmin) {
+    return e.json(403, { error: 'Acesso restrito a administradores.' })
   }
+
+  var localEngine = null
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
+      localEngine = globalThis.__proactiveEngine
+    }
+  } catch (e1) {}
+  if (!localEngine || typeof localEngine.sendPrechargeEmail !== 'function') {
+    return e.json(500, { error: 'engine proativa indisponível' })
+  }
+
+  var body = {}
+  try {
+    body = e.readBody({}) || {}
+  } catch (bErr) {
+    body = {}
+  }
+  var to = body.to || 'barbara.ferreira.leal@gmail.com'
+  var daysAhead = body.days_ahead === 1 ? 1 : 3
+
+  var emailRes = localEngine.sendPrechargeEmail(
+    to,
+    'Administração (teste)',
+    daysAhead,
+    '01/12/2026',
+    1990,
+    'Plano Mensal Recorrente',
+  )
+  return e.json(emailRes && emailRes.success ? 200 : 500, emailRes)
 })

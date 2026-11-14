@@ -25,6 +25,25 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.102',
+    date: '14/11/2026',
+    title:
+      'Mapeamento Definitivo dos 4 Prices da Stripe (consulta real à API) e Correção dos Planos Padrão',
+    tag: 'Atual',
+    highlights: [
+      'Mapa REAL da Stripe obtido por consulta à API (produto prod_Va2uSpOiSeedcC): R$ 19,90/mês → price_1UZ11R31gAsdzIHftUWaEJB0; R$ 29,90/mês → price_1UZ11Q31gAsdzIHfLP1oZJKS; R$ 214,90/ano ("Por ano") → price_1UZ11Q31gAsdzIHfGEinrGPA; R$ 322,90/ano ("Por ano") → price_1UZ11O31gAsdzIHfNapN7q6b.',
+      'Migração 0045 corrigiu as 4 linhas de subscription_plans: as linhas de valor PADRÃO (Mensal Padrão R$ 29,90 e Anual Padrão R$ 322,90) apontavam para os price_ids PROMOCIONAIS e agora apontam para os IDs reais dos seus valores/intervalos.',
+      'stripe_config.price_id_anual_recorrente preenchido com o Price anual recorrente "Por ano" (R$ 214,90) — o botão "Assinar Anual (recorrente)" de Minha Conta volta a funcionar (antes devolvia erro amigável de configuração ausente).',
+      'Confirmado pelo mapa da API: o price_id_anual gravado (price_...GEinrGPA) NÃO é o Price mensal bugado da v0.0.95 — é o Price anual "Por ano" correto. price_id_mensal (R$ 19,90) também já estava correto.',
+      'Fluxo Pix à vista (mode=payment, price_data com o valor do plano) intocado; engine proativo e orquestrador (v0.0.101) intocados.',
+    ],
+    details: [
+      'Nova migração pocketbase/migrations/0045_map_stripe_prices.js (idempotente) aplicada e verificada na base viva.',
+      'Atualizado src/data/docsContent.ts (roteiro regressivo, bloco AL) com o mapa definitivo dos 4 Prices.',
+      'Sem alteração em proactive_notifications.js, proactive_notifications_engine.js e no fluxo de checkout mode=payment.',
+    ],
+  },
+  {
     version: '0.0.58',
     date: '05/11/2026',
     title:

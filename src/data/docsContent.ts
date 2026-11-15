@@ -237,6 +237,7 @@ export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obri
 Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém todos os cenários essenciais A a Z intactos e adiciona o cenário AA para o fallback embutido e resiliente no WhatsApp sem erros de escopo.
 > **Atualização v0.0.102**: MAPEAMENTO DEFINITIVO dos 4 Prices da Stripe via API (produto prod_Va2uSpOiSeedcC): R$ 19,90/mês → \`price_1UZ11R31gAsdzIHftUWaEJB0\`; R$ 29,90/mês → \`price_1UZ11Q31gAsdzIHfLP1oZJKS\`; R$ 214,90/ano ("Por ano") → \`price_1UZ11Q31gAsdzIHfGEinrGPA\`; R$ 322,90/ano ("Por ano") → \`price_1UZ11O31gAsdzIHfNapN7q6b\`. Migração 0045 corrigiu as 4 linhas de \`subscription_plans\` (linhas de valor PADRÃO apontavam para os price_ids PROMOCIONAIS) e preencheu \`stripe_config.price_id_anual_recorrente\`. O price_id_anual confirmado NÃO é o mensal bugado da v0.0.95 — é o Price anual "Por ano" correto. Também mantém: correção do carregamento do engine proativo nos crons (require() → fallback globalThis) e do bug \`res.rawText\` (v0.0.101); crons \`proactive_nightly_reminder\`, \`proactive_precharge_email\` e \`proactive_pix_renewal\` rodando sem "GoError: Invalid module".
 > **Atualização v0.0.103**: novo hook de integridade de vigência de planos no Backoffice (\`subscription_plans_vigencia.js\`, Billing → Planos): sobreposição de vigências do MESMO plan_type rejeitada, \`valid_until <= valid_from\` rejeitado, trilhas mensal/anual independentes, janelas em sequência permitidas (janelas semiabertas [from, until)) e linhas inativas/overrides fora da checagem. Novo cenário **AR — Virada de Vigência de Plano (regra AG)** e linha de vigência no bloco AL.
+> **Atualização v0.0.104**: fim do "Something went wrong" no Backoffice: a rota admin de salvar planos repassa o BadRequestError do hook de vigência (HTTP 400 com a mensagem amigável) e o Frontend extrai a mensagem real do corpo da resposta (message/error/data) — o toast exibe o erro em português citando plano e período; validação continua bloqueando o salvamento do plano conflitante.
 
 ---
 
@@ -1212,6 +1213,12 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Salvar uma linha ANUAL com a mesma janela da linha mensal conflitante: ACEITA — as trilhas mensal e anual são independentes.
    - Salvar linha mensal "válida até 30/11" quando já existe outra "a partir de 01/12" (sequência, sem sobreposição): ACEITA (janelas semiabertas [from, until)).
    - Linhas inativas e linhas com \`user_override\` (vigência por cliente) continuam salvas mesmo se sobrepostas à trilha geral — ficam fora da checagem e convivem com ela.
+
+5. **Mensageria do erro de vigência no Backoffice (v0.0.104)**:
+   - Repetir o item 4.1 (salvar linha mensal sobreposta) e observar o TOAST vermelho:
+     - **Comportamento Esperado (v0.0.104)**: o toast exibe a MENSAGEM COMPLETA do hook em português — ex.: "Já existe um plano mensal válido no período 01/12/2026 em diante: Mensal Padrão. Ajuste a vigência para não sobrepor essa linha." — NUNCA o texto genérico em inglês "Something went wrong." O plano conflitante NÃO é salvo e a tabela não recarrega com a linha sobreposta.
+   - Salvar depois uma linha VÁLIDA (sem sobreposição): toast verde "Plano salvo!" e tabela recarregada — salvamento normal sem regressão.
+   - Cobertura estendida: os demais salvamentos do Backoffice (Dados Legais, Configuração Stripe) seguem a mesma regra — erro com mensagem própria é exibido tal como o backend devolveu; frases genéricas do SDK em inglês nunca aparecem.
 
 ---
 `

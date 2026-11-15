@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency } from '@/lib/formatters'
+import { getBackendErrorMessage } from '@/lib/pocketbase/errors'
 import {
   billingService,
   adminService,
@@ -223,7 +224,10 @@ export const BillingAdminSection: React.FC = () => {
         })
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao salvar plano.'
+      // v0.0.104: extrai a mensagem amigável do corpo da resposta (ex.: erro do
+      // hook de vigência: "Já existe um plano mensal válido no período ...") —
+      // nunca mostra "Something went wrong" quando a resposta traz mensagem própria.
+      const msg = getBackendErrorMessage(err, 'Falha ao salvar plano. Tente novamente.')
       toast({ title: 'Erro ao salvar plano', description: msg, variant: 'destructive' })
     } finally {
       setSavingPlanId(null)
@@ -240,7 +244,7 @@ export const BillingAdminSection: React.FC = () => {
       })
       await loadPlans()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao configurar produtos na Stripe.'
+      const msg = getBackendErrorMessage(err, 'Falha ao configurar produtos na Stripe.')
       toast({ title: 'Erro na configuração Stripe', description: msg, variant: 'destructive' })
     } finally {
       setSetupLoading(false)
@@ -266,7 +270,7 @@ export const BillingAdminSection: React.FC = () => {
         })
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao salvar dados legais.'
+      const msg = getBackendErrorMessage(err, 'Falha ao salvar dados legais.')
       toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' })
     } finally {
       setSavingLegal(false)
@@ -309,7 +313,7 @@ export const BillingAdminSection: React.FC = () => {
     } catch (err: unknown) {
       toast({
         title: 'Erro ao salvar configuração Stripe',
-        description: err instanceof Error ? err.message : 'Não foi possível salvar os dados.',
+        description: getBackendErrorMessage(err, 'Não foi possível salvar os dados.'),
         variant: 'destructive',
       })
     } finally {

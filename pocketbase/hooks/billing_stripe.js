@@ -2044,8 +2044,17 @@ routerAdd(
         id: rec.id,
       })
     } catch (err) {
-      console.log('[admin_billing] Erro ao salvar plano: ' + err)
-      return e.json(500, { error: String(err) })
+      // v0.0.104: repassa o status/mensagem do erro de validação (hook de
+      // vigência lança BadRequestError) — antes virava 500 genérico e o
+      // Backoffice exibia "Something went wrong" sem a mensagem amigável.
+      var localStatus = 500
+      var localMsg = 'Falha ao salvar plano. Tente novamente.'
+      try {
+        if (err && err.hasOwnProperty('status') && err.status > 0) localStatus = err.status
+        if (err && err.hasOwnProperty('message') && err.message) localMsg = err.message
+      } catch (_) {}
+      console.log('[admin_billing] Erro ao salvar plano (' + localStatus + '): ' + err)
+      return e.json(localStatus, { success: false, error: localMsg, message: localMsg })
     }
   },
   $apis.requireAuth(),

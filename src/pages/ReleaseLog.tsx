@@ -25,11 +25,32 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.104',
+    date: '15/11/2026',
+    title:
+      'Erros de Validação de Planos Amigáveis no Backoffice (fim do "Something went wrong" na aba Planos)',
+    tag: 'Atual',
+    highlights: [
+      'Erro de vigência legível: ao salvar uma linha de plano cuja vigência se sobrepõe à de outra do mesmo tipo, o Backoffice (Billing → Planos) agora exibe a MENSAGEM COMPLETA do hook em português — ex.: "Já existe um plano mensal válido no período 01/12/2026 em diante: Mensal Padrão. Ajuste a vigência para não sobrepor essa linha." — no lugar do genérico "Erro ao salvar plano / Something went wrong."',
+      'Causa raiz corrigida no backend: a rota admin de salvar planos engolia o BadRequestError do hook de vigência e respondia 500 genérico; agora repassa o status e a mensagem originais (HTTP 400) com o corpo { success, error, message }.',
+      'Defesa extra no frontend: novo extrator (getBackendErrorMessage) lê message/error/data do corpo da resposta, remove prefixos da JSVM ("GoError: ...") e bloqueia frases genéricas em inglês do SDK — qualquer erro que traga mensagem própria é exibido; só faltas de rede sem mensagem usam o fallback em português.',
+      'Mesmo tratamento estendido aos demais salvamentos do Backoffice (Dados Legais, Configuração Stripe e setup de produtos Stripe) — nenhum deles exibe mais "Something went wrong".',
+      'Comportamento preservado: o plano conflitante NÃO é salvo (validação do hook continua bloqueando a gravação) e o salvamento de plano válido segue normal, com o toast verde "Plano salvo!" e a recarga da tabela.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: catch do POST /backend/v1/admin/billing/plans repassa err.status/err.message (BadRequestError do subscription_plans_vigencia.js vira 400 amigável) — hook de vigência v0.0.103 intocado.',
+      'src/lib/pocketbase/errors.ts: nova função getBackendErrorMessage(error, fallback) — lê response.message/response.error/response.data e filtra as mensagens genéricas do SDK.',
+      'src/components/admin/BillingAdminSection.tsx: handlers de salvar plano, dados legais, configuração Stripe e setup de produtos usam o extrator.',
+      'src/data/docsContent.ts: cenário AR ampliado com o item 5 (mensageiro de erro no Backoffice) e linha de atualização v0.0.104 no bloco AL.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.104.',
+    ],
+  },
+  {
     version: '0.0.103',
     date: '15/11/2026',
     title:
       'Hook de Integridade de Vigência dos Planos no Backoffice (subscription_plans_vigencia) e Cenário AR no Roteiro Regressivo',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Novo hook de integridade de vigência (Billing → Planos): sobreposição de vigências do MESMO plan_type é REJEITADA — tentar salvar duas linhas mensais (ou duas anuais) com janelas que se cruzam falha com erro amigável citando o plano conflitante e o período.',
       'Fim antes do início rejeitado: linhas com valid_until <= valid_from (ex.: de 10/12 a 05/12) são recusadas com erro amigável — nunca erro 500 nem falha silenciosa.',

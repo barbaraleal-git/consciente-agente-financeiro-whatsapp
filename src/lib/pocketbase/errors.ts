@@ -27,20 +27,3 @@ export function getErrorMessage(error: unknown): string {
   const msgs = Object.values(extractFieldErrors(error))
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
-
-// v0.0.114: reexportada com o nome histórico do projeto (v0.0.106) — extrai a
-// mensagem REAL do corpo de um 400 do backend (error/message/tipo GoError),
-// bloqueando o genérico "Something went wrong" nos toasts do Backoffice.
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  if (error instanceof ClientResponseError) {
-    const data = error.response as unknown as Record<string, unknown> | undefined
-    const candidates = [data?.error, data?.message, error.message]
-    for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i]
-      if (typeof c === 'string' && c.trim() !== '' && c.trim() !== 'Something went wrong') {
-        return c.trim()
-      }
-    }
-  }
-  return fallback || (error instanceof Error ? error.message : 'Erro inesperado. Tente novamente.')
-}

@@ -41,6 +41,19 @@
  * hora do evento o módulo já carregou. Fonte única: qualquer alteração na
  * lógica é feita AQUI.
  *
+ * v0.0.115 — CORREÇÃO do bug "Object has no member '__vigenciaCobertura'":
+ * na v0.0.114 a rota POST /admin/billing/plans chamava a função DIRETAMENTE
+ * no corpo do callback e, quando o callback rodava em um POOL de VM que não
+ * tinha carregado este módulo (o globalThis NÃO é compartilhado entre todos
+ * os hooks do PocketBase em todos os pools — a prova real da dona quebrou
+ * com 500 em inglês), o 500 cru vazou para o toast do Backoffice. Regra nova
+ * (memória do projeto): lógica compartilhada entre hooks/rotas NUNCA pode
+ * depender de ordem de carregamento — o CONSUMIDOR resolve a função de forma
+ * DEFENSIVA (typeof + fallback 100% inline com a MESMA lógica copiada aqui e
+ * marcada v0.0.115) e NUNCA dá ReferenceError/TypeError cru. A fonte única
+ * da lógica segue sendo ESTE arquivo; o fallback do consumidor existe só
+ * para garantir 400 amigável em PT quando o globalThis não estiver lá.
+ *
  * Regras JSVM: lógica 100% inline nos callbacks (sem require top-level, sem
  * variável declarada em try usada fora do bloco).
  */
@@ -210,7 +223,110 @@ onRecordCreate((e) => {
       from: localVFrom,
       until: localVUntil,
     })
-    var localCoberturaErr = globalThis.__vigenciaCobertura(localPlanType, localCoberturaRows)
+    var localCoberturaErr = ''
+    // v0.0.115 — resolução DEFENSIVA (nunca depende de ordem de
+    // carregamento de arquivos): resolve globalThis.__vigenciaCobertura
+    // com typeof + try; indisponível, usa FALLBACK 100% INLINE com a
+    // MESMA lógica (referência legível em
+    // pocketbase/hooks/_vigencia_cobertura_reference.js) — a JSVM não
+    // compartilha o globalThis de forma confiável entre módulos/hooks em
+    // todos os pools de VM (bug da prova real da dona em v0.0.114).
+    var localFallbackCobertura = function (fallbackPlanType, fallbackRows) {
+      var today = new Date().toISOString().slice(0, 10)
+      var intervals = []
+      for (var fi = 0; fi < fallbackRows.length; fi++) {
+        var fr = fallbackRows[fi]
+        if (!fr.from) continue
+        if (fr.until && fr.until < today) continue
+        intervals.push({ from: fr.from > today ? fr.from : today, until: fr.until || '' })
+      }
+      if (intervals.length === 0) {
+        return (
+          'A trilha ' +
+          fallbackPlanType +
+          ' ficaria SEM nenhum plano ativo a partir de hoje (' +
+          today +
+          ') — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível.'
+        )
+      }
+      intervals.sort(function (a, b) {
+        if (a.from < b.from) return -1
+        if (a.from > b.from) return 1
+        return 0
+      })
+      var cursor = ''
+      for (var fj = 0; fj < intervals.length; fj++) {
+        var fiv = intervals[fj]
+        if (cursor === '') {
+          if (fiv.from > today) {
+            return (
+              'A trilha ' +
+              fallbackPlanType +
+              ' ficaria SEM nenhum plano ativo de hoje (' +
+              today +
+              ') até ' +
+              fiv.from +
+              ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível. Inicie a nova vigência em ' +
+              today +
+              ' ou antes.'
+            )
+          }
+        } else if (fiv.from > cursor) {
+          return (
+            'A trilha ' +
+            fallbackPlanType +
+            ' ficaria SEM cobertura entre ' +
+            cursor +
+            ' e ' +
+            fiv.from +
+            ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
+          )
+        }
+        if (fiv.until === '') {
+          cursor = ''
+        } else if (cursor === '' || fiv.until > cursor) {
+          cursor = fiv.until
+        }
+      }
+      if (cursor === '') {
+        return ''
+      }
+      return (
+        'A trilha ' +
+        fallbackPlanType +
+        ' terminaria em ' +
+        cursor +
+        ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+      )
+    }
+    var localCoberturaFn = null
+    try {
+      if (
+        typeof globalThis !== 'undefined' &&
+        typeof globalThis.__vigenciaCobertura === 'function'
+      ) {
+        localCoberturaFn = globalThis.__vigenciaCobertura
+      }
+    } catch (localCoberturaResolveErr) {
+      console.log(
+        '[vigencia] globalThis.__vigenciaCobertura indisponível (' +
+          localCoberturaResolveErr +
+          ') — usando fallback inline v0.0.115.',
+      )
+    }
+    if (!localCoberturaFn || typeof localCoberturaFn !== 'function') {
+      localCoberturaFn = localFallbackCobertura
+    }
+    try {
+      localCoberturaErr = localCoberturaFn(localPlanType, localCoberturaRows) || ''
+    } catch (localCoberturaCallErr) {
+      console.log(
+        '[vigencia] __vigenciaCobertura falhou ao executar (' +
+          localCoberturaCallErr +
+          ') — usando fallback inline v0.0.115.',
+      )
+      localCoberturaErr = localFallbackCobertura(localPlanType, localCoberturaRows) || ''
+    }
     if (localCoberturaErr) {
       throw new BadRequestError(localCoberturaErr)
     }
@@ -284,7 +400,107 @@ onRecordUpdate((e) => {
       from: localVFrom,
       until: localVUntil,
     })
-    var localCoberturaErr = globalThis.__vigenciaCobertura(localPlanType, localCoberturaRows)
+    var localCoberturaErr = ''
+    // v0.0.115 — resolução DEFENSIVA idêntica à do onRecordCreate acima
+    // (typeof + try + fallback 100% inline com a MESMA lógica — ver
+    // pocketbase/hooks/_vigencia_cobertura_reference.js): nunca depende de
+    // ordem de carregamento de arquivos, nunca TypeError cru.
+    var localFallbackCobertura = function (fallbackPlanType, fallbackRows) {
+      var today = new Date().toISOString().slice(0, 10)
+      var intervals = []
+      for (var fi = 0; fi < fallbackRows.length; fi++) {
+        var fr = fallbackRows[fi]
+        if (!fr.from) continue
+        if (fr.until && fr.until < today) continue
+        intervals.push({ from: fr.from > today ? fr.from : today, until: fr.until || '' })
+      }
+      if (intervals.length === 0) {
+        return (
+          'A trilha ' +
+          fallbackPlanType +
+          ' ficaria SEM nenhum plano ativo a partir de hoje (' +
+          today +
+          ') — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível.'
+        )
+      }
+      intervals.sort(function (a, b) {
+        if (a.from < b.from) return -1
+        if (a.from > b.from) return 1
+        return 0
+      })
+      var cursor = ''
+      for (var fj = 0; fj < intervals.length; fj++) {
+        var fiv = intervals[fj]
+        if (cursor === '') {
+          if (fiv.from > today) {
+            return (
+              'A trilha ' +
+              fallbackPlanType +
+              ' ficaria SEM nenhum plano ativo de hoje (' +
+              today +
+              ') até ' +
+              fiv.from +
+              ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível. Inicie a nova vigência em ' +
+              today +
+              ' ou antes.'
+            )
+          }
+        } else if (fiv.from > cursor) {
+          return (
+            'A trilha ' +
+            fallbackPlanType +
+            ' ficaria SEM cobertura entre ' +
+            cursor +
+            ' e ' +
+            fiv.from +
+            ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
+          )
+        }
+        if (fiv.until === '') {
+          cursor = ''
+        } else if (cursor === '' || fiv.until > cursor) {
+          cursor = fiv.until
+        }
+      }
+      if (cursor === '') {
+        return ''
+      }
+      return (
+        'A trilha ' +
+        fallbackPlanType +
+        ' terminaria em ' +
+        cursor +
+        ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+      )
+    }
+    var localCoberturaFn = null
+    try {
+      if (
+        typeof globalThis !== 'undefined' &&
+        typeof globalThis.__vigenciaCobertura === 'function'
+      ) {
+        localCoberturaFn = globalThis.__vigenciaCobertura
+      }
+    } catch (localCoberturaResolveErr) {
+      console.log(
+        '[vigencia] globalThis.__vigenciaCobertura indisponível (' +
+          localCoberturaResolveErr +
+          ') — usando fallback inline v0.0.115.',
+      )
+    }
+    if (!localCoberturaFn || typeof localCoberturaFn !== 'function') {
+      localCoberturaFn = localFallbackCobertura
+    }
+    try {
+      localCoberturaErr = localCoberturaFn(localPlanType, localCoberturaRows) || ''
+    } catch (localCoberturaCallErr) {
+      console.log(
+        '[vigencia] __vigenciaCobertura falhou ao executar (' +
+          localCoberturaCallErr +
+          ') — usando fallback inline v0.0.115.',
+      )
+      localCoberturaErr = localFallbackCobertura(localPlanType, localCoberturaRows) || ''
+    }
     if (localCoberturaErr) {
       throw new BadRequestError(localCoberturaErr)
     }

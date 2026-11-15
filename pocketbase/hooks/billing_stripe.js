@@ -1961,7 +1961,98 @@ routerAdd(
       const localTipos = ['mensal', 'anual']
       for (var localTi = 0; localTi < localTipos.length; localTi++) {
         var localTipo = localTipos[localTi]
-        var localErr = globalThis.__vigenciaCobertura(localTipo, localTrilhas[localTipo])
+        var localErr = ''
+        var localCoberturaResolvida = false
+        try {
+          if (
+            typeof globalThis !== 'undefined' &&
+            typeof globalThis.__vigenciaCobertura === 'function'
+          ) {
+            localErr = String(
+              globalThis.__vigenciaCobertura(localTipo, localTrilhas[localTipo]) || '',
+            )
+            localCoberturaResolvida = true
+          }
+        } catch (localCoberturaCallErr) {
+          console.log(
+            '[admin_billing] /plans/coverage: __vigenciaCobertura falhou (' +
+              localCoberturaCallErr +
+              ') — usando fallback inline v0.0.115.',
+          )
+        }
+        if (!localCoberturaResolvida) {
+          // v0.0.115 — FALLBACK 100% INLINE (mesma lógica da referência
+          // _vigencia_cobertura_reference.js): a JSVM não compartilha o
+          // globalThis de forma confiável entre módulos/hooks em todos os
+          // pools de VM — nunca depende de ordem de carregamento.
+          var today = new Date().toISOString().slice(0, 10)
+          var intervals = []
+          for (var fbI = 0; fbI < localTrilhas[localTipo].length; fbI++) {
+            var fbRow = localTrilhas[localTipo][fbI]
+            if (!fbRow.from) continue
+            if (fbRow.until && fbRow.until < today) continue
+            intervals.push({
+              from: fbRow.from > today ? fbRow.from : today,
+              until: fbRow.until || '',
+            })
+          }
+          if (intervals.length === 0) {
+            localErr =
+              'A trilha ' +
+              localTipo +
+              ' ficaria SEM nenhum plano ativo a partir de hoje (' +
+              today +
+              ') — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível.'
+          } else {
+            intervals.sort(function (a, b) {
+              if (a.from < b.from) return -1
+              if (a.from > b.from) return 1
+              return 0
+            })
+            var cursor = ''
+            for (var fbJ = 0; fbJ < intervals.length; fbJ++) {
+              var fbIv = intervals[fbJ]
+              if (cursor === '') {
+                if (fbIv.from > today) {
+                  localErr =
+                    'A trilha ' +
+                    localTipo +
+                    ' ficaria SEM nenhum plano ativo de hoje (' +
+                    today +
+                    ') até ' +
+                    fbIv.from +
+                    ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível. Inicie a nova vigência em ' +
+                    today +
+                    ' ou antes.'
+                  break
+                }
+              } else if (fbIv.from > cursor) {
+                localErr =
+                  'A trilha ' +
+                  localTipo +
+                  ' ficaria SEM cobertura entre ' +
+                  cursor +
+                  ' e ' +
+                  fbIv.from +
+                  ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
+                break
+              }
+              if (fbIv.until === '') {
+                cursor = ''
+              } else if (cursor === '' || fbIv.until > cursor) {
+                cursor = fbIv.until
+              }
+            }
+            if (localErr === '' && cursor !== '') {
+              localErr =
+                'A trilha ' +
+                localTipo +
+                ' terminaria em ' +
+                cursor +
+                ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+            }
+          }
+        }
         localResult.push({
           plan_type: localTipo,
           rows: localTrilhas[localTipo],
@@ -2226,10 +2317,116 @@ routerAdd(
           from: localVFrom,
           until: localVUntil,
         })
-        // Implementação ÚNICA em globalThis.__vigenciaCobertura, registrada
-        // pelo hook de coleção subscription_plans_vigencia.js (padrão
-        // __proactiveEngine) — a rota NÃO duplica a lógica.
-        var localCoverageErr = globalThis.__vigenciaCobertura(localPlanType, localCoverageRows)
+        // v0.0.115 — CORREÇÃO do bug "Object has no member '__vigenciaCobertura'"
+        // (a prova real da dona quebrou com 500 cru em inglês): a JSVM do
+        // PocketBase NÃO compartilha o globalThis de forma confiável entre
+        // módulos/hooks em todos os pools de VM — a chamada direta
+        // globalThis.__vigenciaCobertura(...) lançava TypeError quando o pool
+        // que executou a rota não tinha carregado o módulo que registra a
+        // função. O consumidor agora resolve a função de forma DEFENSIVA
+        // (typeof + try) e, indisponível, usa FALLBACK 100% INLINE com a
+        // MESMA lógica (referência legível em
+        // pocketbase/hooks/_vigencia_cobertura_reference.js). NUNCA depende
+        // de ordem de carregamento de arquivos; nunca vaza 500 cru.
+        var localCoberturaFn = null
+        var localFallbackCobertura = null
+        try {
+          if (typeof globalThis !== 'undefined' && globalThis.__vigenciaCobertura) {
+            localCoberturaFn = globalThis.__vigenciaCobertura
+          }
+        } catch (localCoberturaResolveErr) {
+          console.log(
+            '[admin_billing] globalThis.__vigenciaCobertura indisponível (' +
+              localCoberturaResolveErr +
+              ') — usando fallback inline v0.0.115.',
+          )
+        }
+        // FALLBACK SEMPRE definido (independe do globalThis existir ou não).
+        localFallbackCobertura = function (fallbackPlanType, fallbackRows) {
+          var today = new Date().toISOString().slice(0, 10)
+          var intervals = []
+          for (var fi = 0; fi < fallbackRows.length; fi++) {
+            var fr = fallbackRows[fi]
+            if (!fr.from) continue
+            if (fr.until && fr.until < today) continue
+            intervals.push({ from: fr.from > today ? fr.from : today, until: fr.until || '' })
+          }
+          if (intervals.length === 0) {
+            return (
+              'A trilha ' +
+              fallbackPlanType +
+              ' ficaria SEM nenhum plano ativo a partir de hoje (' +
+              today +
+              ') — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível.'
+            )
+          }
+          intervals.sort(function (a, b) {
+            if (a.from < b.from) return -1
+            if (a.from > b.from) return 1
+            return 0
+          })
+          var cursor = ''
+          for (var fj = 0; fj < intervals.length; fj++) {
+            var fiv = intervals[fj]
+            if (cursor === '') {
+              if (fiv.from > today) {
+                return (
+                  'A trilha ' +
+                  fallbackPlanType +
+                  ' ficaria SEM nenhum plano ativo de hoje (' +
+                  today +
+                  ') até ' +
+                  fiv.from +
+                  ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar para se cadastrar não encontraria plano disponível. Inicie a nova vigência em ' +
+                  today +
+                  ' ou antes.'
+                )
+              }
+            } else if (fiv.from > cursor) {
+              return (
+                'A trilha ' +
+                fallbackPlanType +
+                ' ficaria SEM cobertura entre ' +
+                cursor +
+                ' e ' +
+                fiv.from +
+                ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
+              )
+            }
+            if (fiv.until === '') {
+              cursor = ''
+            } else if (cursor === '' || fiv.until > cursor) {
+              cursor = fiv.until
+            }
+          }
+          if (cursor === '') {
+            return ''
+          }
+          return (
+            'A trilha ' +
+            fallbackPlanType +
+            ' terminaria em ' +
+            cursor +
+            ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+          )
+        }
+        // v0.0.115 — resolve a função compartilhada de forma DEFENSIVA e, se
+        // indisponível ou falhando, usa SEMPRE o fallback inline (mesma
+        // lógica — ver _vigencia_cobertura_reference.js). Nunca 500 cru.
+        if (!localCoberturaFn || typeof localCoberturaFn !== 'function') {
+          localCoberturaFn = localFallbackCobertura
+        }
+        var localCoverageErr = ''
+        try {
+          localCoverageErr = localCoberturaFn(localPlanType, localCoverageRows) || ''
+        } catch (localCoberturaCallErr) {
+          console.log(
+            '[admin_billing] __vigenciaCobertura falhou ao executar (' +
+              localCoberturaCallErr +
+              ') — usando fallback inline v0.0.115.',
+          )
+          localCoverageErr = localFallbackCobertura(localPlanType, localCoverageRows) || ''
+        }
         if (localCoverageErr) {
           return e.json(400, { error: localCoverageErr })
         }

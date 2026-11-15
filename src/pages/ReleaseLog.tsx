@@ -25,11 +25,30 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.110',
+    date: '15/11/2026',
+    title: 'Importar Preços da Stripe como Rascunhos Pendentes de Vigência (Item 31 do Backlog)',
+    tag: 'Atual',
+    highlights: [
+      'Nova funcionalidade no Backoffice (Billing → Planos e Preços): botão "Importar preços da Stripe" chama a rota POST /backend/v1/admin/billing/stripe/import-prices e traz os Prices do produto Consciente direto da API da Stripe como linhas RASCUNHO em subscription_plans — active = false, sem valid_from/valid_until, destacados em âmbar com badge "Rascunho — defina a vigência".',
+      'Dedupe rígido por stripe_price_id contra TODAS as linhas (ativas ou não): os 4 Prices reais da conta (mensal promo R$ 19,90 …ftUWaEJB0, mensal padrão R$ 29,90 …fLP1oZJKS, anual promo R$ 214,90 …fGEinrGPA, anual padrão R$ 322,90 …fNapN7q6b) aparecem como "já existentes" e NUNCA duplicam, não importa quantas vezes o botão seja clicado.',
+      'Rascunho fica FORA da oferta pública (resolvida só por linhas ativas vigentes) e fora da checagem de vigência (regra do cenário AR preservada) até definir plan_type/vigência e ativar — só então passa a valer.',
+      'Proteções: sem secret key configurada a rota devolve HTTP 400 com mensagem amigável (nunca 500); toast de resumo "X importados, Y já existentes" e tabela recarregada após cada importação.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: rota POST /backend/v1/admin/billing/stripe/import-prices (lógica 100% inline no callback do routerAdd, $http.send GET /v1/prices?product=prod_Va2uSpOiSeedcC com Bearer da secret key de stripe_config, sem $security.base64Encode).',
+      'src/services/finance.ts: helper adminImportStripePrices + tipos de resposta da importação.',
+      'src/components/admin/BillingAdminSection.tsx: botão "Importar preços da Stripe" com toast de resumo e recarga da tabela; destaque de rascunho (linha âmbar + badge) via isRascunho.',
+      'src/data/docsContent.ts: Item 31 movido para Concluídos (v0.0.110) + novo cenário AS — Importação de Preços da Stripe no roteiro regressivo.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.110.',
+    ],
+  },
+  {
     version: '0.0.108',
     date: '15/11/2026',
     title:
       'Fronteira Inclusiva Comprovada via API Real + Rótulo "Pagamento único (Pix/cartão)" + Limpeza do Auto-teste',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Fronteira inclusiva COMPROVADA via API real no backend vivo (não leitura de código): sobreposição no MESMO dia é rejeitada com HTTP 400 e mensagem amigável — trilhos mensal e anual ("Mensal Padrão" e "Anual Padrão"); o dia de fronteira pertence a UMA SÓ vigência (fim 30/11 + início 01/12 é CONFLITO; janelas consecutivas exigem 1 dia de folga).',
       'Rótulo do Backoffice corrigido (aba Assinaturas dos Clientes): cliente com billing_mode one_time pago exibe "Pagamento único (Pix/cartão)" — nunca mais o resíduo "Sem assinatura Stripe" (comportamento correto desde a v0.0.95).',

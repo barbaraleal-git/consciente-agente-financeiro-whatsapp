@@ -238,6 +238,7 @@ Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente.
 > **Atualização v0.0.102**: MAPEAMENTO DEFINITIVO dos 4 Prices da Stripe via API (produto prod_Va2uSpOiSeedcC): R$ 19,90/mês → \`price_1UZ11R31gAsdzIHftUWaEJB0\`; R$ 29,90/mês → \`price_1UZ11Q31gAsdzIHfLP1oZJKS\`; R$ 214,90/ano ("Por ano") → \`price_1UZ11Q31gAsdzIHfGEinrGPA\`; R$ 322,90/ano ("Por ano") → \`price_1UZ11O31gAsdzIHfNapN7q6b\`. Migração 0045 corrigiu as 4 linhas de \`subscription_plans\` (linhas de valor PADRÃO apontavam para os price_ids PROMOCIONAIS) e preencheu \`stripe_config.price_id_anual_recorrente\`. O price_id_anual confirmado NÃO é o mensal bugado da v0.0.95 — é o Price anual "Por ano" correto. Também mantém: correção do carregamento do engine proativo nos crons (require() → fallback globalThis) e do bug \`res.rawText\` (v0.0.101); crons \`proactive_nightly_reminder\`, \`proactive_precharge_email\` e \`proactive_pix_renewal\` rodando sem "GoError: Invalid module".
 > **Atualização v0.0.103**: novo hook de integridade de vigência de planos no Backoffice (\`subscription_plans_vigencia.js\`, Billing → Planos): sobreposição de vigências do MESMO plan_type rejeitada, \`valid_until <= valid_from\` rejeitado, trilhas mensal/anual independentes, janelas em sequência permitidas (janelas semiabertas [from, until)) e linhas inativas/overrides fora da checagem. Novo cenário **AR — Virada de Vigência de Plano (regra AG)** e linha de vigência no bloco AL.
 > **Atualização v0.0.104**: fim do "Something went wrong" no Backoffice: a rota admin de salvar planos repassa o BadRequestError do hook de vigência (HTTP 400 com a mensagem amigável) e o Frontend extrai a mensagem real do corpo da resposta (message/error/data) — o toast exibe o erro em português citando plano e período; validação continua bloqueando o salvamento do plano conflitante.
+> **Atualização v0.0.105**: validação de vigência movida para DENTRO da rota admin de salvar planos (checagem inline antes do $app.save — o hook de coleção sozinho não barrava o salvamento pela rota; reproduzido por teste HTTP real: POST sobreposto → 400 em português, nada gravado). Coluna Stripe da aba Assinaturas dos Clientes não exibe mais "Sem assinatura Stripe" para pagamento único (one_time Pix/cartão) — exibe "Pagamento único (Pix/cartão)"; endpoint de assinaturas agora expõe billing_mode/payment_amount_cents/payment_paid_at/access_until.
 
 ---
 
@@ -1206,9 +1207,9 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 3. **Assinantes atuais não afetados pela virada**:
    - Cliente com assinatura ativa contratada no preço promocional: em 01/12 o valor dela NÃO muda — a virada de vigência governa apenas novas contratações/renovações de checkout; contratos ativos seguem pelo valor contratado (cancelamento e portal ver cenário AL-4/AL-12).
 
-4. **Validação da integridade de vigência no Backoffice (Billing → Planos, admin)**:
+4. **Validação da integridade de vigência no Backoffice (Billing → Planos, admin)** — fonte única da regra é a rota \`POST /backend/v1/admin/billing/plans\` (v0.0.105: checagem inline na rota, antes do \`$app.save\`):
    - Tentar salvar uma linha MENSAL cuja vigência se sobreponha à "Mensal Black November" existente (ex.: válida de 15/11 a 15/12):
-     - **Comportamento Esperado**: salvamento REJEITADO com erro amigável citando o plano conflitante e o período (ex.: conflito com "Mensal Black November", de DD/MM a DD/MM) — nunca erro 500 nem falha silenciosa.
+     - **Comportamento Esperado**: salvamento REJEITADO com HTTP 400 e erro amigável citando o plano conflitante e o período (ex.: conflito com "Mensal Black November", de DD/MM a DD/MM) — nada é gravado, nunca erro 500 nem falha silenciosa (comprovado por teste HTTP real em 15/11/2026: POST sobreposto → 400 "Já existe um plano mensal vigente no período ...: Mensal (Black November). Ajuste a vigência para não sobrepor essa linha."; POST válido → 200).
    - Tentar salvar uma linha com \`valid_until <= valid_from\` (ex.: de 10/12 a 05/12): REJEITADA com erro amigável de "fim antes do início".
    - Salvar uma linha ANUAL com a mesma janela da linha mensal conflitante: ACEITA — as trilhas mensal e anual são independentes.
    - Salvar linha mensal "válida até 30/11" quando já existe outra "a partir de 01/12" (sequência, sem sobreposição): ACEITA (janelas semiabertas [from, until)).
@@ -1219,6 +1220,16 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
      - **Comportamento Esperado (v0.0.104)**: o toast exibe a MENSAGEM COMPLETA do hook em português — ex.: "Já existe um plano mensal válido no período 01/12/2026 em diante: Mensal Padrão. Ajuste a vigência para não sobrepor essa linha." — NUNCA o texto genérico em inglês "Something went wrong." O plano conflitante NÃO é salvo e a tabela não recarrega com a linha sobreposta.
    - Salvar depois uma linha VÁLIDA (sem sobreposição): toast verde "Plano salvo!" e tabela recarregada — salvamento normal sem regressão.
    - Cobertura estendida: os demais salvamentos do Backoffice (Dados Legais, Configuração Stripe) seguem a mesma regra — erro com mensagem própria é exibido tal como o backend devolveu; frases genéricas do SDK em inglês nunca aparecem.
+
+6. **Fonte única da validação na rota de salvar plano (v0.0.105)**:
+   - **Correção de causa raiz**: a usuária salvou "Mensal Padrão" com vigência sobreposta e recebeu "Plano salvo!" — a checagem vivia só no hook de coleção (\`onRecordUpdate\`), que não é acionado de forma confiável quando a rota admin regrava o registro via \`$app.save\`; o erro de 400 também podia ser engolido pelo catch da rota.
+   - **Comportamento Esperado (v0.0.105)**: a MESMA checagem de vigência roda INLINE dentro da rota \`POST /backend/v1/admin/billing/plans\` (fonte única, antes do \`$app.save\`) — qualquer sobreposição do mesmo \`plan_type\` é devolvida como HTTP 400 em português citando plano e período, e NADA é gravado. Reproduzido por teste HTTP real contra o backend: POST sobreposto → 400 "Já existe um plano mensal vigente no período..."; POST válido → 200.
+   - O hook de coleção \`subscription_plans_vigencia.js\` continua como blindagem para gravações DIRETAS na coleção (painel PocketBase), com a mesma regra — agora idêntica à da rota (mesma comparação, mesma mensagem).
+   - Salvamentos válidos continuam com o toast verde "Plano salvo!" e a recarga da tabela.
+
+7. **Resíduo de UI "Sem assinatura Stripe" para pagamento único (v0.0.105)**:
+   - **Correção**: na aba "Assinaturas dos Clientes" do Backoffice, a coluna Stripe mostrava "Sem assinatura Stripe" para quem pagou à vista (one_time Pix/cartão) — a ausência de \`stripe_subscription_id\` é o comportamento CORRETO desde a v0.0.95 e não deve ser sinalizada como problema.
+   - **Comportamento Esperado (v0.0.105)**: cliente one_time pago exibe "Pagamento único (Pix/cartão)"; quem tem assinatura recorrente continua "Assinatura vinculada"; só quem não tem nenhum dos dois continua vendo "Sem assinatura Stripe". O endpoint \`GET /backend/v1/admin/billing/subscriptions\` agora expõe \`billing_mode\`, \`payment_amount_cents\`, \`payment_paid_at\` e \`access_until\`.
 
 ---
 `

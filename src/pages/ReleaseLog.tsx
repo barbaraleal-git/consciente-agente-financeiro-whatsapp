@@ -25,6 +25,28 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.105',
+    date: '15/11/2026',
+    title:
+      'Validação de Vigência Garantida na Rota de Salvar Planos + Fim do Resíduo "Sem assinatura Stripe" para Pagamento Único',
+    tag: 'Atual',
+    highlights: [
+      'Correção de causa raiz confirmada por reprodução real: a usuária salvou "Mensal Padrão" com vigência sobreposta e recebeu "Plano salvo!" — a checagem vivia apenas no hook de coleção (onRecordUpdate), que não é acionado de forma confiável quando a rota admin regrava o registro via $app.save. A MESMA validação agora roda INLINE na rota POST /backend/v1/admin/billing/plans, ANTES do $app.save: sobreposição do mesmo tipo → HTTP 400 em português citando plano e período, e NADA é gravado.',
+      'Regra de vigência (inviolada desde a v0.0.103): dentro do MESMO plan_type (mensal vs anual), janelas semiabertas [from, until) não podem se sobrepor; valid_until vazio = "em diante"; sequência (fim dia X, início >= X) é válida; trilhas mensal e anual são independentes; linhas inativas e com user_override ficam fora da checagem; edição da própria linha não conflita consigo mesma.',
+      'Fim do resíduo "Sem assinatura Stripe": na aba Assinaturas dos Clientes do Backoffice, cliente com pagamento único pago (one_time Pix/cartão — caso da conta da administradora, R$ 214,90 válido até 10/11/2027) agora exibe "Pagamento único (Pix/cartão)" em vez da observação falsa de que falta assinatura; a ausência de stripe_subscription_id é o comportamento correto desde a v0.0.95.',
+      'O endpoint GET /backend/v1/admin/billing/subscriptions passou a expor billing_mode, payment_amount_cents, payment_paid_at e access_until por cliente — a coluna Stripe decide pelo modo de cobrança real, não pela ausência de assinatura.',
+      'Hook de coleção subscription_plans_vigencia.js mantido como blindagem para gravações diretas no painel PocketBase, com regra e mensagem idênticas às da rota.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: checagem de vigência inline no handler do POST /backend/v1/admin/billing/plans (valid_until <= valid_from rejeitado; varredura de conflitos por plan_type com janelas semiabertas) + novos campos one_time na resposta de /admin/billing/subscriptions.',
+      'pocketbase/hooks/subscription_plans_vigencia.js: reescrito com a mesma regra da rota (100% inline nos callbacks, sem require top-level) — protege gravações fora do Backoffice.',
+      'src/services/finance.ts: AdminSubscriptionsResponse ganha billing_mode/payment_amount_cents/payment_paid_at/access_until + helper getStripeStatusText (texto da coluna Stripe centralizado).',
+      'src/components/admin/BillingAdminSection.tsx: coluna Stripe da aba Assinaturas dos Clientes usa getStripeStatusText.',
+      'src/data/docsContent.ts: cenário AR ampliado com os itens 6 (fonte única na rota) e 7 (resíduo one_time) + linha de atualização v0.0.105.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.105.',
+    ],
+  },
+  {
     version: '0.0.104',
     date: '15/11/2026',
     title:

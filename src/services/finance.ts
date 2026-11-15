@@ -903,7 +903,31 @@ export interface AdminSubscriptionsResponse {
     terms_accepted_at: string
     recurring_consent_accepted_at: string
     created: string
+    /** v0.0.105: modo de cobrança — 'recurring' (assinatura Stripe) ou 'one_time' (pagamento único Pix/cartão). */
+    billing_mode?: string
+    /** v0.0.105: valor pago no pagamento único (one_time), em centavos. */
+    payment_amount_cents?: number
+    /** v0.0.105: data do pagamento único (one_time). */
+    payment_paid_at?: string
+    /** v0.0.105: validade do acesso (one_time: pagamento + 12 meses). */
+    access_until?: string
   }>
+}
+
+/**
+ * v0.0.105: texto da coluna "Stripe" na aba Assinaturas dos Clientes.
+ * Pagamento único pago (one_time) NUNCA exibe "Sem assinatura Stripe" — a
+ * ausência de stripe_subscription_id é o comportamento correto desde a v0.0.95.
+ */
+export const getStripeStatusText = (c: {
+  stripe_subscription_id?: string
+  billing_mode?: string
+  payment_paid_at?: string
+}): string => {
+  if (c.stripe_subscription_id) return 'Assinatura vinculada'
+  const isOneTime = (c.billing_mode || '') === 'one_time' || !!c.payment_paid_at
+  if (isOneTime) return 'Pagamento único (Pix/cartão)'
+  return 'Sem assinatura Stripe'
 }
 
 export interface StripeAdminConfig {

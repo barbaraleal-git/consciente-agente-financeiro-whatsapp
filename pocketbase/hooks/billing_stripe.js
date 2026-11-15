@@ -2036,6 +2036,72 @@ routerAdd(
       rec.set('active', body.active !== undefined ? !!body.active : true)
       rec.set('notes', body.notes || '')
 
+      // v0.0.105: validação de integridade de vigência executada AQUI, inline na
+      // rota (fonte única, independente de hook de coleção). Regra: dentro do
+      // MESMO plan_type, janelas semiabertas [from, until) não podem se sobrepor;
+      // valid_until vazio = "em diante"; sequência (fim dia X, início >= X) é
+      // válida; linhas inativas e com user_override ficam fora da checagem; a
+      // própria linha (edição) é desconsiderada pelo id.
+      var localPlanId = String(body.id || '')
+      var localPlanType = String(body.plan_type || rec.getString('plan_type') || '')
+      var localVFrom = String(body.valid_from || '').slice(0, 10)
+      var localVUntil = String(body.valid_until || '').slice(0, 10)
+      var localIsOverride = String(body.user_override || '') !== ''
+      var localIsActive = body.active !== undefined ? !!body.active : true
+      if (localPlanType && localIsActive && !localIsOverride) {
+        if (localVFrom && localVUntil && localVUntil <= localVFrom) {
+          return e.json(400, {
+            error:
+              'Vigência inválida: a data final (' +
+              localVUntil +
+              ') deve ser posterior à data inicial (' +
+              localVFrom +
+              ').',
+          })
+        }
+        var localConflicts = $app.findRecordsByFilter(
+          'subscription_plans',
+          "plan_type = '" +
+            localPlanType +
+            "' && active = true && (user_override = '' || user_override = null)",
+          '-created',
+          100,
+          0,
+        )
+        var localConflict = null
+        for (var localCi = 0; localCi < localConflicts.length; localCi++) {
+          var localRow = localConflicts[localCi]
+          if (localPlanId && localRow.id === localPlanId) continue
+          var localRowFrom = String(localRow.getString('valid_from') || '').slice(0, 10)
+          var localRowUntil = String(localRow.getString('valid_until') || '').slice(0, 10)
+          var localNewStartsInRow = !localRowUntil || localVFrom < localRowUntil
+          var localRowStartsInNew = !localVUntil || localRowFrom < localVUntil
+          if (localNewStartsInRow && localRowStartsInNew) {
+            localConflict = localRow
+            break
+          }
+        }
+        if (localConflict) {
+          var localRowName = localConflict.getString('name') || 'sem nome'
+          var localRowFrom = String(localConflict.getString('valid_from') || '').slice(0, 10)
+          var localRowUntil = String(localConflict.getString('valid_until') || '').slice(0, 10)
+          var localPeriodo =
+            (localRowFrom || 'início aberto') +
+            ' até ' +
+            (localRowUntil || 'em diante (sem data final)')
+          return e.json(400, {
+            error:
+              'Já existe um plano ' +
+              localPlanType +
+              ' vigente no período ' +
+              localPeriodo +
+              ': ' +
+              localRowName +
+              '. Ajuste a vigência para não sobrepor essa linha.',
+          })
+        }
+      }
+
       $app.save(rec)
 
       return e.json(200, {
@@ -2161,6 +2227,14 @@ routerAdd(
           carencia_until: u.getString('carencia_until') || '',
           stripe_customer_id: u.getString('stripe_customer_id') || '',
           stripe_subscription_id: u.getString('stripe_subscription_id') || '',
+          // v0.0.105: pagamento único (one_time Pix/cartão) — a ausência de
+          // stripe_subscription_id é o comportamento correto desde a v0.0.95;
+          // o Backoffice usa billing_mode/payment_paid_at para não exibir
+          // "Sem assinatura Stripe" para quem pagou à vista.
+          billing_mode: u.getString('billing_mode') || '',
+          payment_amount_cents: u.getInt('payment_amount_cents'),
+          payment_paid_at: u.getString('payment_paid_at') || '',
+          access_until: u.getString('access_until') || u.getString('subscription_expires_at') || '',
           terms_accepted_at: u.getString('terms_accepted_at') || '',
           recurring_consent_accepted_at: u.getString('recurring_consent_accepted_at') || '',
           created: u.getString('created'),

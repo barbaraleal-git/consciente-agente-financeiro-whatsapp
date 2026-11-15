@@ -19,6 +19,7 @@ import { getBackendErrorMessage } from '@/lib/pocketbase/errors'
 import {
   billingService,
   adminService,
+  getStripeStatusText,
   type AdminSubscriptionsResponse,
   type SubscriptionPlanItem,
   type CompanyLegalInfo,
@@ -462,9 +463,7 @@ export const BillingAdminSection: React.FC = () => {
                                   : '—'}
                             </TableCell>
                             <TableCell className="text-[11px] text-slate-500">
-                              {c.stripe_subscription_id
-                                ? 'Assinatura vinculada'
-                                : 'Sem assinatura Stripe'}
+                              {getStripeStatusText(c)}
                             </TableCell>
                           </TableRow>
                         )

@@ -214,6 +214,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens his
 | **Item 21 (ex-Item 7)** | Observabilidade | Painel de telemetria em tempo real com alertas de indisponibilidade do webhook, Meta API ou provedores de IA. |
 | **Item 22 (ex-Item 15)** | Backup automatizado da base | Rotina automatizada e versionada de snapshots do banco em produção. |
 | **Item 23 (ex-Item 8)** | GitHub e controle de versão | Sincronização externa de repositório e esteira de CI/CD (ação da usuária para provisionamento de chaves/repositório). |
+| **Item 31 (novo, v0.0.103)** | Importar preços da Stripe como rascunhos pendentes de vigência | Botão no Backoffice (Billing → Planos) que lista os Prices existentes na conta Stripe (produto Consciente) e os traz como RASCUNHOS para definição de vigência (\`valid_from\`/\`valid_until\` e \`plan_type\`) antes de ativá-los na tabela \`subscription_plans\`. **Status**: hoje NÃO há sincronização — o fluxo é manual (a dona copia os valores da Stripe para as linhas). **Sinergia**: complementa o Item 12 (Billing) e o hook de integridade de vigência (cenário AR), evitando divergência entre os Prices da Stripe e as linhas da tabela. |
 
 ### (e) Produto / Caixinhas
 | Item | Funcionalidade | Descrição / Sinergias |
@@ -235,6 +236,7 @@ export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obri
 
 Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém todos os cenários essenciais A a Z intactos e adiciona o cenário AA para o fallback embutido e resiliente no WhatsApp sem erros de escopo.
 > **Atualização v0.0.102**: MAPEAMENTO DEFINITIVO dos 4 Prices da Stripe via API (produto prod_Va2uSpOiSeedcC): R$ 19,90/mês → \`price_1UZ11R31gAsdzIHftUWaEJB0\`; R$ 29,90/mês → \`price_1UZ11Q31gAsdzIHfLP1oZJKS\`; R$ 214,90/ano ("Por ano") → \`price_1UZ11Q31gAsdzIHfGEinrGPA\`; R$ 322,90/ano ("Por ano") → \`price_1UZ11O31gAsdzIHfNapN7q6b\`. Migração 0045 corrigiu as 4 linhas de \`subscription_plans\` (linhas de valor PADRÃO apontavam para os price_ids PROMOCIONAIS) e preencheu \`stripe_config.price_id_anual_recorrente\`. O price_id_anual confirmado NÃO é o mensal bugado da v0.0.95 — é o Price anual "Por ano" correto. Também mantém: correção do carregamento do engine proativo nos crons (require() → fallback globalThis) e do bug \`res.rawText\` (v0.0.101); crons \`proactive_nightly_reminder\`, \`proactive_precharge_email\` e \`proactive_pix_renewal\` rodando sem "GoError: Invalid module".
+> **Atualização v0.0.103**: novo hook de integridade de vigência de planos no Backoffice (\`subscription_plans_vigencia.js\`, Billing → Planos): sobreposição de vigências do MESMO plan_type rejeitada, \`valid_until <= valid_from\` rejeitado, trilhas mensal/anual independentes, janelas em sequência permitidas (janelas semiabertas [from, until)) e linhas inativas/overrides fora da checagem. Novo cenário **AR — Virada de Vigência de Plano (regra AG)** e linha de vigência no bloco AL.
 
 ---
 
@@ -953,6 +955,7 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 
 ## AL) Assinatura (Billing Stripe) — Plano, Checkout, Carência, Bloqueio e Cancelamento
 > **Status (v0.0.92)**: integração DIRETA com a API da Stripe via \`$http\` concluída e em produção (sem depender de conectores Skip). Antes de testar o checkout, a administradora deve colar a Secret Key (\`sk_live_...\`), o Webhook Signing Secret (\`whsec_...\`) e os Price IDs dos planos Mensal e Anual na aba **Billing > Configuração Stripe** do Backoffice Admin (\`/admin\`). Se as credenciais ainda não estiverem preenchidas, clicar em "Assinar" exibe mensagem amigável e clara orientando a configuração no Backoffice (sem erro 500 nem falha silenciosa). Após preencher as credenciais, o botão "Assinar" abre imediatamente o checkout seguro oficial da Stripe (\`checkout.stripe.com\`).
+> **Vigência de planos (v0.0.103)**: os preços exibidos e cobrados no checkout vêm das linhas vigentes de \`subscription_plans\` — vigências do mesmo plan_type NÃO se sobrepõem (salvar duas linhas sobrepostas do mesmo tipo é rejeitado no Backoffice com erro amigável citando plano e período), fim antes do início (\`valid_until <= valid_from\`) é rejeitado, mensal/anual são trilhas INDEPENDENTES e janelas EM SEQUÊNCIA são permitidas (ex.: Black November "até 30/11" seguida do Padrão "a partir de 01/12" — janelas semiabertas [from, until)). A tabela governa apenas NOVAS contratações: assinaturas ativas não são alteradas pela virada. Regras validadas no cenário AR.
 
 1. **Fluxo de Assinatura Bem-Sucedido (Caminho Feliz)**:
    - Acesse \`/settings\` como cliente e abra a seção **Assinatura** (ou o deep-link \`/settings?section=assinatura\`).
@@ -1183,6 +1186,32 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - Endpoint \`POST /backend/v1/proactive/trigger-pix-renewal\` com \`{ dry_run: true }\` lista quem receberia o aviso (janelas 30d/7d), SEM enviar nada — deve incluir apenas clientes one_time com validade nas janelas exatas, nunca clientes recorrentes.
    - Endpoint \`GET /backend/v1/proactive/status\` mostra o engine proativo carregado (require + fallback globalThis), contagem de logs recentes e últimos registros de renovação Pix.
    - Verificação do cron (Admin → logs de hooks): às 10h30 BRT o \`[cron:proactive_pix_renewal]\` roda SEM "GoError: Invalid module" (correção v0.0.101 do fallback globalThis no engine).
+
+---
+
+## AR) Virada de Vigência de Plano — Preços Black November → Padrão (regra AG da tabela subscription_plans, v0.0.103)
+> **Escopo (v0.0.103)**: hook de integridade \`subscription_plans_vigencia.js\` no Backoffice (Billing → Planos): vigências do MESMO plan_type não podem se sobrepor; \`valid_until <= valid_from\` é rejeitado; trilhas mensal e anual são INDEPENDENTES (sobreposição entre tipos diferentes é permitida); janelas em sequência são permitidas (uma linha "válida até 30/11" seguida de outra "a partir de 01/12" — janelas semiabertas [from, until)); linhas inativas e linhas com \`user_override\` (vigência por cliente) ficam FORA da checagem. A tabela de planos governa apenas NOVAS contratações — assinantes atuais não são afetados pela virada.
+
+1. **Véspera da virada (30/11/2026) — preços Black November ativos**:
+   - Abrir Minha Conta (\`/settings?section=assinatura\`) como cliente.
+   - **Comportamento Esperado**:
+     - Os cards de plano exibem **Mensal R$ 19,90** e **Anual R$ 214,90** (Black November), resolvidos das linhas ativas de \`subscription_plans\` vigentes na data (Mensal Black November e Anual Black November, válidas até 30/11/2026).
+
+2. **Dia da virada (01/12/2026) — preços Padrão sem intervenção manual**:
+   - No dia 01/12, recarregar a mesma tela (ou conferir após a virada).
+   - **Comportamento Esperado**:
+     - Os cards passam a exibir **Mensal R$ 29,90** e **Anual R$ 322,90** (Padrão) automaticamente — a troca acontece só pela vigência das linhas (janela Black November "até 30/11" encerra; linhas Padrão "a partir de 01/12" entram), sem editar nada no Backoffice nem mexer em código.
+
+3. **Assinantes atuais não afetados pela virada**:
+   - Cliente com assinatura ativa contratada no preço promocional: em 01/12 o valor dela NÃO muda — a virada de vigência governa apenas novas contratações/renovações de checkout; contratos ativos seguem pelo valor contratado (cancelamento e portal ver cenário AL-4/AL-12).
+
+4. **Validação da integridade de vigência no Backoffice (Billing → Planos, admin)**:
+   - Tentar salvar uma linha MENSAL cuja vigência se sobreponha à "Mensal Black November" existente (ex.: válida de 15/11 a 15/12):
+     - **Comportamento Esperado**: salvamento REJEITADO com erro amigável citando o plano conflitante e o período (ex.: conflito com "Mensal Black November", de DD/MM a DD/MM) — nunca erro 500 nem falha silenciosa.
+   - Tentar salvar uma linha com \`valid_until <= valid_from\` (ex.: de 10/12 a 05/12): REJEITADA com erro amigável de "fim antes do início".
+   - Salvar uma linha ANUAL com a mesma janela da linha mensal conflitante: ACEITA — as trilhas mensal e anual são independentes.
+   - Salvar linha mensal "válida até 30/11" quando já existe outra "a partir de 01/12" (sequência, sem sobreposição): ACEITA (janelas semiabertas [from, until)).
+   - Linhas inativas e linhas com \`user_override\` (vigência por cliente) continuam salvas mesmo se sobrepostas à trilha geral — ficam fora da checagem e convivem com ela.
 
 ---
 `

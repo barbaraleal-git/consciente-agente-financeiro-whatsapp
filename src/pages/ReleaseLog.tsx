@@ -25,11 +25,32 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.103',
+    date: '15/11/2026',
+    title:
+      'Hook de Integridade de Vigência dos Planos no Backoffice (subscription_plans_vigencia) e Cenário AR no Roteiro Regressivo',
+    tag: 'Atual',
+    highlights: [
+      'Novo hook de integridade de vigência (Billing → Planos): sobreposição de vigências do MESMO plan_type é REJEITADA — tentar salvar duas linhas mensais (ou duas anuais) com janelas que se cruzam falha com erro amigável citando o plano conflitante e o período.',
+      'Fim antes do início rejeitado: linhas com valid_until <= valid_from (ex.: de 10/12 a 05/12) são recusadas com erro amigável — nunca erro 500 nem falha silenciosa.',
+      'Trilhas mensal e anual INDEPENDENTES: sobreposição entre tipos diferentes é permitida (uma linha mensal e uma anual podem coexistir na mesma janela).',
+      'Janelas em sequência permitidas: "válida até 30/11" seguida de "a partir de 01/12" é aceita (janelas semiabertas [from, until)) — a virada Black November → Padrão (R$ 19,90/214,90 → R$ 29,90/322,90 em 01/12/2026) acontece sem intervenção manual.',
+      'Linhas inativas e overrides (vigência por cliente) ficam FORA da checagem: convivem com a trilha geral sem disparar conflito.',
+      'A tabela de planos governa apenas NOVAS contratações: assinantes atuais não são afetados pela virada de vigência.',
+      'Documentação atualizada: cenário AR "Virada de Vigência de Plano (regra AG)" no roteiro regressivo, linha de vigência no bloco AL, backlog "Importar preços da Stripe como rascunhos pendentes de vigência" e versão 0.0.103.',
+    ],
+    details: [
+      'Hook pocketbase/hooks/subscription_plans_vigencia.js (onRecordCreate/onRecordUpdate em subscription_plans, lógica 100% inline nos callbacks) — validação de janelas semiabertas por plan_type, sem tocar em assinaturas ativas.',
+      'src/data/docsContent.ts: cenário AR, bloco AL (regras de vigência), item de backlog na seção Qualidade/infraestrutura.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.103.',
+    ],
+  },
+  {
     version: '0.0.102',
     date: '14/11/2026',
     title:
       'Mapeamento Definitivo dos 4 Prices da Stripe (consulta real à API) e Correção dos Planos Padrão',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Mapa REAL da Stripe obtido por consulta à API (produto prod_Va2uSpOiSeedcC): R$ 19,90/mês → price_1UZ11R31gAsdzIHftUWaEJB0; R$ 29,90/mês → price_1UZ11Q31gAsdzIHfLP1oZJKS; R$ 214,90/ano ("Por ano") → price_1UZ11Q31gAsdzIHfGEinrGPA; R$ 322,90/ano ("Por ano") → price_1UZ11O31gAsdzIHfNapN7q6b.',
       'Migração 0045 corrigiu as 4 linhas de subscription_plans: as linhas de valor PADRÃO (Mensal Padrão R$ 29,90 e Anual Padrão R$ 322,90) apontavam para os price_ids PROMOCIONAIS e agora apontam para os IDs reais dos seus valores/intervalos.',

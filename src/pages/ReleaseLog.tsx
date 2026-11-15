@@ -25,10 +25,30 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.115',
+    date: '15/11/2026',
+    title: 'Reparo do Toast de Erro ao Salvar Plano (Cenário AU — Cobertura de Vigências)',
+    tag: 'Atual',
+    highlights: [
+      'Defeito corrigido: ao salvar um plano com vigência fora da regra de cobertura contínua, o Backoffice exibia o erro CRU da JSVM ("Object has no member \'__vigenciaCobertura\'") no toast, em inglês, em vez da mensagem amigável em português citando o intervalo sem cobertura.',
+      'Causa raiz: a rota admin chamava globalThis.__vigenciaCobertura(...) diretamente e a JSVM não compartilha o globalThis de forma confiável entre módulos/pools de VM — a função pode não existir no momento da chamada. Agora cada consumidor (rota POST de planos e hooks de coleção) resolve a função de forma DEFENSIVA (typeof + try) e, indisponível, usa FALLBACK 100% inline com a mesma lógica: o erro devolvido é SEMPRE 400 com mensagem em PT, nunca 500 cru.',
+      'getBackendErrorMessage restaurada em src/lib/pocketbase/errors.ts (a rodada anterior a deixou de fora e o build do preview quebrava com MISSING_EXPORT) — extração de message/error do corpo, bloqueio do genérico "Something went wrong", parâmetro opcional de fallback.',
+      'Hook de referência renomeado para slug válido (deploy falhava com "invalid slug" por arquivo iniciando com "_").',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: POST /admin/billing/plans e GET /admin/billing/plans/coverage resolvem __vigenciaCobertura defensivamente com fallback inline idêntico; caminho de erro devolve 400/500 com mensagem amigável.',
+      'pocketbase/hooks/subscription_plans_vigencia.js: onRecordCreate/onRecordUpdate com a mesma resolução defensiva + fallback inline.',
+      'pocketbase/hooks/vigencia_cobertura_reference.js: referência legível da lógica (não executável) — substitui o arquivo com slug inválido.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage(error, fallback?) restaurada.',
+      'src/data/docsContent.ts: nota v0.0.115 no cenário AU + linha "Atualização v0.0.115" no topo do roteiro.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.115 no topo com tag "Atual" (v0.0.114 volta a "Estável").',
+    ],
+  },
+  {
     version: '0.0.114',
     date: '15/11/2026',
     title: 'Cobertura Contínua de Vigências por Trilha (Billing → Planos e Preços)',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Nova regra pedida pela dona: da data corrente em diante, nenhuma data futura pode ficar SEM plano ativo definido — um cliente que chegar para se cadastrar num dia coberto por lacuna (ex.: 03/12/2026 entre vigências que terminam 30/11 e começam 05/12) não encontraria plano disponível para o app oferecer.',
       'Ao salvar um plano (rota POST /backend/v1/admin/billing/plans e hook de coleção subscription_plans), o sistema SIMULA a linha de vigências ativas da trilha (mensal e anual separadamente) incluindo a linha salva e rejeita com HTTP 400 qualquer lacuna de datas ≥ 1 dia, citando o intervalo sem cobertura; a trilha precisa sempre terminar numa linha aberta (valid_until vazio) que cubra o futuro.',

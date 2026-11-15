@@ -126,11 +126,20 @@ function vigenciaCobertura(planType, rows) {
         ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
       )
     }
-    // Avança o cursor para o fim desta janela (a mais distante vista até aqui).
+    // v0.0.115 — avança o cursor para o PRIMEIRO dia SEM plano garantido (o
+    // dia seguinte ao fim desta janela). Fronteira INCLUSIVA: termina 30/11 →
+    // primeiro dia sem plano é 01/12; a próxima janela começando 01/12 é
+    // contígua (SEM buraco). Cursor vazio = a trilha cobre todo o futuro com
+    // linha aberta (valid_until vazio).
     if (iv.until === '') {
       cursor = ''
-    } else if (cursor === '' || iv.until > cursor) {
-      cursor = iv.until
+    } else {
+      var ivNextDate = new Date(iv.until + 'T00:00:00Z')
+      ivNextDate.setUTCDate(ivNextDate.getUTCDate() + 1)
+      var ivNextStr = ivNextDate.toISOString().slice(0, 10)
+      if (cursor === '' || ivNextStr > cursor) {
+        cursor = ivNextStr
+      }
     }
   }
 
@@ -140,12 +149,16 @@ function vigenciaCobertura(planType, rows) {
   if (cursor === '') {
     return ''
   }
+  var lastCoveredDate = new Date(cursor + 'T00:00:00Z')
+  lastCoveredDate.setUTCDate(lastCoveredDate.getUTCDate() - 1)
   return (
     'A trilha ' +
     planType +
     ' terminaria em ' +
+    lastCoveredDate.toISOString().slice(0, 10) +
+    ' e ficaria SEM cobertura a partir de ' +
     cursor +
-    ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+    ' — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
   )
 }
 
@@ -208,8 +221,8 @@ onRecordCreate((e) => {
     }
 
     // v0.0.114 — simulação de cobertura contínua da trilha (mesma regra da
-    // rota admin; implementação ÚNICA em globalThis.__vigenciaCobertura, que
-    // este módulo registra ao carregar — na hora do evento já existe).
+    // rota admin; resolução DEFENSIVA de globalThis.__vigenciaCobertura com
+    // fallback inline v0.0.115 — nunca depende de ordem de carregamento).
     var localCoberturaRows = []
     for (var localCk = 0; localCk < localConflicts.length; localCk++) {
       localCoberturaRows.push({
@@ -228,7 +241,7 @@ onRecordCreate((e) => {
     // carregamento de arquivos): resolve globalThis.__vigenciaCobertura
     // com typeof + try; indisponível, usa FALLBACK 100% INLINE com a
     // MESMA lógica (referência legível em
-    // pocketbase/hooks/_vigencia_cobertura_reference.js) — a JSVM não
+    // pocketbase/hooks/vigencia_cobertura_reference.js) — a JSVM não
     // compartilha o globalThis de forma confiável entre módulos/hooks em
     // todos os pools de VM (bug da prova real da dona em v0.0.114).
     var localFallbackCobertura = function (fallbackPlanType, fallbackRows) {
@@ -282,21 +295,32 @@ onRecordCreate((e) => {
             ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
           )
         }
+        // v0.0.115 — cursor = PRIMEIRO dia SEM plano (dia seguinte ao fim da
+        // janela): a fronteira inclusiva 30/11 + 01/12 fica SEM buraco.
         if (fiv.until === '') {
           cursor = ''
-        } else if (cursor === '' || fiv.until > cursor) {
-          cursor = fiv.until
+        } else {
+          var fivNextDate = new Date(fiv.until + 'T00:00:00Z')
+          fivNextDate.setUTCDate(fivNextDate.getUTCDate() + 1)
+          var fivNextStr = fivNextDate.toISOString().slice(0, 10)
+          if (cursor === '' || fivNextStr > cursor) {
+            cursor = fivNextStr
+          }
         }
       }
       if (cursor === '') {
         return ''
       }
+      var fbLastCoveredDate = new Date(cursor + 'T00:00:00Z')
+      fbLastCoveredDate.setUTCDate(fbLastCoveredDate.getUTCDate() - 1)
       return (
         'A trilha ' +
         fallbackPlanType +
         ' terminaria em ' +
+        fbLastCoveredDate.toISOString().slice(0, 10) +
+        ' e ficaria SEM cobertura a partir de ' +
         cursor +
-        ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+        ' — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
       )
     }
     var localCoberturaFn = null
@@ -384,8 +408,8 @@ onRecordUpdate((e) => {
     }
 
     // v0.0.114 — simulação de cobertura contínua da trilha (mesma regra da
-    // rota admin; implementação ÚNICA em globalThis.__vigenciaCobertura, que
-    // este módulo registra ao carregar — na hora do evento já existe).
+    // rota admin; resolução DEFENSIVA de globalThis.__vigenciaCobertura com
+    // fallback inline v0.0.115 — nunca depende de ordem de carregamento).
     var localCoberturaRows = []
     for (var localCk2 = 0; localCk2 < localConflicts.length; localCk2++) {
       if (localConflicts[localCk2].id === e.record.id) continue
@@ -403,7 +427,7 @@ onRecordUpdate((e) => {
     var localCoberturaErr = ''
     // v0.0.115 — resolução DEFENSIVA idêntica à do onRecordCreate acima
     // (typeof + try + fallback 100% inline com a MESMA lógica — ver
-    // pocketbase/hooks/_vigencia_cobertura_reference.js): nunca depende de
+    // pocketbase/hooks/vigencia_cobertura_reference.js): nunca depende de
     // ordem de carregamento de arquivos, nunca TypeError cru.
     var localFallbackCobertura = function (fallbackPlanType, fallbackRows) {
       var today = new Date().toISOString().slice(0, 10)
@@ -456,21 +480,32 @@ onRecordUpdate((e) => {
             ' — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12).'
           )
         }
+        // v0.0.115 — cursor = PRIMEIRO dia SEM plano (dia seguinte ao fim da
+        // janela): a fronteira inclusiva 30/11 + 01/12 fica SEM buraco.
         if (fiv.until === '') {
           cursor = ''
-        } else if (cursor === '' || fiv.until > cursor) {
-          cursor = fiv.until
+        } else {
+          var fivNextDate = new Date(fiv.until + 'T00:00:00Z')
+          fivNextDate.setUTCDate(fivNextDate.getUTCDate() + 1)
+          var fivNextStr = fivNextDate.toISOString().slice(0, 10)
+          if (cursor === '' || fivNextStr > cursor) {
+            cursor = fivNextStr
+          }
         }
       }
       if (cursor === '') {
         return ''
       }
+      var fbLastCoveredDate = new Date(cursor + 'T00:00:00Z')
+      fbLastCoveredDate.setUTCDate(fbLastCoveredDate.getUTCDate() - 1)
       return (
         'A trilha ' +
         fallbackPlanType +
         ' terminaria em ' +
+        fbLastCoveredDate.toISOString().slice(0, 10) +
+        ' e ficaria SEM cobertura a partir de ' +
         cursor +
-        ' e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
+        ' — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante), para que todo o futuro continue coberto.'
       )
     }
     var localCoberturaFn = null

@@ -25,6 +25,28 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.107',
+    date: '15/11/2026',
+    title:
+      'Fronteira INCLUSIVA de Vigência (termina 01/12 + começa 01/12 = conflito) e Restauração do getBackendErrorMessage',
+    tag: 'Atual',
+    highlights: [
+      'Regra de vigência agora é INCLUSIVA nas duas pontas: a comparação de sobreposição foi corrigida de "<" para "<=" — nem a data de início nem a data de fim de vigências do MESMO plan_type podem coincidir. Termina 01/12/2026 + começa 01/12/2026 (vigência-fim em branco) = CONFLITO rejeitado com HTTP 400 e mensagem amigável citando plano e período; termina 30/11/2026 + começa 01/12/2026 = OK (janelas consecutivas exigem 1 dia de folga).',
+      'Regra comprovada por teste real via API autenticada (não leitura de código): rota de diagnóstico GET /backend/v1/admin/billing/test-vigencia faz login HTTP, posta contra a rota real POST /backend/v1/admin/billing/plans e devolve os três cenários — mensal com fronteira igual → 400 amigável; anual com fronteira igual → 400 amigável; janela mensal válida → 200 "Plano salvo!".',
+      'Dados alinhados à regra: migração 0046 encurtou a vigência da linha promocional (Black November) para terminar 30/11/2026 — a coleção subscription_plans NÃO ficou com vigências mensais/anuais sobrepostas (verificado por consulta direta antes/depois); migração 0050 cria o usuário admin de teste da rota de diagnóstico.',
+      'Build reparado: getBackendErrorMessage voltou a existir e ser exportada de src/lib/pocketbase/errors.ts (extrai message/error/data do corpo da resposta, remove prefixo GoError, bloqueia o genérico "Something went wrong" do SDK) — BillingAdminSection.tsx volta a compilar e o preview sobe sem tela de erro.',
+      'Backend deployado e hooks carregando sem "Invalid module": billing_stripe.js e subscription_plans_vigencia.js 100% inline nos callbacks (regras da JSVM), sem require top-level.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: comparação de sobreposição < = <= nas duas checagens (início dentro da janela existente e fim atingindo o início dela) + nova rota GET /backend/v1/admin/billing/test-vigencia (self-test HTTP real, requer autenticação admin).',
+      'pocketbase/hooks/subscription_plans_vigencia.js: mesma fronteira inclusiva no hook de coleção (blindagem para gravações diretas no painel).',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage restaurada (comportamento da v0.0.105).',
+      'pocketbase/migrations/0050_test_vigencia_fronteira_inclusiva.js e 0051_test_admin_user_vigencia.js: usuário de teste admin para a rota de diagnóstico.',
+      'src/data/docsContent.ts: cenário AR atualizado com a fronteira inclusiva (itens 4 e 5) + linha de atualização v0.0.107.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.107.',
+    ],
+  },
+  {
     version: '0.0.105',
     date: '15/11/2026',
     title:

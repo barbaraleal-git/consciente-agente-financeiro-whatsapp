@@ -20,45 +20,40 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const FALLBACKS = ['Something went wrong', 'Ocorreu um erro inesperado']
+
+  const collect = (value: unknown, depth = 0): string[] => {
+    if (depth > 4 || value === null || value === undefined) return []
+    if (typeof value === 'string') return value.trim() ? [value.trim()] : []
+    if (typeof value !== 'object') return []
+    const out: string[] = []
+    const obj = value as Record<string, unknown>
+    for (const key of ['message', 'error', 'data', 'response']) {
+      if (key in obj) out.push(...collect(obj[key], depth + 1))
+    }
+    return out
+  }
+
+  const candidates: string[] = []
+  if (error instanceof ClientResponseError) {
+    candidates.push(...collect(error.response))
+    candidates.push(error.message)
+  } else {
+    candidates.push(...collect(error))
+    candidates.push(error instanceof Error ? error.message : String(error ?? ''))
+  }
+
+  for (const msg of candidates) {
+    if (msg && !FALLBACKS.some((f) => msg.toLowerCase() === f.toLowerCase())) return msg
+  }
+  return candidates.find(Boolean) || fallback || 'Erro inesperado. Tente novamente.'
+}
+
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
     return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
   const msgs = Object.values(extractFieldErrors(error))
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
-}
-
-/**
- * v0.0.105+: extrai a mensagem AMIGÁVEL que o backend (hook JSVM) colocou no
- * corpo da resposta (ex.: erro de vigência: "Já existe um plano mensal válido
- * no período ..."), removendo prefixos técnicos como "GoError: " e bloqueando
- * o genérico "Something went wrong" do PocketBase. Usar em TODO toast de erro
- * do Backoffice.
- */
-export function getBackendErrorMessage(error: unknown, fallback: string): string {
-  const raw =
-    error instanceof ClientResponseError
-      ? ((error.response as unknown as { message?: string; error?: string })?.message ??
-        (error.response as unknown as { error?: string })?.error ??
-        error.message)
-      : error instanceof Error
-        ? error.message
-        : ''
-
-  let msg = typeof raw === 'string' ? raw.trim() : ''
-  if (!msg) return fallback
-
-  // Remove prefixos técnicos do runtime Go/JSVM ("GoError: ", "Error: ").
-  msg = msg
-    .replace(/^GoError:\s*/i, '')
-    .replace(/^Error:\s*/i, '')
-    .trim()
-
-  // Bloqueia mensagens genéricas sem informação útil para a dona.
-  const generic =
-    !msg ||
-    /^something went wrong$/i.test(msg) ||
-    /^failed to fetch$/i.test(msg) ||
-    msg === fallback
-  return generic ? fallback : msg
 }

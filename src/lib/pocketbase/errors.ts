@@ -28,47 +28,29 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-/**
- * Extrai a mensagem real devolvida pelo backend (corpo 400/500 do pb_hooks)
- * em vez do genérico "Something went wrong" do SDK.
- * O fallback é usado quando o corpo não traz mensagem utilizável.
- */
+// v0.0.117: extrai a mensagem REAL do corpo da resposta (message/error/data),
+// sem prefixo GoError e bloqueando o genérico "Something went wrong" do SDK.
+// Assinatura (error, fallback?) — padrão v0.0.106/v0.0.115 do projeto; era
+// pendência de build recorrente (MISSING_EXPORT) e volta a ser obrigatória.
 export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const genericPhrases = ['something went wrong', 'an unexpected error occurred', 'failed to fetch']
-  const tryExtract = (err: unknown): string | undefined => {
-    if (typeof err === 'string') {
-      const s = err.trim()
-      if (!s) return undefined
-      const lower = s.toLowerCase()
-      if (genericPhrases.some((p) => lower.includes(p))) return undefined
-      if (lower.startsWith('goerror')) return s.slice('goerror'.length).trim() || undefined
-      return s
+  const FALLBACK = fallback || 'Não foi possível concluir a operação. Tente novamente.'
+  const block = (m: unknown): m is string =>
+    typeof m === 'string' && m.trim() !== '' && !/^something went wrong/i.test(m.trim())
+  const stripGo = (m: string): string => m.replace(/^GoError:\s*/i, '').trim()
+  if (error instanceof ClientResponseError) {
+    const data = error.response as Record<string, unknown> | undefined
+    const candidates = [
+      data?.message,
+      data?.error,
+      (data?.data as Record<string, unknown>)?.message,
+    ]
+    for (const c of candidates) {
+      if (block(c)) return stripGo(c)
     }
-    if (err && typeof err === 'object') {
-      const obj = err as Record<string, unknown>
-      for (const key of ['message', 'error']) {
-        const v = obj[key]
-        if (typeof v === 'string' && v.trim()) {
-          const got = tryExtract(v)
-          if (got) return got
-        }
-      }
-      // corpos aninhados do PocketBase: { data: { message } }
-      const nested = obj.data
-      if (nested) {
-        const got = tryExtract(nested)
-        if (got) return got
-      }
-      if (typeof obj.status === 'number' && obj.status >= 400) {
-        return undefined // deixa o fallback assumir
-      }
-    }
-    return undefined
+  } else if (typeof error === 'string' && block(error)) {
+    return stripGo(error)
+  } else if (error instanceof Error && block(error.message)) {
+    return stripGo(error.message)
   }
-  return (
-    tryExtract(error) ||
-    (typeof fallback === 'string' && fallback.trim()
-      ? fallback
-      : 'Ocorreu um erro inesperado. Tente novamente.')
-  )
+  return FALLBACK
 }

@@ -2449,8 +2449,26 @@ routerAdd(
           )
           localCoverageErr = localFallbackCobertura(localPlanType, localCoverageRows) || ''
         }
+        // v0.0.117 — pedido da dona (autonomia para ajustes emergenciais): a
+        // regra de cobertura contínua deixa de ser BLOQUEANTE na rota admin.
+        // Buraco de cobertura NÃO rejeita mais: o plano é salvo normalmente e
+        // a resposta 200 volta com o campo "warning" em PT descrevendo o
+        // intervalo descoberto e a analogia do cliente que chega sem plano —
+        // o Backoffice exibe toast de alerta e mantém o BANNER VERMELHO
+        // PERSISTENTE no frame de Planos e Preços (alimenta-se do diagnóstico
+        // GET /plans/coverage). A SOBREPOSIÇÃO (fronteira inclusiva) e o
+        // fim <= início CONTINUAM bloqueantes com 400 (blocos acima, sem
+        // mudança). Rascunhos seguem fora da checagem.
+        var localCoverageWarning = ''
         if (localCoverageErr) {
-          return e.json(400, { error: localCoverageErr })
+          localCoverageWarning =
+            'Intervalo de datas sem plano definido: ' +
+            localCoverageErr +
+            ' O plano foi SALVO — ajuste as vigências o mais rápido possível.'
+          console.log(
+            '[admin_billing] AVISO de cobertura (salvamento PERMITIDO, v0.0.117): ' +
+              localCoverageWarning,
+          )
         }
       }
 
@@ -2518,8 +2536,13 @@ routerAdd(
 
       return e.json(200, {
         success: true,
-        message: 'Plano salvo com sucesso!',
+        // v0.0.117: buraco de cobertura vira AVISO (não bloqueia) — o
+        // frontend exibe toast de alerta e banner vermelho persistente.
+        message: localCoverageWarning
+          ? 'Plano salvo com AVISO: há intervalo de datas sem plano definido — ajuste o mais rápido possível.'
+          : 'Plano salvo com sucesso!',
         id: rec.id,
+        warning: localCoverageWarning,
       })
     } catch (err) {
       // v0.0.104: repassa o status/mensagem do erro de validação (hook de

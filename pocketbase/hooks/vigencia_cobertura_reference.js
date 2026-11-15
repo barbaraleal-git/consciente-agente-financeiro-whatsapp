@@ -17,6 +17,13 @@
  * (resolução defensiva com typeof + try). Qualquer alteração na regra deve ser
  * feita em subscription_plans_vigencia.js e REPLICADA nos fallbacks inline.
  *
+ * v0.0.117 — A REGRA DE COBERTURA DEIXOU DE SER BLOQUEANTE (pedido da dona):
+ * buraco de cobertura agora é AVISO — o salvamento é PERMITIDO, a condição
+ * vira log no servidor e o diagnóstico GET /plans/coverage devolve ok:false,
+ * alimentando o banner vermelho persistente no frame de Planos e Preços.
+ * A checagem CONTINUA sendo executada e a mensagem continua sendo gerada;
+ * só o comportamento (rejeitar → alertar) mudou nos consumidores.
+ *
  * IMPORTANTE (deploy): hook filenames devem começar com LETRA (slug válido) —
  * a versão anterior deste arquivo com prefixo "_" ("_vigencia_...") quebrava o
  * deploy com "invalid slug". Para não depender de nome de arquivo, esta cópia

@@ -1055,10 +1055,28 @@ export const billingService = {
 
   adminSavePlan: async (
     planData: Partial<SubscriptionPlanItem>,
-  ): Promise<{ success: boolean; message: string; id: string }> => {
+  ): Promise<{
+    success: boolean
+    message: string
+    id: string
+    /** v0.0.117: aviso em PT quando o salvamento deixa intervalo futuro sem cobertura (não bloqueia) */
+    warning?: string
+  }> => {
     return pb.send('/backend/v1/admin/billing/plans', {
       method: 'POST',
       body: planData,
+    })
+  },
+
+  // v0.0.117: diagnóstico da cobertura contínua por trilha (rota existente
+  // desde a v0.0.114) — alimenta o banner vermelho persistente do frame de
+  // Planos e Preços enquanto houver intervalo futuro sem plano definido.
+  adminGetPlansCoverage: async (): Promise<{
+    today: string
+    trilhas: Array<{ plan_type: string; rows: unknown[]; ok: boolean; error: string }>
+  }> => {
+    return pb.send('/backend/v1/admin/billing/plans/coverage', {
+      method: 'GET',
     })
   },
 

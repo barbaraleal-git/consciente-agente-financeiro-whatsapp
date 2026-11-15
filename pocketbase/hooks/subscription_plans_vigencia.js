@@ -41,6 +41,15 @@
  * hora do evento o módulo já carregou. Fonte única: qualquer alteração na
  * lógica é feita AQUI.
  *
+ * v0.0.117 — A REGRA DE COBERTURA DEIXOU DE SER BLOQUEANTE (pedido da dona):
+ * buraco de cobertura agora é AVISO — o salvamento é PERMITIDO e a condição
+ * fica registrada (log no servidor + diagnóstico GET /plans/coverage devolve
+ * ok:false, alimentando o BANNER VERMELHO PERSISTENTE no frame de Planos e
+ * Preços do Backoffice). Sobreposição (fronteira inclusiva, v0.0.106) e
+ * fim <= início CONTINUAM bloqueantes com 400. A função continua devolvendo
+ * a mensagem completa — só o comportamento dos consumidores mudou
+ * (rejeitar → alertar), em TODOS os consumidores (rota admin e hooks).
+ *
  * v0.0.115 — CORREÇÃO do bug "Object has no member '__vigenciaCobertura'":
  * na v0.0.114 a rota POST /admin/billing/plans chamava a função DIRETAMENTE
  * no corpo do callback e, quando o callback rodava em um POOL de VM que não
@@ -352,7 +361,19 @@ onRecordCreate((e) => {
       localCoberturaErr = localFallbackCobertura(localPlanType, localCoberturaRows) || ''
     }
     if (localCoberturaErr) {
-      throw new BadRequestError(localCoberturaErr)
+      // v0.0.117 — pedido da dona (autonomia para ajustes emergenciais): o
+      // buraco de cobertura NÃO bloqueia mais. O salvamento é PERMITIDO e a
+      // condição fica registrada: log no servidor + o diagnóstico
+      // GET /admin/billing/plans/coverage (v0.0.114) passa a devolver
+      // ok:false, que alimenta o BANNER VERMELHO PERSISTENTE no frame de
+      // Planos e Preços do Backoffice. Sobreposição e fim <= início
+      // continuam bloqueantes com 400 (blocos acima, sem mudança).
+      console.log(
+        '[vigencia] AVISO de cobertura (' +
+          localPlanType +
+          ', salvamento PERMITIDO, v0.0.117): ' +
+          localCoberturaErr,
+      )
     }
   }
   e.next()
@@ -537,7 +558,17 @@ onRecordUpdate((e) => {
       localCoberturaErr = localFallbackCobertura(localPlanType, localCoberturaRows) || ''
     }
     if (localCoberturaErr) {
-      throw new BadRequestError(localCoberturaErr)
+      // v0.0.117 — idêntico ao onRecordCreate: buraco de cobertura NÃO
+      // bloqueia mais (salvamento PERMITIDO, log no servidor; o diagnóstico
+      // GET /admin/billing/plans/coverage alimenta o banner vermelho
+      // persistente do Backoffice). Sobreposição e fim <= início seguem
+      // bloqueantes com 400 (blocos acima, sem mudança).
+      console.log(
+        '[vigencia] AVISO de cobertura (' +
+          localPlanType +
+          ', salvamento PERMITIDO, v0.0.117): ' +
+          localCoberturaErr,
+      )
     }
   }
   e.next()

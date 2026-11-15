@@ -25,10 +25,31 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.117',
+    date: '15/11/2026',
+    title: 'Buraco de Cobertura de Vigências vira AVISO — Ajustes Emergenciais da Dona',
+    tag: 'Atual',
+    highlights: [
+      'Pedido da dona (Billing → Planos e Preços): a regra de cobertura contínua de vigências (v0.0.114) deixa de ser bloqueante — ao salvar um plano que deixa intervalo futuro sem cobertura, o salvamento é PERMITIDO e a resposta volta com aviso em PT descrevendo o intervalo descoberto e a analogia do cliente que chega sem plano.',
+      'ALERTA CONSTANTE EM VERMELHO dentro do frame de Planos e Preços: enquanto qualquer trilha (mensal/anual) estiver com intervalo futuro sem cobertura, um banner vermelho persistente ("Há um intervalo de datas sem plano definido — ajuste o mais rápido possível", com a trilha e o intervalo) permanece visível — alimentado pelo diagnóstico GET /admin/billing/plans/coverage (v0.0.114), sobrevive a recarregar a tela e some quando a cobertura volta a ser contínua.',
+      'Toast de alerta (não de erro) ao salvar com buraco: o Backoffice mostra o aviso do backend e a linha salva — o admin escolhe quando corrigir.',
+      'SOBREPOSIÇÃO de vigências do mesmo tipo (fronteira inclusiva, cenário AR) e fim-antes-do-início CONTINUAM bloqueantes com 400 e mensagem amigável em PT; rascunhos da importação da Stripe seguem fora da checagem (cenário AS).',
+      'A checagem de cobertura continua rodando nos 3 pontos (rota POST, hooks de coleção e diagnóstico) com a mesma função e fallback inline v0.0.115 — só o comportamento mudou: rejeitar → alertar.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: POST /admin/billing/plans responde 200 + warning (buraco de cobertura não rejeita mais).',
+      'pocketbase/hooks/subscription_plans_vigencia.js: onRecordCreate/onRecordUpdate registram a condição em log (salvamento permitido) — sobreposição e fim ≤ início seguem 400.',
+      'src/components/admin/BillingAdminSection.tsx: toast de alerta com o warning + banner vermelho persistente (role="alert") consultando o diagnóstico de cobertura ao montar e após cada salvamento.',
+      'src/services/finance.ts: adminSavePlan/adminGetPlans tipados com o campo warning.',
+      'src/data/docsContent.ts: novo cenário AV — Cobertura como Aviso (Ajustes Emergenciais da Dona) + linha "Atualização v0.0.117" no topo do roteiro.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.117 no topo com tag "Atual" (v0.0.116 volta a "Estável").',
+    ],
+  },
+  {
     version: '0.0.116',
     date: '15/11/2026',
     title: 'Crons Proativos Blindados (Fim do "engine indisponível") e Limpeza de Cron Residual',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Defeito corrigido em produção: os crons de e-mail pré-cobrança (12h) e aviso de renovação Pix (13h30) abortavam todo dia com "engine indisponível — job abortado" — a JSVM não compartilha globalThis de forma confiável entre módulos/pools, então a engine proativa não estava visível no momento do disparo (mesma família do bug v0.0.115 do toast de vigência).',
       'Padrão v0.0.116 aplicado: os 3 crons proativos (pré-cobrança 0 12 * * *, renovação Pix 30 13 * * * e lembrete noturno 30 23 * * *) agora vivem no orquestrador pocketbase/hooks/proactive_crons.js com resolução DEFENSIVA do globalThis (typeof + try) e FALLBACK 100% INLINE idêntico à engine por job — janelas, dedupe em proactive_logs e envios (e-mail/WhatsApp com fallback de template) preservados.',

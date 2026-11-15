@@ -111,6 +111,31 @@ export const BillingAdminSection: React.FC = () => {
   const [setupLoading, setSetupLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
 
+  // v0.0.117 (pedido da dona — autonomia para ajustes emergenciais): o banner
+  // vermelho PERSISTENTE dentro do frame de Planos e Preços consulta o
+  // diagnóstico existente GET /backend/v1/admin/billing/plans/coverage
+  // (v0.0.114, reutilizado) e fica visível enquanto QUALQUER trilha (mensal ou
+  // anual) estiver com intervalo futuro sem cobertura — recarregar a tela não
+  // faz o aviso sumir enquanto o buraco existir; com a cobertura completa o
+  // banner NÃO aparece.
+  type CoverageTrilha = { plan_type: string; ok: boolean; error: string }
+  const [coverageLoading, setCoverageLoading] = useState(false)
+  const [coverageTrilhas, setCoverageTrilhas] = useState<CoverageTrilha[]>([])
+  const coverageGaps = coverageTrilhas.filter((t) => !t.ok && t.error)
+
+  const loadPlansCoverage = async () => {
+    try {
+      setCoverageLoading(true)
+      const res = await billingService.adminGetPlansCoverage()
+      setCoverageTrilhas(res.trilhas || [])
+    } catch {
+      // Diagnóstico indisponível não pode quebrar a tela — banner fica oculto.
+      setCoverageTrilhas([])
+    } finally {
+      setCoverageLoading(false)
+    }
+  }
+
   // v0.0.111: estado "dirty" por linha — compara o rascunho com os valores
   // carregados do plano; o botão Salvar só habilita com mudança real.
   const isPlanDirty = (plan: SubscriptionPlanItem, draft: SubscriptionPlanItem) =>
@@ -305,6 +330,7 @@ export const BillingAdminSection: React.FC = () => {
     loadPlans()
     loadStripeConfig()
     loadLegal()
+    loadPlansCoverage()
   }, [])
 
   const handleSavePlan = async (plan: SubscriptionPlanItem) => {
@@ -320,14 +346,27 @@ export const BillingAdminSection: React.FC = () => {
       setSavingPlanId(plan.id)
       const res = await billingService.adminSavePlan(plan)
       if (res.success) {
-        toast({
-          title: 'Plano salvo!',
-          description: res.message || 'Preço atualizado com sucesso.',
-        })
+        // v0.0.117: buraco de cobertura NÃO bloqueia mais — o backend responde
+        // 200 com "warning" em PT descrevendo o intervalo descoberto. Toast de
+        // ALERTA (destructive/âmbar) mantendo o plano salvo; o banner vermelho
+        // persistente aparece via loadPlansCoverage (abaixo).
+        if (res.warning) {
+          toast({
+            title: 'Plano salvo com AVISO',
+            description: res.warning,
+            variant: 'destructive',
+          })
+        } else {
+          toast({
+            title: 'Plano salvo!',
+            description: res.message || 'Preço atualizado com sucesso.',
+          })
+        }
         // v0.0.111: Salvar volta ao estado desabilitado imediatamente — o
         // rascunho passa a valer como os valores recém-salvos até o reload.
         setPlanDrafts((prev) => ({ ...prev, [plan.id]: { ...plan } }))
         await loadPlans()
+        await loadPlansCoverage()
       } else {
         toast({
           title: 'Erro ao salvar plano',
@@ -682,6 +721,42 @@ export const BillingAdminSection: React.FC = () => {
                   </TooltipProvider>
                 </div>
               </div>
+
+              {/* v0.0.117 (pedido da dona): AVISO CONSTANTE EM VERMELHO dentro do
+                  frame de Planos e Preços enquanto qualquer trilha (mensal/anual)
+                  estiver com intervalo futuro sem cobertura — consulta o
+                  diagnóstico GET /plans/coverage (v0.0.114) e permanece após
+                  recarregar a tela enquanto o buraco existir. Cobertura
+                  completa = banner não aparece. */}
+              {coverageGaps.length > 0 && (
+                <div
+                  role="alert"
+                  data-testid="coverage-gap-banner"
+                  className="mb-4 rounded-lg border-2 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-red-900">
+                        Há um intervalo de datas sem plano definido — ajuste o mais rápido possível
+                      </p>
+                      {coverageGaps.map((t) => (
+                        <p key={t.plan_type} className="text-red-800">
+                          <span className="font-semibold">
+                            Trilha {t.plan_type === 'anual' ? 'anual' : 'mensal'}:
+                          </span>{' '}
+                          {t.error}
+                        </p>
+                      ))}
+                      <p className="text-[11px] text-red-700">
+                        Um cliente que chegar num dia sem plano não conseguirá assinar. O salvamento
+                        foi permitido, mas esta faixa permanece até a cobertura voltar a ser
+                        contínua.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <Table>

@@ -1096,6 +1096,22 @@ export const billingService = {
     })
   },
 
+  // v0.0.110: importa os Prices do produto Consciente direto da Stripe como
+  // linhas RASCUNHO em subscription_plans (active=false, sem vigência); Prices
+  // já vinculados em qualquer linha não são duplicados ("já existentes").
+  adminImportStripePrices: async (): Promise<{
+    success: boolean
+    imported: number
+    already_existing: number
+    total_stripe_prices: number
+    imported_names: string[]
+    message: string
+  }> => {
+    return pb.send('/backend/v1/admin/billing/stripe/import-prices', {
+      method: 'POST',
+    })
+  },
+
   adminSetupStripeProducts: async (): Promise<{
     success: boolean
     message: string

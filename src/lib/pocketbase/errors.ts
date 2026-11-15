@@ -28,37 +28,38 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-/**
- * Extrai a mensagem amigável REAL do corpo da resposta de erro do backend
- * (message / error / data), removendo o prefixo "GoError:" quando presente.
- * Bloqueia os textos genéricos do SDK ("Something went wrong..."), caindo no
- * fallback em português. Usar em todo toast de erro do Backoffice (v0.0.104).
- */
+// v0.0.104: extrai a mensagem amigável do corpo da resposta (ex.: BadRequestError
+// do hook de vigência: "Já existe um plano mensal válido no período ...") —
+// tira o prefixo "GoError: " e bloqueia o genérico "Something went wrong" do SDK.
+// Usar em TODO toast de erro do Backoffice.
 export function getBackendErrorMessage(error: unknown, fallback: string): string {
+  let candidate = ''
   if (error instanceof ClientResponseError) {
-    const candidates: unknown[] = [
-      error.response?.message,
-      (error.response as Record<string, unknown> | undefined)?.error,
-      error.response?.data,
-    ]
-    for (const candidate of candidates) {
-      let text = ''
-      if (typeof candidate === 'string') {
-        text = candidate
-      } else if (candidate && typeof candidate === 'object') {
-        const obj = candidate as Record<string, unknown>
-        const inner = obj.message ?? obj.error
-        if (typeof inner === 'string') text = inner
-      }
-      text = text.trim()
-      if (!text) continue
-      if (text.startsWith('GoError: ')) text = text.slice('GoError: '.length).trim()
-      if (/^something went wrong\b/i.test(text)) continue
-      return text
+    const res = (error.response || {}) as Record<string, unknown>
+    const dataBlock = res.data
+    if (dataBlock && typeof dataBlock === 'object') {
+      const d = dataBlock as Record<string, unknown>
+      if (typeof d.message === 'string') candidate = d.message
+      else if (typeof d.error === 'string') candidate = d.error
+      else if (typeof dataBlock === 'string') candidate = dataBlock
+    } else if (typeof res.message === 'string') {
+      candidate = res.message
+    } else if (typeof res.error === 'string') {
+      candidate = res.error
     }
-  } else if (error instanceof Error && error.message) {
-    const text = error.message.replace(/^GoError: /, '').trim()
-    if (text && !/^something went wrong\b/i.test(text)) return text
   }
-  return fallback
+  if (!candidate && error instanceof Error) candidate = error.message
+  if (!candidate) return fallback
+
+  let msg = candidate.replace(/^GoError:\s*/i, '').trim()
+  if (
+    !msg ||
+    /something went wrong/i.test(msg) ||
+    /Failed to fetch/i.test(msg) ||
+    /^unexpected end of json/i.test(msg) ||
+    /^malformed/i.test(msg)
+  ) {
+    return fallback
+  }
+  return msg
 }

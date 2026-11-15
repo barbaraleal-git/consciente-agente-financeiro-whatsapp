@@ -33,6 +33,7 @@ import {
   Tag,
   ShieldCheck,
   CreditCard,
+  Download,
   Sparkles,
   Clock,
   Ban,
@@ -98,6 +99,7 @@ export const BillingAdminSection: React.FC = () => {
   const [planDrafts, setPlanDrafts] = useState<Record<string, SubscriptionPlanItem>>({})
   const [savingPlanId, setSavingPlanId] = useState<string | null>(null)
   const [setupLoading, setSetupLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
 
   const [legalLoading, setLegalLoading] = useState(true)
   const [legal, setLegal] = useState<CompanyLegalInfo | null>(null)
@@ -232,6 +234,32 @@ export const BillingAdminSection: React.FC = () => {
       toast({ title: 'Erro ao salvar plano', description: msg, variant: 'destructive' })
     } finally {
       setSavingPlanId(null)
+    }
+  }
+
+  // v0.0.110 (item 31): importa os Prices da Stripe como rascunhos pendentes
+  // de vigência; resumo "X importados, Y já existentes" no toast e tabela recarregada.
+  const handleImportPrices = async () => {
+    try {
+      setImportLoading(true)
+      const res = await billingService.adminImportStripePrices()
+      const imported = res.imported || 0
+      const already = res.already_existing || 0
+      toast({
+        title: 'Importação concluída',
+        description:
+          res.message ||
+          `${imported} preço(s) importado(s) como rascunho, ${already} já existente(s).`,
+      })
+      await loadPlans()
+    } catch (err: unknown) {
+      const msg = getBackendErrorMessage(
+        err,
+        'Falha ao importar preços da Stripe. Tente novamente.',
+      )
+      toast({ title: 'Erro na importação', description: msg, variant: 'destructive' })
+    } finally {
+      setImportLoading(false)
     }
   }
 
@@ -494,20 +522,37 @@ export const BillingAdminSection: React.FC = () => {
                   crie um registro com o campo <strong>user_override</strong> apontando para o
                   cliente — o preço de override tem prioridade sobre o preço geral.
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSetupStripe}
-                  disabled={setupLoading}
-                  className="text-xs"
-                >
-                  {setupLoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                  ) : (
-                    <CreditCard className="w-3.5 h-3.5 mr-1.5" />
-                  )}
-                  Sincronizar produtos na Stripe
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* v0.0.110 (item 31): importar Prices da Stripe como rascunhos */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleImportPrices}
+                    disabled={importLoading}
+                    className="text-xs"
+                  >
+                    {importLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Importar preços da Stripe
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSetupStripe}
+                    disabled={setupLoading}
+                    className="text-xs"
+                  >
+                    {setupLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    ) : (
+                      <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Sincronizar produtos na Stripe
+                  </Button>
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -542,14 +587,30 @@ export const BillingAdminSection: React.FC = () => {
                       plans.map((p) => {
                         const draft = planDrafts[p.id] || p
                         const isOverride = Boolean(p.user_override)
+                        // v0.0.110 (item 31): rascunho = inativo sem vigência
+                        // (ex.: linha importada da Stripe à espera de vigência)
+                        const isRascunho = !p.active && !p.valid_from && !p.valid_until
                         return (
-                          <TableRow key={p.id} className="border-b border-slate-100">
+                          <TableRow
+                            key={p.id}
+                            className={
+                              isRascunho
+                                ? 'border-b border-amber-100 bg-amber-50/40'
+                                : 'border-b border-slate-100'
+                            }
+                          >
                             <TableCell>
                               <div className="text-xs font-semibold text-slate-900">{p.name}</div>
                               <div className="text-[11px] text-slate-500">
                                 {p.plan_type === 'anual' ? 'Cobrança anual' : 'Cobrança mensal'}
                                 {isOverride && ' • preço especial por cliente'}
                               </div>
+                              {isRascunho && (
+                                <Badge className="mt-1 bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-medium">
+                                  <AlertTriangle className="w-3 h-3 mr-1" />
+                                  Rascunho — defina a vigência
+                                </Badge>
+                              )}
                             </TableCell>
                             <TableCell>
                               <Input
@@ -625,6 +686,11 @@ export const BillingAdminSection: React.FC = () => {
                                 size="sm"
                                 onClick={() => handleSavePlan(draft)}
                                 disabled={savingPlanId === p.id}
+                                title={
+                                  isRascunho
+                                    ? 'Defina a vigência e ative para publicar aos clientes'
+                                    : undefined
+                                }
                                 className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
                               >
                                 {savingPlanId === p.id ? (

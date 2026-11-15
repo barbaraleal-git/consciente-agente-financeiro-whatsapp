@@ -2273,3 +2273,244 @@ routerAdd(
 // v0.0.108) e a validação real permanece 100% na rota POST
 // /backend/v1/admin/billing/plans e no hook subscription_plans_vigencia.js.
 // ----------------------------------------------------
+
+// ----------------------------------------------------
+// 15. (v0.0.110) POST /backend/v1/admin/billing/stripe/import-prices
+// Importa os Prices do produto Consciente direto da API da Stripe como linhas
+// RASCUNHO em subscription_plans: active=false, valid_from/valid_until VAZIOS,
+// stripe_price_id preenchido e label a partir da Stripe (apelido/nome do
+// produto + valor em R$ + periodicidade mensal/anual). Price já referenciado
+// por QUALQUER linha (comparação por stripe_price_id) é pulado e contado como
+// "já existente" — nunca duplica. Rascunho fica fora da oferta até a dona
+// ativar com vigência; o hook de vigência ignora linhas inativas (regra
+// existente preservada — cenário AR).
+// Regras JSVM: lógica 100% INLINE no callback (sem require, sem variável de
+// try usada fora).
+// ----------------------------------------------------
+routerAdd(
+  'POST',
+  '/backend/v1/admin/billing/stripe/import-prices',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      function inlineGetStripeSecret() {
+        try {
+          const records = $app.findRecordsByFilter('stripe_config', '', '-created', 1, 0)
+          if (records.length > 0) {
+            return (records[0].getString('secret_key') || '').trim()
+          }
+        } catch (err) {
+          console.log('[import_prices] Erro ao carregar stripe_config: ' + err)
+        }
+        return ''
+      }
+
+      function inlineStripeGet(secretKey, path) {
+        const res = $http.send({
+          url: 'https://api.stripe.com/v1' + path,
+          method: 'GET',
+          headers: {
+            Authorization: 'Bearer ' + secretKey,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          timeout: 30,
+        })
+        // $http.send na JSVM: { statusCode, headers, cookies, body, raw, json } —
+        // res.rawText NÃO existe; usar res.json (parseado) ou JSON.parse(res.raw).
+        let data = null
+        try {
+          if (res.json && typeof res.json === 'object') {
+            data = res.json
+          } else {
+            const rawStr = res.raw || ''
+            if (rawStr) {
+              try {
+                data = JSON.parse(rawStr)
+              } catch (_) {
+                data = null
+              }
+            }
+          }
+        } catch (_) {
+          data = null
+        }
+        return { statusCode: res.statusCode, data: data }
+      }
+
+      function inlineFormatBRL(cents) {
+        return 'R$ ' + ((cents || 0) / 100).toFixed(2).replace('.', ',')
+      }
+
+      const localSecret = inlineGetStripeSecret()
+      if (!localSecret) {
+        return e.json(400, {
+          error:
+            'A secret key da Stripe ainda não foi configurada. Preencha em Billing → Configuração Stripe antes de importar os preços.',
+        })
+      }
+
+      // 1. Localiza o produto "Consciente" na conta Stripe
+      const prodRes = inlineStripeGet(localSecret, '/products?limit=100&active=true')
+      if (prodRes.statusCode >= 400 || !prodRes.data) {
+        console.log('[import_prices] Falha ao listar produtos: ' + prodRes.statusCode)
+        return e.json(502, {
+          error:
+            'Não foi possível consultar a Stripe (produtos). Verifique a secret key na Configuração Stripe e tente novamente.',
+        })
+      }
+      let localProductId = ''
+      let localProductName = ''
+      const localProducts = prodRes.data.data || []
+      for (let pi = 0; pi < localProducts.length; pi++) {
+        if (
+          String(localProducts[pi].name || '')
+            .toLowerCase()
+            .indexOf('consciente') !== -1
+        ) {
+          localProductId = String(localProducts[pi].id || '')
+          localProductName = String(localProducts[pi].name || '')
+          break
+        }
+      }
+      if (!localProductId) {
+        return e.json(404, {
+          error:
+            'Nenhum produto "Consciente" foi encontrado na conta Stripe. Crie o produto na Stripe antes de importar os preços.',
+        })
+      }
+
+      // 2. Lista os Prices do produto (até 4 páginas de 100)
+      const localPriceList = []
+      let localStartingAfter = ''
+      for (let page = 0; page < 4; page++) {
+        let localPath =
+          '/prices?limit=100&active=true&product=' + encodeURIComponent(localProductId)
+        if (localStartingAfter) {
+          localPath += '&starting_after=' + encodeURIComponent(localStartingAfter)
+        }
+        const priceRes = inlineStripeGet(localSecret, localPath)
+        if (priceRes.statusCode >= 400 || !priceRes.data) {
+          console.log('[import_prices] Falha ao listar prices: ' + priceRes.statusCode)
+          return e.json(502, {
+            error:
+              'Não foi possível consultar a Stripe (preços). Verifique a secret key na Configuração Stripe e tente novamente.',
+          })
+        }
+        const localData = priceRes.data.data || []
+        for (let li = 0; li < localData.length; li++) {
+          localPriceList.push(localData[li])
+        }
+        if (priceRes.data.has_more && localData.length > 0) {
+          localStartingAfter = String(localData[localData.length - 1].id || '')
+        } else {
+          break
+        }
+      }
+
+      // 3. Prices já referenciados em QUALQUER linha de subscription_plans
+      const localPlans = $app.findRecordsByFilter('subscription_plans', '', '-created', 500, 0)
+      const localExistingMap = {}
+      for (let xi = 0; xi < localPlans.length; xi++) {
+        const localPid = localPlans[xi].getString('stripe_price_id') || ''
+        if (localPid) {
+          localExistingMap[localPid] = true
+        }
+      }
+
+      const plansCol = $app.findCollectionByNameOrId('subscription_plans')
+      let localImported = 0
+      let localAlready = 0
+      const localImportedNames = []
+
+      for (let idx = 0; idx < localPriceList.length; idx++) {
+        const localPrice = localPriceList[idx]
+        const localPriceId = String(localPrice.id || '')
+        if (!localPriceId) continue
+        if (localExistingMap[localPriceId]) {
+          localAlready++
+          continue
+        }
+
+        const localCents = localPrice.unit_amount || 0
+        const localInterval =
+          localPrice.recurring && typeof localPrice.recurring === 'object'
+            ? String(localPrice.recurring.interval || '')
+            : ''
+        if (!localCents) continue
+        if (localInterval !== 'month' && localInterval !== 'year') {
+          // Prices sem recorrência (one-time) ou com periodicidade não suportada
+          // não viram plano de assinatura
+          continue
+        }
+        const localPlanType = localInterval === 'year' ? 'anual' : 'mensal'
+
+        let localProdName = ''
+        if (localPrice.product && typeof localPrice.product === 'object') {
+          localProdName = String(localPrice.product.name || '')
+        }
+        const localNickname = String(localPrice.nickname || '')
+        const localBaseName =
+          localNickname || localProdName || localProductName || 'Plano Consciente'
+        const localLabel =
+          localBaseName +
+          ' (' +
+          inlineFormatBRL(localCents) +
+          (localPlanType === 'anual' ? '/ano' : '/mês') +
+          ')'
+
+        // marca já visto antes de salvar: duas chamadas seguidas (ou dois Prices
+        // iguais na mesma página) nunca geram rascunho duplicado
+        localExistingMap[localPriceId] = true
+
+        const localRec = new Record(plansCol)
+        localRec.set('plan_type', localPlanType)
+        localRec.set('name', localLabel)
+        localRec.set('price_cents', localCents)
+        localRec.set('stripe_price_id', localPriceId)
+        localRec.set(
+          'stripe_product_id',
+          localPrice.product && typeof localPrice.product === 'object'
+            ? String(localPrice.product.id || '')
+            : String(localPrice.product || ''),
+        )
+        localRec.set('valid_from', '')
+        localRec.set('valid_until', '')
+        localRec.set('user_override', '')
+        localRec.set('active', false)
+        localRec.set(
+          'notes',
+          'Rascunho importado da Stripe (v0.0.110) — defina a vigência e ative.',
+        )
+        $app.save(localRec)
+        localImported++
+        localImportedNames.push(localLabel)
+      }
+
+      const localMessage =
+        localImported +
+        ' preço(s) importado(s) como rascunho, ' +
+        localAlready +
+        ' já existente(s) na tabela de planos.'
+      console.log('[import_prices] Resumo: ' + localMessage)
+      return e.json(200, {
+        success: true,
+        imported: localImported,
+        already_existing: localAlready,
+        total_stripe_prices: localPriceList.length,
+        imported_names: localImportedNames,
+        message: localMessage,
+      })
+    } catch (err) {
+      console.log('[import_prices] Erro: ' + err)
+      return e.json(500, { error: 'Falha ao importar preços da Stripe. Tente novamente.' })
+    }
+  },
+  $apis.requireAuth(),
+)

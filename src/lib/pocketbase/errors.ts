@@ -28,38 +28,37 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-// v0.0.104: extrai a mensagem amigável do corpo da resposta (ex.: BadRequestError
-// do hook de vigência: "Já existe um plano mensal válido no período ...") —
-// tira o prefixo "GoError: " e bloqueia o genérico "Something went wrong" do SDK.
-// Usar em TODO toast de erro do Backoffice.
+/**
+ * v0.0.105+: extrai a mensagem AMIGÁVEL que o backend (hook JSVM) colocou no
+ * corpo da resposta (ex.: erro de vigência: "Já existe um plano mensal válido
+ * no período ..."), removendo prefixos técnicos como "GoError: " e bloqueando
+ * o genérico "Something went wrong" do PocketBase. Usar em TODO toast de erro
+ * do Backoffice.
+ */
 export function getBackendErrorMessage(error: unknown, fallback: string): string {
-  let candidate = ''
-  if (error instanceof ClientResponseError) {
-    const res = (error.response || {}) as Record<string, unknown>
-    const dataBlock = res.data
-    if (dataBlock && typeof dataBlock === 'object') {
-      const d = dataBlock as Record<string, unknown>
-      if (typeof d.message === 'string') candidate = d.message
-      else if (typeof d.error === 'string') candidate = d.error
-      else if (typeof dataBlock === 'string') candidate = dataBlock
-    } else if (typeof res.message === 'string') {
-      candidate = res.message
-    } else if (typeof res.error === 'string') {
-      candidate = res.error
-    }
-  }
-  if (!candidate && error instanceof Error) candidate = error.message
-  if (!candidate) return fallback
+  const raw =
+    error instanceof ClientResponseError
+      ? ((error.response as unknown as { message?: string; error?: string })?.message ??
+        (error.response as unknown as { error?: string })?.error ??
+        error.message)
+      : error instanceof Error
+        ? error.message
+        : ''
 
-  let msg = candidate.replace(/^GoError:\s*/i, '').trim()
-  if (
+  let msg = typeof raw === 'string' ? raw.trim() : ''
+  if (!msg) return fallback
+
+  // Remove prefixos técnicos do runtime Go/JSVM ("GoError: ", "Error: ").
+  msg = msg
+    .replace(/^GoError:\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim()
+
+  // Bloqueia mensagens genéricas sem informação útil para a dona.
+  const generic =
     !msg ||
-    /something went wrong/i.test(msg) ||
-    /Failed to fetch/i.test(msg) ||
-    /^unexpected end of json/i.test(msg) ||
-    /^malformed/i.test(msg)
-  ) {
-    return fallback
-  }
-  return msg
+    /^something went wrong$/i.test(msg) ||
+    /^failed to fetch$/i.test(msg) ||
+    msg === fallback
+  return generic ? fallback : msg
 }

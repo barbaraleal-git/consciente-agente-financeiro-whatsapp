@@ -14,8 +14,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatDateTime } from '@/lib/formatters'
 import { getBackendErrorMessage } from '@/lib/pocketbase/errors'
+import pb from '@/lib/pocketbase/client'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   billingService,
   adminService,
@@ -45,6 +54,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  History,
 } from 'lucide-react'
 
 type AdminTab = 'clientes' | 'planos' | 'stripe' | 'legal'
@@ -100,6 +110,102 @@ export const BillingAdminSection: React.FC = () => {
   const [savingPlanId, setSavingPlanId] = useState<string | null>(null)
   const [setupLoading, setSetupLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
+
+  // v0.0.111: estado "dirty" por linha — compara o rascunho com os valores
+  // carregados do plano; o botão Salvar só habilita com mudança real.
+  const isPlanDirty = (plan: SubscriptionPlanItem, draft: SubscriptionPlanItem) =>
+    Math.round(plan.price_cents) !== Math.round(draft.price_cents) ||
+    (plan.valid_from || '').slice(0, 10) !== (draft.valid_from || '').slice(0, 10) ||
+    (plan.valid_until || '').slice(0, 10) !== (draft.valid_until || '').slice(0, 10) ||
+    Boolean(plan.active) !== Boolean(draft.active)
+
+  // v0.0.111: auditoria por plano — diálogo "Histórico" lê a coleção
+  // subscription_plans_audit (trilha gravada pelas rotas admin do backend).
+  type AuditChange = { campo: string; label: string; antes: string; depois: string }
+  type AuditRow = {
+    id: string
+    action: string
+    plan_name: string
+    actor_email: string
+    created: string
+    changes: AuditChange[]
+  }
+  const [historyPlan, setHistoryPlan] = useState<SubscriptionPlanItem | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyRows, setHistoryRows] = useState<AuditRow[]>([])
+
+  const AUDIT_ACTION_LABEL: Record<string, string> = {
+    criar: 'Plano criado',
+    editar: 'Plano editado',
+    definir_vigencia: 'Vigência definida',
+    importar: 'Importado da Stripe (rascunho)',
+  }
+
+  const formatAuditValue = (campo: string, valor: string) => {
+    if (campo === 'price_cents') return valor === '' ? '—' : formatCurrency(Number(valor) || 0)
+    if (campo === 'active') return valor === 'true' ? 'Ativo' : 'Inativo'
+    return valor === '' ? '—' : valor
+  }
+
+  const openPlanHistory = async (plan: SubscriptionPlanItem) => {
+    setHistoryPlan(plan)
+    setHistoryOpen(true)
+    setHistoryLoading(true)
+    setHistoryRows([])
+    try {
+      // v0.0.111: lê a trilha pela rota admin (mesma checagem de admin das
+      // outras rotas de billing — não depende da regra de coleção).
+      const token = pb.authStore.token
+      const res = await fetch(
+        `${import.meta.env.VITE_POCKETBASE_URL || ''}/backend/v1/admin/billing/plans/history?plan_id=${encodeURIComponent(plan.id)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      )
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error((data && (data.error || data.message)) || 'Falha ao carregar histórico.')
+      }
+      const items = (data && Array.isArray(data.history) ? data.history : []) as Array<{
+        id: string
+        action: string
+        plan_name: string
+        actor_email: string
+        created: string
+        changes: unknown
+      }>
+      const rows: AuditRow[] = items.map((item) => {
+        let changes: AuditChange[] = []
+        try {
+          const raw = item.changes
+          if (typeof raw === 'string') {
+            changes = JSON.parse(raw) as AuditChange[]
+          } else if (Array.isArray(raw)) {
+            changes = raw as AuditChange[]
+          }
+        } catch {
+          changes = []
+        }
+        return {
+          id: String(item.id || ''),
+          action: String(item.action || ''),
+          plan_name: String(item.plan_name || ''),
+          actor_email: String(item.actor_email || ''),
+          created: String(item.created || ''),
+          changes,
+        }
+      })
+      setHistoryRows(rows)
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Não foi possível carregar o histórico deste plano.'
+      toast({ title: 'Erro no histórico', description: msg, variant: 'destructive' })
+      setHistoryRows([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   const [legalLoading, setLegalLoading] = useState(true)
   const [legal, setLegal] = useState<CompanyLegalInfo | null>(null)
@@ -218,6 +324,9 @@ export const BillingAdminSection: React.FC = () => {
           title: 'Plano salvo!',
           description: res.message || 'Preço atualizado com sucesso.',
         })
+        // v0.0.111: Salvar volta ao estado desabilitado imediatamente — o
+        // rascunho passa a valer como os valores recém-salvos até o reload.
+        setPlanDrafts((prev) => ({ ...prev, [plan.id]: { ...plan } }))
         await loadPlans()
       } else {
         toast({
@@ -523,35 +632,54 @@ export const BillingAdminSection: React.FC = () => {
                   cliente — o preço de override tem prioridade sobre o preço geral.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* v0.0.110 (item 31): importar Prices da Stripe como rascunhos */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleImportPrices}
-                    disabled={importLoading}
-                    className="text-xs"
-                  >
-                    {importLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                    ) : (
-                      <Download className="w-3.5 h-3.5 mr-1.5" />
-                    )}
-                    Importar preços da Stripe
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSetupStripe}
-                    disabled={setupLoading}
-                    className="text-xs"
-                  >
-                    {setupLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                    ) : (
-                      <CreditCard className="w-3.5 h-3.5 mr-1.5" />
-                    )}
-                    Sincronizar produtos na Stripe
-                  </Button>
+                  {/* v0.0.111: tooltips explicando a direção de cada operação */}
+                  <TooltipProvider delayDuration={200}>
+                    {/* v0.0.110 (item 31): importar Prices da Stripe como rascunhos */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleImportPrices}
+                          disabled={importLoading}
+                          className="text-xs"
+                        >
+                          {importLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 mr-1.5" />
+                          )}
+                          Importar preços da Stripe
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs">
+                        Traz Prices existentes na sua conta Stripe como rascunhos pendentes de
+                        vigência (Stripe → App).
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSetupStripe}
+                          disabled={setupLoading}
+                          className="text-xs"
+                        >
+                          {setupLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                          ) : (
+                            <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                          )}
+                          Sincronizar produtos na Stripe
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs">
+                        Cria o produto Consciente e os preços na sua conta Stripe a partir dos
+                        planos do app (App → Stripe).
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
 
@@ -682,24 +810,40 @@ export const BillingAdminSection: React.FC = () => {
                               {p.stripe_price_id || '—'}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                onClick={() => handleSavePlan(draft)}
-                                disabled={savingPlanId === p.id}
-                                title={
-                                  isRascunho
-                                    ? 'Defina a vigência e ative para publicar aos clientes'
-                                    : undefined
-                                }
-                                className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
-                              >
-                                {savingPlanId === p.id ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                                ) : (
-                                  <Save className="w-3.5 h-3.5 mr-1" />
-                                )}
-                                Salvar
-                              </Button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* v0.0.111: histórico de alterações do Price/plano */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openPlanHistory(p)}
+                                  title="Ver histórico de alterações deste plano"
+                                  className="h-8 text-xs"
+                                >
+                                  <History className="w-3.5 h-3.5 mr-1" />
+                                  Histórico
+                                </Button>
+                                {/* v0.0.111: Salvar só habilita com mudança real na linha */}
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSavePlan(draft)}
+                                  disabled={savingPlanId === p.id || !isPlanDirty(p, draft)}
+                                  title={
+                                    !isPlanDirty(p, draft)
+                                      ? 'Faça uma alteração nesta linha para habilitar o Salvar'
+                                      : isRascunho
+                                        ? 'Defina a vigência e ative para publicar aos clientes'
+                                        : undefined
+                                  }
+                                  className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                                >
+                                  {savingPlanId === p.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                  ) : (
+                                    <Save className="w-3.5 h-3.5 mr-1" />
+                                  )}
+                                  Salvar
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         )
@@ -708,6 +852,67 @@ export const BillingAdminSection: React.FC = () => {
                   </TableBody>
                 </Table>
               </div>
+
+              {/* v0.0.111: diálogo de histórico de alterações do plano */}
+              <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="text-base">
+                      Histórico de alterações — {historyPlan?.name || 'Plano'}
+                    </DialogTitle>
+                    <DialogDescription className="text-xs">
+                      Trilha de auditoria deste Price/plano (mais recente primeiro): o que mudou,
+                      quem mudou e quando.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {historyLoading ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-sm text-slate-500">
+                      <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                      Carregando histórico...
+                    </div>
+                  ) : historyRows.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-slate-500">
+                      Nenhuma alteração registrada ainda para este plano.
+                    </div>
+                  ) : (
+                    <ol className="space-y-3">
+                      {historyRows.map((row) => (
+                        <li
+                          key={row.id}
+                          className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-900">
+                              {AUDIT_ACTION_LABEL[row.action] || row.action}
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              {formatDateTime(row.created)}
+                            </span>
+                          </div>
+                          {row.actor_email && (
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              por {row.actor_email}
+                            </div>
+                          )}
+                          {row.changes.length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {row.changes.map((ch, ci) => (
+                                <li key={ci} className="text-[11px] text-slate-700">
+                                  <span className="font-medium">{ch.label}</span>:{' '}
+                                  <span className="text-slate-500 line-through">
+                                    {formatAuditValue(ch.campo, String(ch.antes))}
+                                  </span>{' '}
+                                  → {formatAuditValue(ch.campo, String(ch.depois))}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </div>
@@ -885,7 +1090,10 @@ export const BillingAdminSection: React.FC = () => {
                     className="text-xs font-mono bg-slate-50"
                   />
                   <p className="text-[11px] text-slate-500">
-                    ID do preço recorrente mensal criado no painel da Stripe.
+                    {/* v0.0.111: campo de referência — o checkout usa a tabela de
+                    planos (Planos e Preços), não este campo. */}
+                    Somente referência: o checkout usa os IDs da tabela &quot;Planos e Preços&quot;,
+                    não este campo.
                   </p>
                 </div>
 
@@ -918,8 +1126,9 @@ export const BillingAdminSection: React.FC = () => {
                     className="text-xs font-mono bg-slate-50"
                   />
                   <p className="text-[11px] text-slate-500">
-                    Price com recorrência &quot;Por ano&quot; (faturamento a cada 12 meses), usado
-                    no botão &quot;Assinar Anual (recorrente)&quot; da Minha Conta.
+                    {/* v0.0.111: validado em código — NENHUMA rota lê este campo. */}
+                    Legado (v0.0.98): nenhuma rota do backend lê este campo. A fonte única dos Price
+                    IDs é a tabela &quot;Planos e Preços&quot;.
                   </p>
                 </div>
               </div>

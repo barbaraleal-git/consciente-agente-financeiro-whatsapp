@@ -25,10 +25,41 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.112',
+    date: '15/11/2026',
+    title: 'Tooltips, Dirty-Save e Histórico de Alterações por Price no Backoffice Billing',
+    tag: 'Atual',
+    highlights: [
+      'Tooltips de direção nos botões de integração (Billing → Planos e Preços): "Importar preços da Stripe" explica que traz os Prices da Stripe para o app (Stripe → App, cria rascunhos pendentes de vigência) e "Sincronizar produtos na Stripe" explica que envia os dados do app para a Stripe (App → Stripe) — SEM confirmação extra no Sincronizar.',
+      'Dirty-save por linha: o botão Salvar de cada Price na tabela "Planos e Preços" só fica habilitado quando há alteração real nos campos daquela linha e volta a desabilitar após o salvamento bem-sucedido (toast verde "Plano salvo!" + recarga da tabela).',
+      'Histórico de alterações por Price/Plano: nova coleção subscription_plans_audit (migração 0052, leitura restrita a admin) gravada INLINE nas rotas admin — criar/editar/definir_vigencia no POST /backend/v1/admin/billing/plans (snapshot antes → depois por campo) e action "importar" na rota de importação; nova rota GET /backend/v1/admin/billing/plans/history?plan_id= alimenta o botão Histórico de cada linha.',
+      'Campos de Price ID da Configuração Stripe auditados contra o código: price_id_mensal e price_id_anual_recorrente são usados apenas como fallback/pareamento pelo sync de produtos (o checkout resolve pela tabela subscription_plans); price_id_anual confirmado LEGADO (nenhuma leitura) — rótulos atualizados na tela.',
+      'Reparos da rodada: migração 0052 realinhada ao formato de export do projeto (falha "could not convert to func(core.App)") e getBackendErrorMessage restaurada em src/lib/pocketbase/errors.ts (build do frontend voltava a falhar com MISSING_EXPORT).',
+    ],
+    details: [
+      'pocketbase/migrations/0052_create_subscription_plans_audit.js: coleção subscription_plans_audit (plan, plan_name, action, actor_email, changes JSON) com regra de acesso somente admin.',
+      'pocketbase/hooks/billing_stripe.js: trilha de auditoria inline no POST de planos e na importação de Prices + rota GET /backend/v1/admin/billing/plans/history (lógica 100% inline nos callbacks, regras da JSVM).',
+      'src/components/admin/BillingAdminSection.tsx: tooltips (title) nos botões Importar/Sincronizar, dirty-save por linha (isDirty) e dialog de Histórico consultando a rota de histórico.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage reexportada (aridade (error, fallback)) para os toasts do Backoffice.',
+      'src/data/docsContent.ts: cenário AT — Tooltips, Dirty-Save e Histórico de Preços no roteiro regressivo.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.112 no topo com tag "Atual" (v0.0.111/v0.0.110 e anteriores mantêm "Estável").',
+    ],
+  },
+  {
+    version: '0.0.111',
+    date: '15/11/2026',
+    title: 'Tooltips, Dirty-Save e Histórico de Alterações por Price no Backoffice Billing',
+    tag: 'Estável',
+    highlights: [
+      'Entrega parcial da rodada (QA travado): tooltips nos botões Importar/Sincronizar, dirty-save por linha e histórico de preços ficaram na working tree sem commit — concluída e liberada na v0.0.112.',
+    ],
+    details: ['Entrada registrada para rastreio da numeração de versões do projeto.'],
+  },
+  {
     version: '0.0.110',
     date: '15/11/2026',
     title: 'Importar Preços da Stripe como Rascunhos Pendentes de Vigência (Item 31 do Backlog)',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Nova funcionalidade no Backoffice (Billing → Planos e Preços): botão "Importar preços da Stripe" chama a rota POST /backend/v1/admin/billing/stripe/import-prices e traz os Prices do produto Consciente direto da API da Stripe como linhas RASCUNHO em subscription_plans — active = false, sem valid_from/valid_until, destacados em âmbar com badge "Rascunho — defina a vigência".',
       'Dedupe rígido por stripe_price_id contra TODAS as linhas (ativas ou não): os 4 Prices reais da conta (mensal promo R$ 19,90 …ftUWaEJB0, mensal padrão R$ 29,90 …fLP1oZJKS, anual promo R$ 214,90 …fGEinrGPA, anual padrão R$ 322,90 …fNapN7q6b) aparecem como "já existentes" e NUNCA duplicam, não importa quantas vezes o botão seja clicado.',

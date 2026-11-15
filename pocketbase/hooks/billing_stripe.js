@@ -1957,6 +1957,22 @@ routerAdd(
         return null
       }
 
+      // v0.0.111: trilha de auditoria — resolve os nomes dos planos citados
+      // na coleção subscription_plans_audit para a UI de Histórico.
+      var localAuditPlanNames = {}
+      try {
+        var localAuditRows = $app.findRecordsByFilter(
+          'subscription_plans_audit',
+          '',
+          '-created',
+          500,
+          0,
+        )
+        for (var localAi = 0; localAi < localAuditRows.length; localAi++) {
+          localAuditPlanNames[localAuditRows[localAi].getString('plan') || ''] =
+            localAuditRows[localAi].getString('plan_name') || ''
+        }
+      } catch (_) {}
       const allPlans = $app.findRecordsByFilter('subscription_plans', '', '-created', 100, 0)
       const usersCol = $app.findRecordsByFilter('_pb_users_auth_', '', '-created', 500, 0)
       const userMap = {}
@@ -2019,8 +2035,24 @@ routerAdd(
       const plansCol = $app.findCollectionByNameOrId('subscription_plans')
 
       let rec = null
+      // v0.0.111: snapshot dos valores ANTES da gravação, para a trilha de
+      // auditoria (subscription_plans_audit) — antes → depois por campo.
+      var localPrevCents = 0
+      var localPrevActive = false
+      var localPrevFrom = ''
+      var localPrevUntil = ''
+      var localPrevMap = {}
       if (planId) {
         rec = $app.findRecordById('subscription_plans', planId)
+        localPrevCents = rec.getInt('price_cents')
+        localPrevActive = rec.getBool('active')
+        localPrevFrom = String(rec.getString('valid_from') || '').slice(0, 10)
+        localPrevUntil = String(rec.getString('valid_until') || '').slice(0, 10)
+        localPrevMap = {
+          valid_from: localPrevFrom,
+          valid_until: localPrevUntil,
+          stripe_price_id: String(rec.getString('stripe_price_id') || ''),
+        }
       } else {
         rec = new Record(plansCol)
       }
@@ -2110,6 +2142,66 @@ routerAdd(
 
       $app.save(rec)
 
+      // v0.0.111: trilha de auditoria por plano (pedido da dona — gestão do
+      // dia a dia). Uma linha em subscription_plans_audit por gravação bem
+      // sucedida: criar/editar/definir_vigencia/importar, com antes→depois.
+      try {
+        var localAuditAction = 'editar'
+        var localAuditChanges = []
+        var localAuditFields = [
+          ['price_cents', 'Preço'],
+          ['valid_from', 'Vigência de'],
+          ['valid_until', 'Vigência até'],
+          ['active', 'Ativo'],
+          ['stripe_price_id', 'Stripe Price ID'],
+        ]
+        if (!planId) {
+          localAuditAction = 'criar'
+        } else {
+          var localHadVigenciaBefore =
+            String(localPrevFrom || '') !== '' || String(localPrevUntil || '') !== ''
+          var localHadVigenciaAfter = localVFrom !== '' || localVUntil !== ''
+          if (localHadVigenciaAfter && (!localHadVigenciaBefore || localPrevActive === false)) {
+            localAuditAction = 'definir_vigencia'
+          }
+        }
+        for (var localFi = 0; localFi < localAuditFields.length; localFi++) {
+          var localFId = localAuditFields[localFi][0]
+          var localFLabel = localAuditFields[localFi][1]
+          var localBefore = ''
+          var localAfter = ''
+          if (localFId === 'price_cents') {
+            localBefore = String(localPrevCents || 0)
+            localAfter = String(rec.getInt('price_cents') || 0)
+            if (localBefore === localAfter) continue
+          } else if (localFId === 'active') {
+            localBefore = localPrevActive ? 'true' : 'false'
+            localAfter = rec.getBool('active') ? 'true' : 'false'
+            if (localBefore === localAfter) continue
+          } else {
+            localBefore = String(localPrevMap[localFId] || '')
+            localAfter = String(rec.getString(localFId) || '')
+            if (localBefore === localAfter) continue
+          }
+          localAuditChanges.push({
+            campo: localFId,
+            label: localFLabel,
+            antes: localBefore,
+            depois: localAfter,
+          })
+        }
+        var localAuditCol = $app.findCollectionByNameOrId('subscription_plans_audit')
+        var localAuditRec = new Record(localAuditCol)
+        localAuditRec.set('plan', rec.id)
+        localAuditRec.set('plan_name', rec.getString('name') || '')
+        localAuditRec.set('action', localAuditAction)
+        localAuditRec.set('actor_email', email || 'admin')
+        localAuditRec.set('changes', JSON.stringify(localAuditChanges))
+        $app.save(localAuditRec)
+      } catch (localAuditErr) {
+        console.log('[admin_billing] Auditoria falhou (plano salvo, sem trilha): ' + localAuditErr)
+      }
+
       return e.json(200, {
         success: true,
         message: 'Plano salvo com sucesso!',
@@ -2127,6 +2219,70 @@ routerAdd(
       } catch (_) {}
       console.log('[admin_billing] Erro ao salvar plano (' + localStatus + '): ' + err)
       return e.json(localStatus, { success: false, error: localMsg, message: localMsg })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 11.b (v0.0.111) GET /backend/v1/admin/billing/plans/history?plan_id=...
+// Trilha de auditoria de um plano (coleção subscription_plans_audit, coleção
+// criada na migração 0052), mais recente primeiro. Somente admins.
+// Regras JSVM: lógica 100% INLINE no callback.
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/admin/billing/plans/history',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const localPlanId = String(e.requestInfo().query.plan_id || '')
+      if (!localPlanId) {
+        return e.json(400, { error: 'Parâmetro plan_id é obrigatório.' })
+      }
+
+      const localFilter = "plan = '" + localPlanId + "'"
+      const localRows = $app.findRecordsByFilter(
+        'subscription_plans_audit',
+        localFilter,
+        '-created',
+        100,
+        0,
+      )
+      const localOut = []
+      for (let localHi = 0; localHi < localRows.length; localHi++) {
+        const localRow = localRows[localHi]
+        let localChanges = []
+        try {
+          const localRaw = localRow.getString('changes') || '[]'
+          const localParsed = JSON.parse(localRaw)
+          if (localParsed && typeof localParsed === 'object' && localParsed.length !== undefined) {
+            localChanges = localParsed
+          }
+        } catch (_) {
+          localChanges = []
+        }
+        localOut.push({
+          id: localRow.id,
+          action: localRow.getString('action') || '',
+          plan_name: localRow.getString('plan_name') || '',
+          actor_email: localRow.getString('actor_email') || '',
+          created: localRow.getString('created') || '',
+          changes: localChanges,
+        })
+      }
+
+      return e.json(200, { history: localOut })
+    } catch (err) {
+      console.log('[admin_billing] Erro em /plans/history: ' + err)
+      return e.json(500, { error: 'Falha ao carregar histórico do plano.' })
     }
   },
   $apis.requireAuth(),
@@ -2489,6 +2645,31 @@ routerAdd(
           'Rascunho importado da Stripe (v0.0.110) — defina a vigência e ative.',
         )
         $app.save(localRec)
+
+        // v0.0.111: auditoria — importação vira linha 'importar' na trilha
+        try {
+          var localAuditCol = $app.findCollectionByNameOrId('subscription_plans_audit')
+          var localAuditRec = new Record(localAuditCol)
+          localAuditRec.set('plan', localRec.id)
+          localAuditRec.set('plan_name', localLabel)
+          localAuditRec.set('action', 'importar')
+          localAuditRec.set('actor_email', email || 'admin')
+          localAuditRec.set(
+            'changes',
+            JSON.stringify([
+              {
+                campo: 'stripe_price_id',
+                label: 'Stripe Price ID',
+                antes: '',
+                depois: localPriceId,
+              },
+            ]),
+          )
+          $app.save(localAuditRec)
+        } catch (localAuditErr) {
+          console.log('[import_prices] Auditoria falhou (importado, sem trilha): ' + localAuditErr)
+        }
+
         localImported++
         localImportedNames.push(localLabel)
       }

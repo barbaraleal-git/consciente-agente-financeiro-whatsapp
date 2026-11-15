@@ -244,6 +244,7 @@ Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente.
 > **Atualização v0.0.107**: regra de VIGÊNCIA INCLUSIVA nas duas pontas — a comparação de sobreposição foi corrigida de \`<\` para \`<=\`: nem a data de início nem a data de fim de vigências do MESMO plan_type podem coincidir (termina 01/12 + começa 01/12 = CONFLITO rejeitado com 400; termina 30/11 + começa 01/12 = OK, exige 1 dia de folga entre janelas consecutivas). Migração 0046 encurtou a vigência da linha promocional para terminar 30/11/2026, alinhando os dados à regra. Teste real reproduzido via API HTTP autenticada: mensal e anual com fronteira igual → 400 com mensagem amigável; janela válida → 200.
 > **Atualização v0.0.108**: fronteira inclusiva COMPROVADA via API real no backend vivo — sobreposição no MESMO dia rejeitada com 400 e mensagem amigável (trilhos mensal e anual); rótulo do Backoffice "Pagamento único (Pix/cartão)" substituindo o resíduo "Sem assinatura Stripe" para clientes com \`billing_mode = one_time\`. Auto-teste temporário de vigência (cron \`vigencia_selftest\`, rota de diagnóstico \`test-vigencia\`, migração 0051 e usuário de teste) removido na v0.0.109 — a regra permanece 100% na rota POST e no hook de coleção.
 > **Atualização v0.0.110**: nova funcionalidade **Importação de Preços da Stripe como Rascunhos** (Billing → Planos e Preços): botão "Importar preços da Stripe" traz os Prices da conta Stripe como linhas rascunho (\`active = false\`, sem vigência, destaque âmbar), com dedupe por \`stripe_price_id\` (os 4 Prices reais jamais duplicam — aparecem como "já existentes"). Rascunho fica fora da oferta pública e fora da checagem de vigência até definir vigência/plan_type e ativar. Novo cenário **AS — Importação de Preços da Stripe**.
+> **Atualização v0.0.111**: refinamentos do Backoffice Billing (Billing → Planos e Preços e Configuração Stripe): (1) tooltips nos botões "Importar preços da Stripe" (Stripe → App) e "Sincronizar produtos na Stripe" (App → Stripe); (2) botão **Salvar** de cada Price só habilita com alteração real na linha (dirty-save, volta a desabilitar após salvar); (3) **Histórico por plano**: nova coleção \`subscription_plans_audit\` (migração 0052) + rota \`GET /backend/v1/admin/billing/plans/history\` — botão "Histórico" por linha abre dialog com ação (criado/editado/vigência definida/importado), campo alterado com valor anterior → novo, autor e data/hora; (4) campos de Price ID da Configuração Stripe auditados contra o código: \`price_id_mensal\` e \`price_id_anual_recorrente\` são lidos pelo sync de produtos (fallback), \`price_id_anual\` confirmado LEGADO (nunca lido). Novo cenário **AT — Tooltips, Dirty-Save e Histórico de Preços**.
 
 ---
 
@@ -1265,6 +1266,31 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 6. **Proteção sem secret key**:
    - Se a secret key da Stripe não estiver configurada (\`stripe_config\` vazio), clicar "Importar preços da Stripe".
    - **Comportamento Esperado**: a rota devolve HTTP 400 com mensagem amigável ("A secret key da Stripe ainda não foi configurada...") — nada é importado e nunca erro 500.
+
+---
+
+## AT) Tooltips, Dirty-Save e Histórico de Preços (v0.0.112)
+> **Escopo (v0.0.112)**: refinamentos do Backoffice (Billing → Planos e Preços e Configuração Stripe) pedidos pela dona: (1) tooltips explicando a DIREÇÃO de cada integração nos botões "Importar preços da Stripe" (Stripe → App) e "Sincronizar produtos na Stripe" (App → Stripe), SEM confirmação extra no Sincronizar; (2) dirty-save por linha: o botão **Salvar** de cada Price só habilita com alteração real nos campos daquela linha e volta a desabilitar após salvar; (3) **Histórico por plano**: botão "Histórico" em cada linha abre dialog com a trilha gravada na coleção \`subscription_plans_audit\` (migração 0052) via rota \`GET /backend/v1/admin/billing/plans/history?plan_id=\` — quem alterou, quando e o que mudou por campo (antes → depois). A gravação da trilha é inline nas rotas admin: criar/editar/definir_vigencia no POST de plano e \`importar\` na rota de importação. Campos de Price ID da Configuração Stripe auditados: \`price_id_mensal\` e \`price_id_anual_recorrente\` servem ao sync de produtos (fallback/pareamento), \`price_id_anual\` é legado e nunca é lido.
+
+1. **Tooltips de direção nos botões Importar e Sincronizar**:
+   - No Backoffice (Billing → Planos e Preços), passar o mouse (ou focar) sobre o botão **"Importar preços da Stripe"** e depois sobre **"Sincronizar produtos na Stripe"**.
+   - **Comportamento Esperado**: tooltip visível em cada um, explicando a direção — Importar: "Traz os Prices da Stripe para o app (Stripe → App): cria rascunhos pendentes de vigência." / Sincronizar: "Envia os dados do app para a Stripe (App → Stripe): cria/atualiza os produtos, sem confirmação extra." Nenhuma janela de confirmação adicional abre ao clicar em Sincronizar.
+
+2. **Dirty-save: linha sem mudança tem Salvar desabilitado**:
+   - Abrir/recarregar a tabela "Planos e Preços" e, SEM tocar em nenhum campo de uma linha, observar o botão **Salvar** dessa linha.
+   - **Comportamento Esperado**: o botão Salvar da linha está DESABILITADO (nada mudou); editar qualquer campo da linha (nome, preço, vigência, ativo) habilita o botão imediatamente; após salvar com sucesso (toast verde "Plano salvo!" e recarga da tabela), o botão volta a ficar DESABILITADO (a linha volta ao estado salvo).
+
+3. **Trilha de alterações por plano (botão Histórico)**:
+   - Editar um Price (ex.: alterar o preço), salvar, e clicar no botão **Histórico** dessa linha.
+   - **Comportamento Esperado**: abre um dialog com a trilha legível, mais recente primeiro — cada entrada mostra a AÇÃO (Criado / Editado / Vigência definida / Importado), AUTOR (e-mail de quem gravou), DATA/HORA e as MUDANÇAS por campo no formato "Campo: antes → depois" (ex.: "Preço: 1990 → 2990"). A trilha vem da rota \`GET /backend/v1/admin/billing/plans/history?plan_id=\` (coleção \`subscription_plans_audit\`, leitura restrita a admin).
+
+4. **Importação registra entrada "Importado" na trilha**:
+   - Criar um Price novo na Stripe (ou usar um Price que ainda não esteja na tabela) e clicar "Importar preços da Stripe"; depois abrir o Histórico da linha importada.
+   - **Comportamento Esperado**: a importação gravou uma entrada com ação "Importado" citando o \`stripe_price_id\` e o autor — a linha importada já nasce com trilha (rascunho âmbar conforme cenário AS).
+
+5. **Ação "Vigência definida" e blindagem da trilha**:
+   - Definir vigência/plan_type num rascunho e ativar (fluxo do cenário AS passo 5), depois abrir o Histórico dessa linha.
+   - **Comportamento Esperado**: a gravação entrou com ação "Vigência definida" mostrando os campos de vigência antes → depois; falha de auditoria (ex.: coleção indisponível) nunca bloqueia o salvamento do plano — o plano é salvo e o erro é só logado no servidor ("Auditoria falhou (plano salvo, sem trilha)").
 
 ---
 `

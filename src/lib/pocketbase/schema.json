@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-15T03:34:03.753Z",
+  "generatedAt": "2026-11-15T04:21:52.017Z",
   "collections": [
     {
       "name": "users",
@@ -1280,6 +1280,68 @@
         "CREATE UNIQUE INDEX idx_proactive_logs_dedupe ON proactive_logs (dedupe_key)",
         "CREATE INDEX idx_proactive_logs_user_kind ON proactive_logs (user, kind)",
         "CREATE INDEX idx_proactive_logs_created ON proactive_logs (created)"
+      ]
+    },
+    {
+      "name": "subscription_plans_audit",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "view": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "plan",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "subscription_plans"
+        },
+        {
+          "name": "plan_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "action",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["criar", "editar", "definir_vigencia", "importar"]
+        },
+        {
+          "name": "actor_email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "changes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_subscription_plans_audit_plan ON subscription_plans_audit (plan, created)"
       ]
     }
   ]

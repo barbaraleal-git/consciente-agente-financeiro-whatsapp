@@ -1919,6 +1919,66 @@ routerAdd(
 )
 
 // ----------------------------------------------------
+// 9.b (v0.0.114) Diagnóstico da cobertura contínua por trilha — GET
+// /backend/v1/admin/billing/plans/coverage. Somente admins. Não grava nada:
+// devolve como a linha de vigências ativas de CADA trilha (mensal e anual)
+// está simulada a partir de hoje e se há alguma lacuna (a mesma função
+// globalThis.__vigenciaCobertura usada na validação de salvamento).
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/admin/billing/plans/coverage',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const localAll = $app.findRecordsByFilter(
+        'subscription_plans',
+        "active = true && (user_override = '' || user_override = null)",
+        'valid_from',
+        200,
+        0,
+      )
+      const localTrilhas = { mensal: [], anual: [] }
+      for (var localGi = 0; localGi < localAll.length; localGi++) {
+        var localRow = localAll[localGi]
+        var localT = String(localRow.getString('plan_type') || '')
+        if (localT !== 'mensal' && localT !== 'anual') continue
+        localTrilhas[localT].push({
+          id: localRow.id,
+          name: String(localRow.getString('name') || 'sem nome'),
+          from: String(localRow.getString('valid_from') || '').slice(0, 10),
+          until: String(localRow.getString('valid_until') || '').slice(0, 10),
+        })
+      }
+      const localResult = []
+      const localTipos = ['mensal', 'anual']
+      for (var localTi = 0; localTi < localTipos.length; localTi++) {
+        var localTipo = localTipos[localTi]
+        var localErr = globalThis.__vigenciaCobertura(localTipo, localTrilhas[localTipo])
+        localResult.push({
+          plan_type: localTipo,
+          rows: localTrilhas[localTipo],
+          ok: localErr === '',
+          error: localErr,
+        })
+      }
+      return e.json(200, { today: new Date().toISOString().slice(0, 10), trilhas: localResult })
+    } catch (err) {
+      console.log('[admin_billing] Erro em /plans/coverage: ' + err)
+      return e.json(500, { error: 'Falha ao simular a cobertura de vigências.' })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
 // 10. GET /backend/v1/admin/billing/plans
 // ----------------------------------------------------
 routerAdd(
@@ -2137,6 +2197,41 @@ routerAdd(
               localRowName +
               '. As janelas não podem se tocar (nem o início nem o fim podem coincidir) — deixe no mínimo um dia de diferença na fronteira (ex.: termina 30/11, começa 01/12).',
           })
+        }
+
+        // v0.0.114 — COBERTURA CONTÍNUA POR TRILHA (pedido expresso da dona):
+        // da data corrente em diante, nenhum dia futuro pode ficar sem plano
+        // ativo definido na trilha (senão um cliente que chega para se cadastrar
+        // não encontra plano disponível). Simula a linha de vigências ativas da
+        // trilha (mensal e anual separadamente) incluindo a linha que está sendo
+        // salva e rejeita qualquer lacuna de datas >= 1 dia entre "hoje ou
+        // depois" e o fim da trilha. A trilha SEMPRE precisa terminar numa
+        // linha aberta (valid_until vazio) que cubra o futuro. Fronteira
+        // INCLUSIVA: um termina 30/11 e outro começa 01/12 → SEM buraco (o dia
+        // de fronteira pertence a uma só vigência). Rascunhos (linhas inativas)
+        // e user_override continuam FORA dessa simulação — só são validados
+        // quando definem vigência e são ativados.
+        var localCoverageRows = []
+        for (var localKi = 0; localKi < localConflicts.length; localKi++) {
+          var localKRow = localConflicts[localKi]
+          if (localPlanId && localKRow.id === localPlanId) continue
+          localCoverageRows.push({
+            name: String(localKRow.getString('name') || 'sem nome'),
+            from: String(localKRow.getString('valid_from') || '').slice(0, 10),
+            until: String(localKRow.getString('valid_until') || '').slice(0, 10),
+          })
+        }
+        localCoverageRows.push({
+          name: String(body.name || rec.getString('name') || 'novo plano'),
+          from: localVFrom,
+          until: localVUntil,
+        })
+        // Implementação ÚNICA em globalThis.__vigenciaCobertura, registrada
+        // pelo hook de coleção subscription_plans_vigencia.js (padrão
+        // __proactiveEngine) — a rota NÃO duplica a lógica.
+        var localCoverageErr = globalThis.__vigenciaCobertura(localPlanType, localCoverageRows)
+        if (localCoverageErr) {
+          return e.json(400, { error: localCoverageErr })
         }
       }
 

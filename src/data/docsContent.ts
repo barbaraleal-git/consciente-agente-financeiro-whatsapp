@@ -246,6 +246,7 @@ Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente.
 > **Atualização v0.0.108**: fronteira inclusiva COMPROVADA via API real no backend vivo — sobreposição no MESMO dia rejeitada com 400 e mensagem amigável (trilhos mensal e anual); rótulo do Backoffice "Pagamento único (Pix/cartão)" substituindo o resíduo "Sem assinatura Stripe" para clientes com \`billing_mode = one_time\`. Auto-teste temporário de vigência (cron \`vigencia_selftest\`, rota de diagnóstico \`test-vigencia\`, migração 0051 e usuário de teste) removido na v0.0.109 — a regra permanece 100% na rota POST e no hook de coleção.
 > **Atualização v0.0.110**: nova funcionalidade **Importação de Preços da Stripe como Rascunhos** (Billing → Planos e Preços): botão "Importar preços da Stripe" traz os Prices da conta Stripe como linhas rascunho (\`active = false\`, sem vigência, destaque âmbar), com dedupe por \`stripe_price_id\` (os 4 Prices reais jamais duplicam — aparecem como "já existentes"). Rascunho fica fora da oferta pública e fora da checagem de vigência até definir vigência/plan_type e ativar. Novo cenário **AS — Importação de Preços da Stripe**.
 > **Atualização v0.0.111**: refinamentos do Backoffice Billing (Billing → Planos e Preços e Configuração Stripe): (1) tooltips nos botões "Importar preços da Stripe" (Stripe → App) e "Sincronizar produtos na Stripe" (App → Stripe); (2) botão **Salvar** de cada Price só habilita com alteração real na linha (dirty-save, volta a desabilitar após salvar); (3) **Histórico por plano**: nova coleção \`subscription_plans_audit\` (migração 0052) + rota \`GET /backend/v1/admin/billing/plans/history\` — botão "Histórico" por linha abre dialog com ação (criado/editado/vigência definida/importado), campo alterado com valor anterior → novo, autor e data/hora; (4) campos de Price ID da Configuração Stripe auditados contra o código: \`price_id_mensal\` e \`price_id_anual_recorrente\` são lidos pelo sync de produtos (fallback), \`price_id_anual\` confirmado LEGADO (nunca lido). Novo cenário **AT — Tooltips, Dirty-Save e Histórico de Preços**.
+> **Atualização v0.0.114**: **Cobertura Contínua de Vigências por Trilha** (Billing → Planos e Preços, pedido da dona): da data corrente em diante, nenhuma data futura pode ficar sem plano ativo definido — o salvamento de plano simula a linha de vigências ativas de cada trilha (mensal e anual separadamente) e rejeita com 400 qualquer lacuna de datas ≥ 1 dia citando o intervalo sem cobertura; a trilha precisa sempre terminar numa linha aberta (valid_until vazio). Rascunhos da importação da Stripe continuam fora da checagem até serem ativados. Nova rota de diagnóstico \`GET /backend/v1/admin/billing/plans/coverage\` (admin). Novo cenário **AU — Cobertura Contínua de Vigências por Trilha**.
 
 ---
 
@@ -1292,6 +1293,31 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 5. **Ação "Vigência definida" e blindagem da trilha**:
    - Definir vigência/plan_type num rascunho e ativar (fluxo do cenário AS passo 5), depois abrir o Histórico dessa linha.
    - **Comportamento Esperado**: a gravação entrou com ação "Vigência definida" mostrando os campos de vigência antes → depois; falha de auditoria (ex.: coleção indisponível) nunca bloqueia o salvamento do plano — o plano é salvo e o erro é só logado no servidor ("Auditoria falhou (plano salvo, sem trilha)").
+
+---
+
+## AU) Cobertura Contínua de Vigências por Trilha (v0.0.114)
+> **Escopo (v0.0.114)**: regra pedida pela dona — "da data corrente em diante, o sistema não pode permitir que uma data ou intervalo de datas futuras fique sem plano definido" (senão um cliente que chega para se cadastrar não encontra plano disponível). Além do hook de integridade de sobreposição (fronteira INCLUSIVA, cenário AR), o salvamento de plano no Backoffice (rota \`POST /backend/v1/admin/billing/plans\`, hook \`billing_stripe.js\`) e o hook de coleção (\`subscription_plans_vigencia.js\`) agora SIMULAM a linha de vigências ativas de CADA trilha (mensal e anual separadamente) incluindo a linha que está sendo salva, e rejeitam com 400 qualquer lacuna de datas ≥ 1 dia entre "hoje ou depois" e o fim da trilha. A trilha precisa SEMPRE terminar numa linha aberta (valid_until vazio) que cubra o futuro. Rascunhos (linhas inativas da importação da Stripe) continuam fora da checagem até definirem vigência e serem ativados. Nova rota de diagnóstico \`GET /backend/v1/admin/billing/plans/coverage\` (admin) devolve a simulação por trilha sem gravar nada. Implementação única em \`globalThis.__vigenciaCobertura\` (registrada por \`subscription_plans_vigencia.js\`), consumida pela rota admin e pelos hooks de coleção.
+
+1. **Buraco de datas é rejeitado citando o intervalo (exemplo da dona)**:
+   - Estar com a trilha mensal coberta (ex.: "Mensal (Black November)" de 01/01/2024 a 30/11/2026 e "Mensal Padrão" de 01/12/2026 em diante). Editar o "Mensal Padrão" (ou criar uma linha mensal ativa) para começar em **05/12/2026** em diante, e salvar.
+   - **Comportamento Esperado**: HTTP 400 com mensagem amigável em pt-BR: "A trilha mensal ficaria SEM cobertura entre 2026-12-01 e 2026-12-05 — nenhuma data futura pode ficar sem plano definido: um cliente que chegar nesse período (ex.: 03/12/2026) não encontraria plano disponível. Ajuste as vigências para que a trilha seja contínua (ex.: uma termina 30/11 e a próxima começa 01/12)." O plano NÃO é salvo e o toast do Backoffice mostra essa mensagem (getBackendErrorMessage extrai a mensagem real do corpo 400).
+
+2. **Mesma rejeição na trilha anual**:
+   - Repetir o teste na trilha anual: linha anual termina 30/11/2026 e a nova anual ativa começa 05/12/2026 (sem fim).
+   - **Comportamento Esperado**: 400 com a mesma mensagem citando "A trilha anual ficaria SEM cobertura entre 2026-12-01 e 2026-12-05 ...".
+
+3. **Vigências contíguas continuam aceitas (fronteira inclusiva)**:
+   - Voltar as vigências ao estado contíguo (mensal termina 30/11/2026, próxima mensal começa 01/12/2026 em diante) e salvar.
+   - **Comportamento Esperado**: salvamento OK ("Plano salvo com sucesso!") — o dia de fronteira pertence a uma só vigência; não há buraco (nem sobreposição, cenário AR).
+
+4. **Trilha sem linha aberta cobrindo o futuro é rejeitada**:
+   - Simular (via API/rota de cobertura) uma trilha em que TODAS as linhas têm valid_until preenchido (nenhuma "em diante") — ex.: definir vigência final na linha que hoje fecha a trilha.
+   - **Comportamento Esperado**: 400 com mensagem "A trilha [mensal|anual] terminaria em [data] e ficaria SEM cobertura a partir do dia seguinte — a trilha precisa SEMPRE terminar numa linha SEM data final (em diante) ...". Na rota \`GET /backend/v1/admin/billing/plans/coverage\`, a trilha correspondente aparece com \`ok: false\` e o mesmo texto.
+
+5. **Rascunhos da importação continuam fora da checagem; diagnóstico de cobertura**:
+   - Com rascunhos inativos da importação da Stripe na tabela (cenário AS) e as trilhas ativas contínuas, clicar "Importar preços da Stripe" novamente e salvar/editar rascunhos sem ativar.
+   - **Comportamento Esperado**: nada muda na validação — rascunhos (active = false) não entram na simulação de cobertura; eles SÓ são validados ao definir vigência e ativar. Em \`GET /backend/v1/admin/billing/plans/coverage\`, com as trilhas contíguas, ambas aparecem \`ok: true\` com as linhas simuladas a partir de hoje.
 
 ---
 `

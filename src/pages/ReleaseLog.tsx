@@ -25,10 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.114',
+    date: '15/11/2026',
+    title: 'Cobertura Contínua de Vigências por Trilha (Billing → Planos e Preços)',
+    tag: 'Atual',
+    highlights: [
+      'Nova regra pedida pela dona: da data corrente em diante, nenhuma data futura pode ficar SEM plano ativo definido — um cliente que chegar para se cadastrar num dia coberto por lacuna (ex.: 03/12/2026 entre vigências que terminam 30/11 e começam 05/12) não encontraria plano disponível para o app oferecer.',
+      'Ao salvar um plano (rota POST /backend/v1/admin/billing/plans e hook de coleção subscription_plans), o sistema SIMULA a linha de vigências ativas da trilha (mensal e anual separadamente) incluindo a linha salva e rejeita com HTTP 400 qualquer lacuna de datas ≥ 1 dia, citando o intervalo sem cobertura; a trilha precisa sempre terminar numa linha aberta (valid_until vazio) que cubra o futuro.',
+      'Fronteira INCLUSIVA preservada (cenário AR): termina 30/11 + começa 01/12 continua SEM buraco e é aceito; rascunhos da importação da Stripe (cenário AS) continuam fora da checagem até definirem vigência e serem ativados.',
+      'Nova rota de diagnóstico GET /backend/v1/admin/billing/plans/coverage (admin, sem gravação): devolve a simulação por trilha — linhas, ok/error — usando a MESMA função globalThis.__vigenciaCobertura da validação (implementação única, padrão __proactiveEngine).',
+      'Novo cenário AU — Cobertura Contínua de Vigências por Trilha no roteiro regressivo (/admin/docs), com o exemplo exato da dona (mensal 30/11/2026 → nova mensal 05/12/2026 sem fim = 400 citando 01/12–04/12/2026).',
+    ],
+    details: [
+      'pocketbase/hooks/subscription_plans_vigencia.js: registra globalThis.__vigenciaCobertura(trilha, linhas) (fonte única da regra, lógica inline no módulo — padrão JSVM/globalThis do projeto) e chama a checagem nos eventos de criar/atualizar da coleção subscription_plans, além da checagem de sobreposição existente (v0.0.106).',
+      'pocketbase/hooks/billing_stripe.js: POST de planos consulta globalThis.__vigenciaCobertura (sem duplicar lógica); nova rota GET /backend/v1/admin/billing/plans/coverage para diagnóstico por trilha.',
+      'src/data/docsContent.ts: cenário AU + linha "Atualização v0.0.114" no topo do roteiro.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.114 no topo com tag "Atual" (v0.0.112 volta a "Estável") e package.json na versão 0.0.114.',
+    ],
+  },
+  {
     version: '0.0.112',
     date: '15/11/2026',
     title: 'Tooltips, Dirty-Save e Histórico de Alterações por Price no Backoffice Billing',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Tooltips de direção nos botões de integração (Billing → Planos e Preços): "Importar preços da Stripe" explica que traz os Prices da Stripe para o app (Stripe → App, cria rascunhos pendentes de vigência) e "Sincronizar produtos na Stripe" explica que envia os dados do app para a Stripe (App → Stripe) — SEM confirmação extra no Sincronizar.',
       'Dirty-save por linha: o botão Salvar de cada Price na tabela "Planos e Preços" só fica habilitado quando há alteração real nos campos daquela linha e volta a desabilitar após o salvamento bem-sucedido (toast verde "Plano salvo!" + recarga da tabela).',

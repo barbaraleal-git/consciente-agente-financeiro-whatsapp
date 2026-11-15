@@ -2,54 +2,6 @@
 
 cronAdd('budget-check', '0 * * * *', () => {
   try {
-    // Verificação de decodificação Base64 e validação de JPEG
-    try {
-      const sampleJpegB64 =
-        '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA='
-      const cleanB64 = sampleJpegB64.replace(/[\s\r\n]+/g, '')
-      const b64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      const b64Lookup = {}
-      for (let idx = 0; idx < b64Alphabet.length; idx++) {
-        b64Lookup[b64Alphabet[idx]] = idx
-      }
-      b64Lookup['-'] = 62
-      b64Lookup['_'] = 63
-
-      let padCount = 0
-      if (cleanB64.endsWith('==')) padCount = 2
-      else if (cleanB64.endsWith('=')) padCount = 1
-
-      const b64Len = cleanB64.length
-      const outputLen = Math.floor((b64Len * 3) / 4) - padCount
-      const decodedArray = new Uint8Array(outputLen)
-      let outIdx = 0
-
-      for (let i = 0; i < b64Len; i += 4) {
-        const b0 = b64Lookup[cleanB64[i]]
-        const b1 = i + 1 < b64Len ? b64Lookup[cleanB64[i + 1]] : undefined
-        const b2 =
-          i + 2 < b64Len && cleanB64[i + 2] !== '=' ? b64Lookup[cleanB64[i + 2]] : undefined
-        const b3 =
-          i + 3 < b64Len && cleanB64[i + 3] !== '=' ? b64Lookup[cleanB64[i + 3]] : undefined
-
-        const triple =
-          (b0 << 18) | (b1 << 12) | ((b2 !== undefined ? b2 : 0) << 6) | (b3 !== undefined ? b3 : 0)
-
-        if (outIdx < outputLen) decodedArray[outIdx++] = (triple >> 16) & 255
-        if (b2 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = (triple >> 8) & 255
-        if (b3 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = triple & 255
-      }
-
-      const byte0 = decodedArray[0]
-      const byte1 = decodedArray[1]
-      const isJpeg = byte0 === 0xff && byte1 === 0xd8
-      console.log(
-        `[CRON_VERIFY_DECODER] Decoded ${outputLen} bytes. byte0=0x${(byte0 || 0).toString(16).toUpperCase()} byte1=0x${(byte1 || 0).toString(16).toUpperCase()} isJpegMagic=${isJpeg}`,
-      )
-    } catch (testErr) {
-      console.log('[CRON_VERIFY_DECODER] Erro no teste:', testErr)
-    }
-
     const now = new Date()
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 

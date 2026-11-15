@@ -25,10 +25,30 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.116',
+    date: '15/11/2026',
+    title: 'Crons Proativos Blindados (Fim do "engine indisponível") e Limpeza de Cron Residual',
+    tag: 'Atual',
+    highlights: [
+      'Defeito corrigido em produção: os crons de e-mail pré-cobrança (12h) e aviso de renovação Pix (13h30) abortavam todo dia com "engine indisponível — job abortado" — a JSVM não compartilha globalThis de forma confiável entre módulos/pools, então a engine proativa não estava visível no momento do disparo (mesma família do bug v0.0.115 do toast de vigência).',
+      'Padrão v0.0.116 aplicado: os 3 crons proativos (pré-cobrança 0 12 * * *, renovação Pix 30 13 * * * e lembrete noturno 30 23 * * *) agora vivem no orquestrador pocketbase/hooks/proactive_crons.js com resolução DEFENSIVA do globalThis (typeof + try) e FALLBACK 100% INLINE idêntico à engine por job — janelas, dedupe em proactive_logs e envios (e-mail/WhatsApp com fallback de template) preservados.',
+      'Horários, rotas de trigger/dry-run (/backend/v1/proactive/*) e coleções INALTERADOS; budget-check (0 * * * *) segue como estava.',
+      'Removido o cron residual CRON_VERIFY_DECODER (self-test de decodificação Base64/JPEG que rodava dentro do budget-check a cada hora, resquício anterior à v0.0.109) — só restam os 4 jobs de produto no agendador.',
+      'Prova HTTP da fronteira inclusiva de vigência (v0.0.108) registrada formalmente no cenário AR do roteiro regressivo (/admin/docs).',
+    ],
+    details: [
+      'pocketbase/hooks/proactive_crons.js: NOVO orquestrador dos 3 crons com fallback inline (proactive_nightly_reminder, proactive_precharge_email, proactive_pix_renewal).',
+      'pocketbase/hooks/proactive_notifications.js: fica SÓ com as rotas admin (status/trigger-*/test-email) — crons removidos daqui.',
+      'pocketbase/hooks/budget_alert.js: bloco CRON_VERIFY_DECODER removido; lógica de alertas de caixinha intacta.',
+      'src/data/docsContent.ts: linha "Atualização v0.0.116" no topo do roteiro + prova documentada da fronteira inclusiva (30/11+01/12 → 400 em PT, sequência válida → 200) no cenário AR.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.116 no topo com tag "Atual" (v0.0.115 volta a "Estável").',
+    ],
+  },
+  {
     version: '0.0.115',
     date: '15/11/2026',
     title: 'Reparo do Toast de Erro ao Salvar Plano (Cenário AU — Cobertura de Vigências)',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Defeito corrigido: ao salvar um plano com vigência fora da regra de cobertura contínua, o Backoffice exibia o erro CRU da JSVM ("Object has no member \'__vigenciaCobertura\'") no toast, em inglês, em vez da mensagem amigável em português citando o intervalo sem cobertura.',
       'Causa raiz: a rota admin chamava globalThis.__vigenciaCobertura(...) diretamente e a JSVM não compartilha o globalThis de forma confiável entre módulos/pools de VM — a função pode não existir no momento da chamada. Agora cada consumidor (rota POST de planos e hooks de coleção) resolve a função de forma DEFENSIVA (typeof + try) e, indisponível, usa FALLBACK 100% inline com a mesma lógica: o erro devolvido é SEMPRE 400 com mensagem em PT, nunca 500 cru.',

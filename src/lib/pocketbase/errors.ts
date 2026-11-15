@@ -28,72 +28,47 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-// v0.0.115 — RESTAURADA (existia até a v0.0.114 e o Backoffice → Planos e
-// Preços importa esta função; a extração indevida na rodada anterior quebrou
-// o build do preview com MISSING_EXPORT). Diferença para getErrorMessage:
-// extrai a mensagem AMIGÁVEL do corpo da resposta do backend (error/message/
-// data em qualquer forma), rejeita o genérico "Something went wrong" e usa o
-// fallback em português quando nada útil chega — para que o toast da dona
-// nunca mostre erro cru da JSVM/GoError.
+/**
+ * Extrai a mensagem real devolvida pelo backend (corpo 400/500 do pb_hooks)
+ * em vez do genérico "Something went wrong" do SDK.
+ * O fallback é usado quando o corpo não traz mensagem utilizável.
+ */
 export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const GENERIC_MESSAGES = [
-    'something went wrong',
-    'an unexpected error occurred',
-    'failed to fetch',
-    'network error',
-  ]
-  const isGeneric = (msg: string) => {
-    const normalized = (msg || '').trim().toLowerCase()
-    return normalized === '' || GENERIC_MESSAGES.includes(normalized)
-  }
-
-  const readMessage = (value: unknown): string => {
-    if (typeof value === 'string') return value
-    if (value && typeof value === 'object') {
-      const record = value as Record<string, unknown>
-      for (const key of ['message', 'error', 'detail']) {
-        const candidate = record[key]
-        if (typeof candidate === 'string' && candidate.trim() !== '') return candidate
-      }
+  const genericPhrases = ['something went wrong', 'an unexpected error occurred', 'failed to fetch']
+  const tryExtract = (err: unknown): string | undefined => {
+    if (typeof err === 'string') {
+      const s = err.trim()
+      if (!s) return undefined
+      const lower = s.toLowerCase()
+      if (genericPhrases.some((p) => lower.includes(p))) return undefined
+      if (lower.startsWith('goerror')) return s.slice('goerror'.length).trim() || undefined
+      return s
     }
-    return ''
-  }
-
-  let best = ''
-  if (error instanceof ClientResponseError) {
-    const response = error.response as unknown
-    if (response && typeof response === 'object') {
-      const body = response as Record<string, unknown>
-      for (const key of ['message', 'error', 'detail']) {
-        const candidate = body[key]
-        if (typeof candidate === 'string' && candidate.trim() !== '') {
-          best = candidate
-          break
+    if (err && typeof err === 'object') {
+      const obj = err as Record<string, unknown>
+      for (const key of ['message', 'error']) {
+        const v = obj[key]
+        if (typeof v === 'string' && v.trim()) {
+          const got = tryExtract(v)
+          if (got) return got
         }
       }
-      if (best === '' && body.data && typeof body.data === 'object') {
-        const data = body.data as Record<string, unknown>
-        for (const key of ['message', 'error', 'detail']) {
-          const candidate = data[key]
-          if (typeof candidate === 'string' && candidate.trim() !== '') {
-            best = candidate
-            break
-          }
-        }
+      // corpos aninhados do PocketBase: { data: { message } }
+      const nested = obj.data
+      if (nested) {
+        const got = tryExtract(nested)
+        if (got) return got
+      }
+      if (typeof obj.status === 'number' && obj.status >= 400) {
+        return undefined // deixa o fallback assumir
       }
     }
+    return undefined
   }
-  if (best === '') best = readMessage(error)
-
-  // GoError / erro cru da JSVM: nunca deve vazar para o toast.
-  const raw = error instanceof Error ? error.message : String(error ?? '')
-  if ((best === '' || isGeneric(best)) && raw && !isGeneric(raw)) {
-    const goErrorMatch = raw.match(/GoError\]\s*([^:]+):/)
-    if (goErrorMatch && goErrorMatch[1]) {
-      best = goErrorMatch[1].trim()
-    }
-  }
-
-  if (best !== '' && !isGeneric(best)) return best
-  return fallback || (error instanceof ClientResponseError ? error.message : 'Ocorreu um erro.')
+  return (
+    tryExtract(error) ||
+    (typeof fallback === 'string' && fallback.trim()
+      ? fallback
+      : 'Ocorreu um erro inesperado. Tente novamente.')
+  )
 }

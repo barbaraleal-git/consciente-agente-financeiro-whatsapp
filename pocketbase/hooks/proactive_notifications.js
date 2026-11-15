@@ -1,13 +1,17 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * proactive_notifications.js — v0.0.101
+ * proactive_notifications.js — v0.0.116
  *
- * Orquestrador das Notificações Proativas: 3 crons + rotas admin.
- *   - proactive_nightly_reminder : 23h30 UTC (20h30 BRT) — lembrete noturno
- *   - proactive_precharge_email  : 12h00 UTC (09h00 BRT) — aviso pré-cobrança 3d/1d
- *   - proactive_pix_renewal      : 13h30 UTC (10h30 BRT) — aviso renovação Pix 30d/7d
+ * Rotas admin das Notificações Proativas (auditoria e disparo manual):
  *   - Rotas admin: /status, /trigger-nightly, /trigger-precharge,
  *                  /trigger-pix-renewal e /test-email
+ *
+ * v0.0.116 — os 3 crons proativos (proactive_nightly_reminder 30 23 * * *,
+ * proactive_precharge_email 0 12 * * * e proactive_pix_renewal 30 13 * * *,
+ * horários inalterados) MUDARAM para pocketbase/hooks/proactive_crons.js, com
+ * resolução defensiva do globalThis + fallback inline (mesma lógica da engine)
+ * — correção do aborto "engine indisponível — job abortado". Este arquivo fica
+ * SÓ com as rotas admin; nenhum cron é registrado aqui.
  *
  * REGRA DE SCOPING DA JSVM (v0.0.101): callbacks (cronAdd/routerAdd) NÃO têm
  * acesso a NENHUMA declaração top-level — nem de outros módulos, nem do
@@ -28,78 +32,6 @@
  *   runPixRenewalJob(dryRun)
  *   sendPrechargeEmail(to, name, daysAhead, dateStr, amountCents, planLabel)
  */
-
-cronAdd('proactive_nightly_reminder', '30 23 * * *', () => {
-  console.log('[cron:proactive_nightly_reminder] Disparo automático iniciado.')
-
-  var localEngine = null
-  try {
-    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
-      localEngine = globalThis.__proactiveEngine
-    }
-  } catch (e) {
-    console.log('[cron:proactive_nightly_reminder] Falha ao resolver engine: ' + e)
-  }
-  if (!localEngine || typeof localEngine.runNightlyReminderJob !== 'function') {
-    console.log('[cron:proactive_nightly_reminder] engine indisponível — job abortado.')
-    return
-  }
-
-  try {
-    var jobRes = localEngine.runNightlyReminderJob('', false)
-    console.log('[cron:proactive_nightly_reminder] Concluído: ' + JSON.stringify(jobRes))
-  } catch (jobErr) {
-    console.log('[cron:proactive_nightly_reminder] Erro na execução: ' + jobErr)
-  }
-})
-
-cronAdd('proactive_precharge_email', '0 12 * * *', () => {
-  console.log('[cron:proactive_precharge_email] Disparo automático iniciado.')
-
-  var localEngine = null
-  try {
-    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
-      localEngine = globalThis.__proactiveEngine
-    }
-  } catch (e) {
-    console.log('[cron:proactive_precharge_email] Falha ao resolver engine: ' + e)
-  }
-  if (!localEngine || typeof localEngine.runPrechargeEmailJob !== 'function') {
-    console.log('[cron:proactive_precharge_email] engine indisponível — job abortado.')
-    return
-  }
-
-  try {
-    var jobRes = localEngine.runPrechargeEmailJob(false)
-    console.log('[cron:proactive_precharge_email] Concluído: ' + JSON.stringify(jobRes))
-  } catch (jobErr) {
-    console.log('[cron:proactive_precharge_email] Erro na execução: ' + jobErr)
-  }
-})
-
-cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
-  console.log('[cron:proactive_pix_renewal] Disparo automático iniciado.')
-
-  var localEngine = null
-  try {
-    if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
-      localEngine = globalThis.__proactiveEngine
-    }
-  } catch (e) {
-    console.log('[cron:proactive_pix_renewal] Falha ao resolver engine: ' + e)
-  }
-  if (!localEngine || typeof localEngine.runPixRenewalJob !== 'function') {
-    console.log('[cron:proactive_pix_renewal] engine indisponível — job abortado.')
-    return
-  }
-
-  try {
-    var jobRes = localEngine.runPixRenewalJob(false)
-    console.log('[cron:proactive_pix_renewal] Concluído: ' + JSON.stringify(jobRes))
-  } catch (jobErr) {
-    console.log('[cron:proactive_pix_renewal] Erro na execução: ' + jobErr)
-  }
-})
 
 // -------------------------------------------------------------
 // Rotas admin (auditoria e disparo manual com dry-run)

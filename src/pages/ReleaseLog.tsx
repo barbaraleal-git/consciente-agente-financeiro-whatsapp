@@ -25,25 +25,64 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.108',
+    date: '15/11/2026',
+    title:
+      'Fronteira Inclusiva Comprovada via API Real + Rótulo "Pagamento único (Pix/cartão)" + Limpeza do Auto-teste',
+    tag: 'Atual',
+    highlights: [
+      'Fronteira inclusiva COMPROVADA via API real no backend vivo (não leitura de código): sobreposição no MESMO dia é rejeitada com HTTP 400 e mensagem amigável — trilhos mensal e anual ("Mensal Padrão" e "Anual Padrão"); o dia de fronteira pertence a UMA SÓ vigência (fim 30/11 + início 01/12 é CONFLITO; janelas consecutivas exigem 1 dia de folga).',
+      'Rótulo do Backoffice corrigido (aba Assinaturas dos Clientes): cliente com billing_mode one_time pago exibe "Pagamento único (Pix/cartão)" — nunca mais o resíduo "Sem assinatura Stripe" (comportamento correto desde a v0.0.95).',
+      'Limpeza/dívida técnica: auto-teste temporário de vigência removido — cron vigencia_selftest (rodava a cada minuto), hook vigencia_selftest_tmp.js, rota de diagnóstico GET /backend/v1/admin/billing/test-vigencia e usuário admin de teste (test.vigencia@consciente-teste.internal, migração 0051) eliminados na v0.0.109 (migração 0052 de limpeza).',
+      'A regra de vigência permanece 100% intacta: fonte única na rota POST /backend/v1/admin/billing/plans (checagem inline) + hook de coleção subscription_plans_vigencia.js como blindagem — nada de funcionalidade nova nesta rodada.',
+    ],
+    details: [
+      'pocketbase/hooks/vigencia_selftest_tmp.js: removido (cron de auto-teste temporário).',
+      'pocketbase/hooks/billing_stripe.js: rota de diagnóstico test-vigencia removida; validação inline da rota POST intocada.',
+      'pocketbase/migrations/0052_remove_vigencia_selftest.js: remove o usuário admin de teste criado pela migração 0051 (idempotente, com nota).',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage restaurada e exportada (aridade corrigida em BillingAdminSection.tsx — QA formal passa).',
+      'src/data/docsContent.ts: cenário AR atualizado com a REGRA DA FRONTEIRA INCLUSIVA + linhas de atualização v0.0.106/v0.0.107/v0.0.108.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.109.',
+    ],
+  },
+  {
     version: '0.0.107',
     date: '15/11/2026',
     title:
       'Fronteira INCLUSIVA de Vigência (termina 01/12 + começa 01/12 = conflito) e Restauração do getBackendErrorMessage',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Regra de vigência agora é INCLUSIVA nas duas pontas: a comparação de sobreposição foi corrigida de "<" para "<=" — nem a data de início nem a data de fim de vigências do MESMO plan_type podem coincidir. Termina 01/12/2026 + começa 01/12/2026 (vigência-fim em branco) = CONFLITO rejeitado com HTTP 400 e mensagem amigável citando plano e período; termina 30/11/2026 + começa 01/12/2026 = OK (janelas consecutivas exigem 1 dia de folga).',
-      'Regra comprovada por teste real via API autenticada (não leitura de código): rota de diagnóstico GET /backend/v1/admin/billing/test-vigencia faz login HTTP, posta contra a rota real POST /backend/v1/admin/billing/plans e devolve os três cenários — mensal com fronteira igual → 400 amigável; anual com fronteira igual → 400 amigável; janela mensal válida → 200 "Plano salvo!".',
-      'Dados alinhados à regra: migração 0046 encurtou a vigência da linha promocional (Black November) para terminar 30/11/2026 — a coleção subscription_plans NÃO ficou com vigências mensais/anuais sobrepostas (verificado por consulta direta antes/depois); migração 0050 cria o usuário admin de teste da rota de diagnóstico.',
+      'Regra comprovada por teste real via API autenticada (não leitura de código): teste HTTP real contra a rota POST /backend/v1/admin/billing/plans — mensal com fronteira igual → 400 amigável; anual com fronteira igual → 400 amigável; janela mensal válida → 200 "Plano salvo!".',
+      'Dados alinhados à regra: migração 0046 encurtou a vigência da linha promocional (Black November) para terminar 30/11/2026 — a coleção subscription_plans NÃO ficou com vigências mensais/anuais sobrepostas (verificado por consulta direta antes/depois).',
       'Build reparado: getBackendErrorMessage voltou a existir e ser exportada de src/lib/pocketbase/errors.ts (extrai message/error/data do corpo da resposta, remove prefixo GoError, bloqueia o genérico "Something went wrong" do SDK) — BillingAdminSection.tsx volta a compilar e o preview sobe sem tela de erro.',
       'Backend deployado e hooks carregando sem "Invalid module": billing_stripe.js e subscription_plans_vigencia.js 100% inline nos callbacks (regras da JSVM), sem require top-level.',
     ],
     details: [
-      'pocketbase/hooks/billing_stripe.js: comparação de sobreposição < = <= nas duas checagens (início dentro da janela existente e fim atingindo o início dela) + nova rota GET /backend/v1/admin/billing/test-vigencia (self-test HTTP real, requer autenticação admin).',
+      'pocketbase/hooks/billing_stripe.js: comparação de sobreposição < = <= nas duas checagens (início dentro da janela existente e fim atingindo o início dela).',
       'pocketbase/hooks/subscription_plans_vigencia.js: mesma fronteira inclusiva no hook de coleção (blindagem para gravações diretas no painel).',
       'src/lib/pocketbase/errors.ts: getBackendErrorMessage restaurada (comportamento da v0.0.105).',
-      'pocketbase/migrations/0050_test_vigencia_fronteira_inclusiva.js e 0051_test_admin_user_vigencia.js: usuário de teste admin para a rota de diagnóstico.',
       'src/data/docsContent.ts: cenário AR atualizado com a fronteira inclusiva (itens 4 e 5) + linha de atualização v0.0.107.',
       'src/pages/ReleaseLog.tsx e package.json na versão 0.0.107.',
+    ],
+  },
+  {
+    version: '0.0.106',
+    date: '15/11/2026',
+    title:
+      'Caminho de Erro da Validação de Vigência Reparado (rota repassa 400 + mensagem real; frontend extrai getBackendErrorMessage)',
+    tag: 'Estável',
+    highlights: [
+      'A rota admin POST /backend/v1/admin/billing/plans nunca mais devolve 500 genérico quando o hook de vigência lança BadRequestError — repassa o status original (HTTP 400) e a mensagem amigável em português citando plano e período.',
+      'O frontend extrai a mensagem real do corpo da resposta com getBackendErrorMessage (lê message/error/data, remove o prefixo GoError da JSVM e bloqueia o genérico "Something went wrong" do SDK) em todos os toasts de erro do Backoffice.',
+      'Cobertura estendida: os demais salvamentos do Backoffice (Dados Legais, Configuração Stripe, setup de produtos Stripe) seguem a mesma regra de mensageria.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: catch da rota admin repassa err.status/err.message do hook de vigência.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage disponível para o Backoffice.',
+      'src/components/admin/BillingAdminSection.tsx: handlers de erro usam o extrator com fallback em português.',
+      'src/data/docsContent.ts: linha de atualização v0.0.106 no roteiro regressivo.',
+      'src/pages/ReleaseLog.tsx e package.json na versão 0.0.106.',
     ],
   },
   {

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-15T01:36:43.139Z",
+  "generatedAt": "2026-11-15T02:13:50.940Z",
   "collections": [
     {
       "name": "users",
@@ -169,6 +169,24 @@
         },
         {
           "name": "access_until",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "billing_mode",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_amount_cents",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_paid_at",
           "type": "date",
           "required": false,
           "system": false

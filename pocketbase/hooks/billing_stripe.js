@@ -2036,12 +2036,15 @@ routerAdd(
       rec.set('active', body.active !== undefined ? !!body.active : true)
       rec.set('notes', body.notes || '')
 
-      // v0.0.105: validação de integridade de vigência executada AQUI, inline na
-      // rota (fonte única, independente de hook de coleção). Regra: dentro do
-      // MESMO plan_type, janelas semiabertas [from, until) não podem se sobrepor;
-      // valid_until vazio = "em diante"; sequência (fim dia X, início >= X) é
-      // válida; linhas inativas e com user_override ficam fora da checagem; a
-      // própria linha (edição) é desconsiderada pelo id.
+      // v0.0.106: validação de integridade de vigência executada AQUI, inline na
+      // rota (fonte única, independente de hook de coleção). Regra (definição
+      // expressa da usuária): dentro do MESMO plan_type, janelas INCLUSIVAS nas
+      // duas pontas [from, until] não podem se sobrepor — nem o início nem o
+      // fim podem coincidir (fim dia X + início dia X = dois planos vigentes no
+      // mesmo dia = conflito). Janelas consecutivas devem deixar no mínimo um
+      // dia de diferença na fronteira (ex.: termina 30/11, começa 01/12).
+      // valid_until vazio = "em diante"; linhas inativas e com user_override
+      // ficam fora da checagem; a própria linha (edição) é desconsiderada pelo id.
       var localPlanId = String(body.id || '')
       var localPlanType = String(body.plan_type || rec.getString('plan_type') || '')
       var localVFrom = String(body.valid_from || '').slice(0, 10)
@@ -2074,8 +2077,11 @@ routerAdd(
           if (localPlanId && localRow.id === localPlanId) continue
           var localRowFrom = String(localRow.getString('valid_from') || '').slice(0, 10)
           var localRowUntil = String(localRow.getString('valid_until') || '').slice(0, 10)
-          var localNewStartsInRow = !localRowUntil || localVFrom < localRowUntil
-          var localRowStartsInNew = !localVUntil || localRowFrom < localVUntil
+          // Fronteira INCLUSIVA nas duas pontas (v0.0.106): sobreposição exige
+          // newFrom <= rowUntil E rowFrom <= newUntil — terminar/começar no
+          // MESMO dia é conflito (dois planos vigentes no mesmo dia).
+          var localNewStartsInRow = !localRowUntil || localVFrom <= localRowUntil
+          var localRowStartsInNew = !localVUntil || localRowFrom <= localVUntil
           if (localNewStartsInRow && localRowStartsInNew) {
             localConflict = localRow
             break
@@ -2097,7 +2103,7 @@ routerAdd(
               localPeriodo +
               ': ' +
               localRowName +
-              '. Ajuste a vigência para não sobrepor essa linha.',
+              '. As janelas não podem se tocar (nem o início nem o fim podem coincidir) — deixe no mínimo um dia de diferença na fronteira (ex.: termina 30/11, começa 01/12).',
           })
         }
       }

@@ -886,6 +886,11 @@ export interface AdminSubscriptionsResponse {
     carencia: number
     bloqueado: number
     cancelado: number
+    /** v0.0.119: KPIs financeiros da aba Assinaturas dos Clientes */
+    paying_active: number
+    one_time_count: number
+    mrr_cents: number
+    total_revenue_cents: number
   }
   clients: Array<{
     id: string
@@ -928,6 +933,55 @@ export const getStripeStatusText = (c: {
   const isOneTime = (c.billing_mode || '') === 'one_time' || !!c.payment_paid_at
   if (isOneTime) return 'Pagamento único (Pix/cartão)'
   return 'Sem assinatura Stripe'
+}
+
+/**
+ * v0.0.119 (pedido da dona): uma linha do EXTRATO CRONOLÓGICO de cobranças de
+ * um cliente — consolidado no backend a partir de subscriptions_history +
+ * invoices da Stripe + pagamento único (one_time) de users.
+ */
+export interface AdminClientStatementItem {
+  id: string
+  date: string
+  event_type: string
+  amount_cents: number
+  /** pago | pendente | falhou | cancelado | — */
+  payment_status: string
+  /** Pix | Cartão | Pix/Cartão | Stripe */
+  channel: string
+  status_from: string
+  status_to: string
+  source: 'app' | 'stripe'
+  stripe_invoice_id: string
+  billing_reason?: string
+}
+
+export interface AdminClientDetailsResponse {
+  user: {
+    id: string
+    name: string
+    full_name: string
+    email: string
+    phone: string
+    created: string
+    subscription_status: string
+    subscription_plan: string
+    subscription_expires_at: string
+    carencia_until: string
+    access_until: string
+    billing_mode: string
+    payment_amount_cents: number
+    payment_paid_at: string
+    stripe_customer_id: string
+    stripe_subscription_id: string
+  }
+  statement: AdminClientStatementItem[]
+  totals: {
+    total_paid_cents: number
+    payments_count: number
+    statement_count: number
+  }
+  stripe_error: string
 }
 
 export interface StripeAdminConfig {
@@ -1093,6 +1147,20 @@ export const billingService = {
     return pb.send('/backend/v1/admin/billing/subscriptions', {
       method: 'GET',
     })
+  },
+
+  // v0.0.119: visão completa de um cliente — dados da assinatura + extrato
+  // cronológico de todas as cobranças desde a assinatura (subscriptions_history
+  // + invoices da Stripe + pagamento único), mais recentes primeiro.
+  adminGetClientSubscriptionDetails: async (
+    userId: string,
+  ): Promise<AdminClientDetailsResponse> => {
+    return pb.send(
+      `/backend/v1/admin/billing/client-subscription-details?user_id=${encodeURIComponent(userId)}`,
+      {
+        method: 'GET',
+      },
+    )
   },
 
   adminGetStripeConfig: async (): Promise<StripeAdminConfig> => {

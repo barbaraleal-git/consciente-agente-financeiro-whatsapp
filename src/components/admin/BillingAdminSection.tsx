@@ -34,6 +34,7 @@ import {
   type CompanyLegalInfo,
   type StripeAdminConfig,
 } from '@/services/finance'
+import ClientSubscriptionDetailsDialog from './ClientSubscriptionDetailsDialog'
 import {
   Loader2,
   RefreshCw,
@@ -49,6 +50,7 @@ import {
   XCircle,
   CheckCircle2,
   KeyRound,
+  Receipt,
   Eye,
   EyeOff,
   Copy,
@@ -103,6 +105,10 @@ export const BillingAdminSection: React.FC = () => {
 
   const [subsLoading, setSubsLoading] = useState(true)
   const [subsData, setSubsData] = useState<AdminSubscriptionsResponse | null>(null)
+
+  // v0.0.119: visão completa de um cliente — diálogo "Detalhes" com extrato
+  // cronológico de todas as cobranças desde a assinatura (rota 12b do backend).
+  const [detailsClientId, setDetailsClientId] = useState<string | null>(null)
 
   const [plansLoading, setPlansLoading] = useState(true)
   const [plans, setPlans] = useState<SubscriptionPlanItem[]>([])
@@ -557,6 +563,43 @@ export const BillingAdminSection: React.FC = () => {
             </div>
           ) : (
             <>
+              {/* v0.0.119: KPIs financeiros do topo da aba */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <Card className="border-slate-200">
+                  <CardContent className="p-3">
+                    <p className="text-[11px] font-medium text-slate-500">Clientes</p>
+                    <p className="text-lg font-bold text-slate-900">{subsData.clients.length}</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-200">
+                  <CardContent className="p-3">
+                    <p className="text-[11px] font-medium text-slate-500">Pagantes ativos</p>
+                    <p className="text-lg font-bold text-emerald-700">
+                      {statusMetrics?.paying_active ?? 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {statusMetrics?.one_time_count ?? 0} pagamento(s) único(s)
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-200">
+                  <CardContent className="p-3">
+                    <p className="text-[11px] font-medium text-slate-500">MRR aproximado</p>
+                    <p className="text-lg font-bold text-indigo-700">
+                      {formatCurrency(statusMetrics?.mrr_cents ?? 0)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-200">
+                  <CardContent className="p-3">
+                    <p className="text-[11px] font-medium text-slate-500">Receita acumulada</p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {formatCurrency(statusMetrics?.total_revenue_cents ?? 0)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Ativas: {statusMetrics?.active ?? 0}
@@ -597,12 +640,15 @@ export const BillingAdminSection: React.FC = () => {
                         Vigência / Carência
                       </TableHead>
                       <TableHead className="font-semibold text-slate-700">Stripe</TableHead>
+                      <TableHead className="font-semibold text-slate-700 text-right">
+                        Detalhes
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {subsData.clients.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-sm text-slate-500">
+                        <TableCell colSpan={6} className="text-center py-8 text-sm text-slate-500">
                           Nenhum cliente encontrado.
                         </TableCell>
                       </TableRow>
@@ -641,6 +687,16 @@ export const BillingAdminSection: React.FC = () => {
                             <TableCell className="text-[11px] text-slate-500">
                               {getStripeStatusText(c)}
                             </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => setDetailsClientId(c.id)}
+                              >
+                                <Receipt className="w-3.5 h-3.5 mr-1" /> Detalhes
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         )
                       })
@@ -648,6 +704,12 @@ export const BillingAdminSection: React.FC = () => {
                   </TableBody>
                 </Table>
               </div>
+
+              <ClientSubscriptionDetailsDialog
+                userId={detailsClientId}
+                open={detailsClientId !== null}
+                onClose={() => setDetailsClientId(null)}
+              />
             </>
           )}
         </div>

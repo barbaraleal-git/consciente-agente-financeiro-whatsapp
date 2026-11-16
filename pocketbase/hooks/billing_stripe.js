@@ -2567,6 +2567,244 @@ routerAdd(
 // criada na migração 0052), mais recente primeiro. Somente admins.
 // Regras JSVM: lógica 100% INLINE no callback.
 // ----------------------------------------------------
+// ----------------------------------------------------
+// 12b. GET /backend/v1/admin/billing/client-subscription-details
+// v0.0.119 (pedido da dona): visão completa de um cliente — dados da
+// assinatura + extrato cronológico de TODAS as cobranças desde a assinatura.
+// Extrato = subscriptions_history (todos os eventos, mais recentes primeiro)
+// + invoices da Stripe (quando houver stripe_subscription_id ou
+// stripe_customer_id, usando a secret key da stripe_config — Bearer auth)
+// + pagamento único one_time de users (payment_paid_at/payment_amount_cents).
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/admin/billing/client-subscription-details',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const email = authUser ? authUser.getString('email') : ''
+      const role = authUser ? authUser.getString('role') : ''
+      const isAdmin = email === 'barbara.ferreira.leal@gmail.com' || role === 'admin'
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      const userId = String(e.requestInfo().query.user_id || '')
+      if (!userId) {
+        return e.json(400, { error: 'Parâmetro user_id é obrigatório.' })
+      }
+
+      let userRec = null
+      try {
+        userRec = $app.findRecordById('users', userId)
+      } catch (_) {
+        return e.json(404, { error: 'Cliente não encontrado.' })
+      }
+
+      // ---- Extrato local: subscriptions_history (todos os eventos) ----
+      const histRows = $app.findRecordsByFilter(
+        'subscriptions_history',
+        "user = '" + userId + "'",
+        '-created',
+        300,
+        0,
+      )
+      const statement = []
+      for (let i = 0; i < histRows.length; i++) {
+        const r = histRows[i]
+        const amount = Math.round(r.getFloat('amount_cents') || 0)
+        const eventType = r.getString('event_type') || ''
+        let details = {}
+        try {
+          const raw = r.getString('details') || '{}'
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed === 'object') details = parsed
+        } catch (_) {
+          details = {}
+        }
+        let payStatus = 'pago'
+        const et = String(eventType)
+        if (et.indexOf('payment_failed') >= 0) {
+          payStatus = 'falhou'
+        } else if (et.indexOf('payment_pending') >= 0 || et.indexOf('processing') >= 0) {
+          payStatus = 'pendente'
+        }
+        let canal = 'Stripe'
+        const payMethods = details && details.payment_method ? String(details.payment_method) : ''
+        if (payMethods.indexOf('pix') >= 0 && payMethods.indexOf('card') >= 0) {
+          canal = 'Pix/Cartão'
+        } else if (payMethods.indexOf('pix') >= 0) {
+          canal = 'Pix'
+        } else if (payMethods.indexOf('card') >= 0) {
+          canal = 'Cartão'
+        }
+        statement.push({
+          id: r.id,
+          date: r.getString('created') || '',
+          event_type: et,
+          amount_cents: amount,
+          payment_status: amount > 0 ? payStatus : '—',
+          channel: canal,
+          status_from: r.getString('status_from') || '',
+          status_to: r.getString('status_to') || '',
+          source: 'app',
+          stripe_invoice_id: '',
+        })
+      }
+
+      // ---- Pagamento único (one_time) sem evento de valor no histórico ----
+      const billingMode = userRec.getString('billing_mode') || ''
+      const paymentAmount = Math.round(userRec.getFloat('payment_amount_cents') || 0)
+      const paymentPaidAt = userRec.getString('payment_paid_at') || ''
+      if (billingMode === 'one_time' && paymentAmount > 0 && paymentPaidAt) {
+        let jaTem = false
+        for (let k = 0; k < statement.length; k++) {
+          if (statement[k].amount_cents === paymentAmount) {
+            jaTem = true
+            break
+          }
+        }
+        if (!jaTem) {
+          statement.push({
+            id: 'one_time_' + userId,
+            date: paymentPaidAt,
+            event_type: 'billing.one_time_paid',
+            amount_cents: paymentAmount,
+            payment_status: 'pago',
+            channel: 'Pix/Cartão',
+            status_from: '',
+            status_to: userRec.getString('subscription_status') || '',
+            source: 'app',
+            stripe_invoice_id: '',
+          })
+        }
+      }
+
+      // ---- Invoices da Stripe (assinatura recorrente) ----
+      const subId = userRec.getString('stripe_subscription_id') || ''
+      const custId = userRec.getString('stripe_customer_id') || ''
+      let stripeError = ''
+      const merged = []
+      if (subId || custId) {
+        let secretKey = ''
+        try {
+          const cfgRows = $app.findRecordsByFilter('stripe_config', '', '-updated', 1, 0)
+          if (cfgRows.length > 0) secretKey = cfgRows[0].getString('secret_key') || ''
+        } catch (_) {
+          secretKey = ''
+        }
+        if (secretKey) {
+          const qs = subId
+            ? 'subscription=' + subId + '&limit=24'
+            : 'customer=' + custId + '&limit=24'
+          const resp = $http.send({
+            url: 'https://api.stripe.com/v1/invoices?' + qs,
+            method: 'GET',
+            headers: {
+              Authorization: 'Bearer ' + secretKey,
+            },
+          })
+          if (resp.statusCode >= 200 && resp.statusCode < 300 && resp.json && resp.json.data) {
+            const invs = resp.json.data || []
+            for (let j = 0; j < invs.length; j++) {
+              const inv = invs[j]
+              let invStatus = 'falhou'
+              if (inv.status === 'paid') invStatus = 'pago'
+              else if (inv.status === 'open' || inv.status === 'draft') invStatus = 'pendente'
+              else if (inv.status === 'void') invStatus = 'cancelado'
+              const isoDate = inv.created ? new Date(inv.created * 1000).toISOString() : ''
+              merged.push({
+                id: inv.id || '',
+                date: isoDate,
+                event_type: 'stripe.invoice',
+                amount_cents: Math.round(inv.amount_paid || inv.amount_due || 0),
+                payment_status: invStatus,
+                channel: 'Stripe',
+                status_from: '',
+                status_to: '',
+                source: 'stripe',
+                stripe_invoice_id: inv.id || '',
+                billing_reason: inv.billing_reason || '',
+              })
+            }
+          } else {
+            stripeError = 'Falha ao consultar invoices na Stripe (HTTP ' + resp.statusCode + ').'
+          }
+        } else {
+          stripeError =
+            'Chave secreta da Stripe não configurada — extrato limitado ao histórico do app.'
+        }
+      }
+
+      // ---- Consolidação: remove a cobrança do app duplicada na mesma
+      // data/valor da invoice correspondente da Stripe; ordena do mais
+      // recente ao mais antigo.
+      for (let k2 = 0; k2 < statement.length; k2++) {
+        const row = statement[k2]
+        let duplicado = false
+        if (row.amount_cents > 0) {
+          const dia = String(row.date).slice(0, 10)
+          for (let m = 0; m < merged.length; m++) {
+            const diaSt = String(merged[m].date).slice(0, 10)
+            if (merged[m].amount_cents === row.amount_cents && diaSt === dia) {
+              duplicado = true
+              break
+            }
+          }
+        }
+        if (!duplicado) merged.push(row)
+      }
+      merged.sort(function (a, b) {
+        return String(a.date) < String(b.date) ? 1 : -1
+      })
+
+      let totalPaid = 0
+      let paymentsCount = 0
+      for (let t = 0; t < merged.length; t++) {
+        if (merged[t].amount_cents > 0 && merged[t].payment_status === 'pago') {
+          totalPaid += merged[t].amount_cents
+          paymentsCount++
+        }
+      }
+
+      return e.json(200, {
+        user: {
+          id: userRec.id,
+          name: userRec.getString('name') || '',
+          full_name: userRec.getString('full_name') || '',
+          email: userRec.getString('email') || '',
+          phone: userRec.getString('phone') || '',
+          created: userRec.getString('created') || '',
+          subscription_status: userRec.getString('subscription_status') || '',
+          subscription_plan: userRec.getString('subscription_plan') || '',
+          subscription_expires_at: userRec.getString('subscription_expires_at') || '',
+          carencia_until: userRec.getString('carencia_until') || '',
+          access_until: userRec.getString('access_until') || '',
+          billing_mode: billingMode,
+          payment_amount_cents: paymentAmount,
+          payment_paid_at: paymentPaidAt,
+          stripe_customer_id: custId,
+          stripe_subscription_id: subId,
+        },
+        statement: merged,
+        totals: {
+          total_paid_cents: totalPaid,
+          payments_count: paymentsCount,
+          statement_count: merged.length,
+        },
+        stripe_error: stripeError,
+      })
+    } catch (err) {
+      console.log('[admin_billing] Erro em /client-subscription-details: ' + err)
+      return e.json(500, { error: 'Falha ao carregar detalhes da assinatura do cliente.' })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 12c. GET /backend/v1/admin/billing/plans/history
+// ----------------------------------------------------
 routerAdd(
   'GET',
   '/backend/v1/admin/billing/plans/history',
@@ -2740,6 +2978,98 @@ routerAdd(
         }
       })
 
+      // ---- v0.0.119: KPIs financeiros da aba Assinaturas dos Clientes ----
+      // Pagantes ativos, MRR aproximado (mensais ativos + anuais ativos/12) e
+      // receita total acumulada (subscriptions_history pagas + one_time de users
+      // sem evento correspondente no histórico — mesma dedupe da rota 12b).
+      let kpiPayingActive = 0
+      let kpiMrrCents = 0
+      let kpiRevenueCents = 0
+      let kpiOneTimeCount = 0
+      let mensalPriceCents = 0
+      let anualPriceCents = 0
+      try {
+        const planRows = $app.findRecordsByFilter(
+          'subscription_plans',
+          'active = true',
+          '-updated',
+          50,
+          0,
+        )
+        for (let pi = 0; pi < planRows.length; pi++) {
+          const pt = planRows[pi].getString('plan_type') || 'mensal'
+          const pc = Math.round(planRows[pi].getFloat('price_cents') || 0)
+          if (pc <= 0) continue
+          // primeira linha ativa por trilha (mais recente pela ordenação) vence
+          if (pt === 'anual') {
+            if (anualPriceCents === 0) anualPriceCents = pc
+          } else {
+            if (mensalPriceCents === 0) mensalPriceCents = pc
+          }
+        }
+      } catch (planErr) {
+        console.log('[admin_billing] KPI: falha ao ler subscription_plans: ' + planErr)
+      }
+      const paidKeys = {}
+      try {
+        const histPaid = $app.findRecordsByFilter(
+          'subscriptions_history',
+          'amount_cents > 0',
+          '-created',
+          1000,
+          0,
+        )
+        for (let hi = 0; hi < histPaid.length; hi++) {
+          const hr = histPaid[hi]
+          const et2 = String(hr.getString('event_type') || '')
+          const amt2 = Math.round(hr.getFloat('amount_cents') || 0)
+          let ps2 = ''
+          try {
+            const p2 = JSON.parse(hr.getString('details') || '{}')
+            if (p2 && typeof p2 === 'object' && p2.payment_status) ps2 = String(p2.payment_status)
+          } catch (_) {
+            ps2 = ''
+          }
+          const failed = et2.indexOf('payment_failed') >= 0 || et2.indexOf('failed') >= 0
+          const pending = et2.indexOf('pending') >= 0 || et2.indexOf('processing') >= 0
+          const isPaid = !failed && !pending && (ps2 === '' || ps2 === 'pago' || ps2 === 'paid')
+          if (isPaid && amt2 > 0) {
+            kpiRevenueCents += amt2
+            paidKeys[
+              String(hr.getString('user') || '') +
+                '|' +
+                amt2 +
+                '|' +
+                String(hr.getString('created') || '').slice(0, 10)
+            ] = true
+          }
+        }
+      } catch (histErr) {
+        console.log('[admin_billing] KPI: falha ao ler subscriptions_history: ' + histErr)
+      }
+      for (let ui = 0; ui < allUsers.length; ui++) {
+        const u2 = allUsers[ui]
+        const st2 = u2.getString('subscription_status') || 'trial'
+        const bm2 = u2.getString('billing_mode') || ''
+        const pAmt2 = Math.round(u2.getFloat('payment_amount_cents') || 0)
+        const pPaid2 = u2.getString('payment_paid_at') || ''
+        if (bm2 === 'one_time' && pAmt2 > 0 && pPaid2) {
+          const otKey = u2.id + '|' + pAmt2 + '|' + String(pPaid2).slice(0, 10)
+          if (!paidKeys[otKey]) kpiRevenueCents += pAmt2
+          if (st2 === 'active') {
+            kpiPayingActive++
+            kpiOneTimeCount++
+            kpiMrrCents += Math.round(pAmt2 / 12)
+          }
+        } else if (st2 === 'active') {
+          kpiPayingActive++
+          kpiMrrCents +=
+            (u2.getString('subscription_plan') || 'mensal') === 'anual'
+              ? Math.round(anualPriceCents / 12)
+              : mensalPriceCents
+        }
+      }
+
       return e.json(200, {
         metrics: {
           total: allUsers.length,
@@ -2748,6 +3078,11 @@ routerAdd(
           carencia: totalCarencia,
           bloqueado: totalBloqueado,
           cancelado: totalCancelado,
+          // v0.0.119: KPIs financeiros (aceite: total de pagantes, MRR, receita)
+          paying_active: kpiPayingActive,
+          one_time_count: kpiOneTimeCount,
+          mrr_cents: kpiMrrCents,
+          total_revenue_cents: kpiRevenueCents,
         },
         clients: clientsList,
       })

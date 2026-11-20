@@ -2,6 +2,10 @@ import { ClientResponseError } from 'pocketbase'
 
 export type FieldErrors = Record<string, string>
 
+// NOTA ESTRUTURAL: getBackendErrorMessage (abaixo) já foi perdida 4+ vezes quando
+// este arquivo foi editado (MISSING_EXPORT quebra o build). Ela é importada por
+// BillingAdminSection, ClientSubscriptionDetailsDialog e outros — NUNCA remover.
+
 export function extractFieldErrors(error: unknown): FieldErrors {
   if (!(error instanceof ClientResponseError)) return {}
   const data = error.response?.data
@@ -28,30 +32,46 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-// Extrai a mensagem real de erro do backend (ClientResponseError do PocketBase),
-// remove o prefixo GoError e bloqueia mensagens genéricas. Assinatura canônica:
-// 2º argumento opcional = fallback exibido ao usuário (PT).
-export function getBackendErrorMessage(
-  error: unknown,
-  fallback = 'Erro inesperado. Tente novamente.',
-): string {
-  let msg = ''
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const DEFAULT_FALLBACK = 'Ocorreu um erro inesperado. Tente novamente.'
+  let raw = ''
+
   if (error instanceof ClientResponseError) {
-    const fieldMsgs = Object.values(extractFieldErrors(error)).join(' ').trim()
-    const data = error.response as Record<string, unknown> | undefined
-    const bodyMsg =
-      data && typeof data === 'object' && typeof data['message'] === 'string'
-        ? (data['message'] as string)
-        : ''
-    msg = fieldMsgs || bodyMsg || error.message || ''
+    const resp = error.response as Record<string, unknown> | undefined
+    const data = resp?.data
+    if (typeof data === 'string') {
+      raw = data
+    } else if (data && typeof data === 'object') {
+      const d = data as Record<string, unknown>
+      if (typeof d.message === 'string') raw = d.message
+      else if (typeof d.error === 'string') raw = d.error
+      else if (typeof d.response === 'string') raw = d.response
+      else if (d.response && typeof d.response === 'object') {
+        const r = d.response as Record<string, unknown>
+        if (typeof r.message === 'string') raw = r.message
+        else if (typeof r.error === 'string') raw = r.error
+      }
+    }
+    if (!raw && typeof resp?.message === 'string') raw = resp.message
   } else if (error instanceof Error) {
-    msg = error.message
+    raw = error.message
   } else if (typeof error === 'string') {
-    msg = error
+    raw = error
   }
-  msg = String(msg || '')
-    .replace(/^GoError:\s*/i, '')
+
+  raw = (raw || '')
+    .replace(/^GoError\s*:?/i, '')
+    .replace(/^Error\s*:?/i, '')
     .trim()
-  if (!msg || /something went wrong/i.test(msg)) return fallback
-  return msg
+
+  const GENERIC = [
+    'something went wrong',
+    'unexpected error occurred',
+    'an unexpected error occurred',
+    'erro inesperado',
+  ]
+  if (!raw || GENERIC.some((g) => raw.toLowerCase() === g)) {
+    return fallback && fallback.trim() ? fallback : DEFAULT_FALLBACK
+  }
+  return raw
 }

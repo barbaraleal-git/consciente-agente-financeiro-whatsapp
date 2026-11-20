@@ -20,61 +20,57 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-// NOTA ESTRUTURAL (lição v0.0.118/0.0.120/0.0.121/0.0.122): getBackendErrorMessage é
-// importada NAMED por vários consumidores (BillingAdminSection, ClientSubscriptionDetailsDialog,
-// Settings). NÃO remover esta exportação — o build quebra com MISSING_EXPORT.
-
-export function getBackendErrorMessage(
-  error: unknown,
-  fallback = 'Não foi possível concluir a operação. Tente novamente.',
-): string {
-  if (error && typeof error === 'object') {
-    const anyErr = error as {
-      response?: { message?: unknown; error?: unknown; data?: unknown }
-      message?: unknown
-    }
-    const body = anyErr.response
-    if (body && typeof body === 'object') {
-      const candidates: unknown[] = [body.message, body.error, body.data]
-      for (const cand of candidates) {
-        if (typeof cand === 'string' && cand.trim()) {
-          let msg = cand.trim()
-          msg = msg.replace(/^GoError:\s*/i, '').trim()
-          if (msg && !/something went wrong/i.test(msg)) return msg
-        }
-        if (cand && typeof cand === 'object') {
-          const inner = cand as { message?: unknown; error?: unknown }
-          const innerMsg =
-            typeof inner.message === 'string'
-              ? inner.message
-              : typeof inner.error === 'string'
-                ? inner.error
-                : ''
-          if (innerMsg.trim()) {
-            const cleaned = innerMsg
-              .trim()
-              .replace(/^GoError:\s*/i, '')
-              .trim()
-            if (cleaned && !/something went wrong/i.test(cleaned)) return cleaned
-          }
-        }
-      }
-    }
-    if (typeof anyErr.message === 'string' && anyErr.message.trim()) {
-      const cleaned = anyErr.message
-        .trim()
-        .replace(/^GoError:\s*/i, '')
-        .trim()
-      if (cleaned && !/something went wrong/i.test(cleaned)) return cleaned
-    }
-  }
-  return fallback
-}
-
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
     return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
   const msgs = Object.values(extractFieldErrors(error))
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
+}
+
+// ---------------------------------------------------------------------------
+// getBackendErrorMessage (restaurada — MISSING_EXPORT recorrente v0.0.119/0.0.120/0.0.122)
+// Extrai a mensagem REAL do corpo de erro do backend PocketBase (message/error/data),
+// remove prefixos GoError/Error, bloqueia a mensagem genérica "Something went wrong"
+// e faz fallback em PT. NÃO remover este export: ele alimenta toda a UI de erro do app.
+// ---------------------------------------------------------------------------
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  let raw = ''
+
+  if (error instanceof ClientResponseError) {
+    const res = error.response as unknown as Record<string, unknown> | undefined
+    if (res) {
+      if (typeof res.message === 'string' && res.message.trim()) raw = res.message
+      else if (typeof res.error === 'string' && res.error.trim()) raw = res.error
+      else if (res.data && typeof res.data === 'object') {
+        const d = res.data as Record<string, unknown>
+        const fieldMsgs = extractFieldErrors(error)
+        if (Object.keys(fieldMsgs).length > 0) {
+          raw = Object.values(fieldMsgs).join(' ')
+        } else if (typeof d.message === 'string' && d.message.trim()) {
+          raw = d.message
+        } else if (typeof d.error === 'string' && d.error.trim()) {
+          raw = d.error
+        }
+      }
+    }
+    if (!raw && error.message && error.message.trim()) raw = error.message
+  } else if (error instanceof Error) {
+    raw = error.message
+  } else if (typeof error === 'string' && error.trim()) {
+    raw = error
+  }
+
+  let msg = String(raw || '').trim()
+  msg = msg
+    .replace(/^GoError[:\s]*/i, '')
+    .replace(/^Error[:\s]*/i, '')
+    .trim()
+
+  if (!msg || /^something went wrong\.?$/i.test(msg)) {
+    return fallback && fallback.trim()
+      ? fallback
+      : 'Ocorreu um erro inesperado. Por favor, tente novamente em alguns instantes.'
+  }
+  return msg
 }

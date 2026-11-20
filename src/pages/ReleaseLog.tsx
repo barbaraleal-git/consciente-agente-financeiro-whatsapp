@@ -25,10 +25,30 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.124',
+    date: '20/11/2026',
+    title: 'Pergunta no WhatsApp NUNCA vira Lançamento — Detector de Pergunta + MODO CONSULTA',
+    tag: 'Atual',
+    highlights: [
+      'Pedido da dona: a pergunta "Você registrou duas vezes os 12 da padaria?" estava sendo REGISTRADA como lançamento no WhatsApp. Agora o webhook tem um detector DETERMINÍSTICO de perguntas (frases interrogativas como "você registrou...?", "quanto...?", frases terminadas em "?") que ativa o MODO CONSULTA do agente de IA.',
+      'MODO CONSULTA fundado na BASE DE DADOS: o agente NÃO cria transações e responde consultando as coleções de transações/caixinhas — a fonte única de verdade, que reflete lançamentos feitos também pelo app web — e NUNCA o histórico da conversa.',
+      'Agilidade preservada: lançamento normal ("Padaria 12") continua registrando direto, sem confirmação extra — o detector só captura mensagens com interrogação.',
+      'Deploy do backend executado nesta rodada: o hook novo (commitado na v0.0.123, mas ainda fora do ar) agora está VIVO — até então o WhatsApp seguia registrando perguntas como lançamentos.',
+      'getBackendErrorMessage restaurada MAIS UMA VEZ em src/lib/pocketbase/errors.ts (agora com fallback opcional como 2º argumento, padrão usado nos toasts do Backoffice).',
+    ],
+    details: [
+      'pocketbase/hooks/whatsapp_bridge.js: detector determinístico localIsQuestionMessage + MODO CONSULTA — prompt trocado para consulta à base (proibido inventar a partir do histórico), fluxos de cancelamento/escolha de caixinha/data retroativa ignorados, resumo determinístico intacto e fallback de instabilidade de CONSULTA (nunca pede reenvio de gasto).',
+      'Deploy backend v0.0.123/v0.0.124 confirmado: rotas /whatsapp/webhook (GET+POST) e demais rotas do WhatsApp no ar, sem erros de carregamento nos logs.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage(error, fallback?) restaurada (extrai message/error/data do corpo, remove prefixo GoError/Error, bloqueia o genérico "Something went wrong", fallback em PT).',
+      'src/data/docsContent.ts: novo cenário AX — Detector de Pergunta e MODO CONSULTA + linha "Atualização v0.0.124" no topo do roteiro.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.124 no topo com tag "Atual" (v0.0.121 volta a "Estável").',
+    ],
+  },
+  {
     version: '0.0.121',
     date: '20/11/2026',
     title: 'Foto de Perfil do WhatsApp — Upload Morria Antes de Chegar ao Servidor (Corrigido)',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Defeito REAL comprovado nos logs de requests (3 dias): a tentativa da dona NUNCA chegava ao backend — nenhum POST /backend/v1/whatsapp/profile-picture registrado, enquanto os GETs de /settings dela apareciam normalmente. O corpo JSON com a imagem original em base64 (~1,37x o arquivo; foto de 5MB virava ~7MB) era perdido/truncado no caminho até o hook.',
       'Correção na raiz: a imagem agora é REDIMENSIONADA no navegador antes do envio (canvas, máx. 640x640, JPEG q0.85 — resolução que a Meta exibe para foto de perfil), caindo para ~100-250 KB em base64/JSON — caminho que o backend já decodifica de forma confiável (Item 36).',

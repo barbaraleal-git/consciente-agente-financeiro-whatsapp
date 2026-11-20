@@ -239,6 +239,7 @@ Documento oficial de controle de pendências e prioridades do produto (itens his
 export const TESTES_REGRESSIVOS_MARKDOWN = `# Roteiro de Testes Regressivos Obrigatório — Consciente
 
 Este roteiro é **obrigatório após qualquer ajuste sistêmico** no Consciente. Nenhuma entrega deve ser considerada concluída sem a validação dos itens essenciais deste documento. Mantém todos os cenários essenciais A a Z intactos e adiciona o cenário AA para o fallback embutido e resiliente no WhatsApp sem erros de escopo.
+> **Atualização v0.0.124**: **Detector de Pergunta + MODO CONSULTA no WhatsApp — pergunta NUNCA vira lançamento** — o webhook agora identifica frases interrogativas ("você registrou...?", "quanto...?", frases terminadas em "?") e ativa o MODO CONSULTA do agente de IA: a mensagem NÃO é registrada como transação; o agente responde consultando a BASE DE DADOS (coleções de transações/caixinhas — fonte única de verdade, refletindo lançamentos feitos também pelo app web) e NUNCA o histórico da conversa. Lançamento normal ("Padaria 12") segue registrando direto, sem confirmação extra (agilidade preservada). Novo cenário **AX — Detector de Pergunta e MODO CONSULTA**. OBS.: o código foi commitado na v0.0.123 mas só entrou NO AR com o deploy do backend desta rodada — até então o WhatsApp seguia registrando perguntas como lançamentos.
 > **Atualização v0.0.102**: MAPEAMENTO DEFINITIVO dos 4 Prices da Stripe via API (produto prod_Va2uSpOiSeedcC): R$ 19,90/mês → \`price_1UZ11R31gAsdzIHftUWaEJB0\`; R$ 29,90/mês → \`price_1UZ11Q31gAsdzIHfLP1oZJKS\`; R$ 214,90/ano ("Por ano") → \`price_1UZ11Q31gAsdzIHfGEinrGPA\`; R$ 322,90/ano ("Por ano") → \`price_1UZ11O31gAsdzIHfNapN7q6b\`. Migração 0045 corrigiu as 4 linhas de \`subscription_plans\` (linhas de valor PADRÃO apontavam para os price_ids PROMOCIONAIS) e preencheu \`stripe_config.price_id_anual_recorrente\`. O price_id_anual confirmado NÃO é o mensal bugado da v0.0.95 — é o Price anual "Por ano" correto. Também mantém: correção do carregamento do engine proativo nos crons (require() → fallback globalThis) e do bug \`res.rawText\` (v0.0.101); crons \`proactive_nightly_reminder\`, \`proactive_precharge_email\` e \`proactive_pix_renewal\` rodando sem "GoError: Invalid module".
 > **Atualização v0.0.103**: novo hook de integridade de vigência de planos no Backoffice (\`subscription_plans_vigencia.js\`, Billing → Planos): sobreposição de vigências do MESMO plan_type rejeitada, \`valid_until <= valid_from\` rejeitado, trilhas mensal/anual independentes, janelas em sequência permitidas (janelas semiabertas [from, until)) e linhas inativas/overrides fora da checagem. Novo cenário **AR — Virada de Vigência de Plano (regra AG)** e linha de vigência no bloco AL.
 > **Atualização v0.0.104**: fim do "Something went wrong" no Backoffice: a rota admin de salvar planos repassa o BadRequestError do hook de vigência (HTTP 400 com a mensagem amigável) e o Frontend extrai a mensagem real do corpo da resposta (message/error/data) — o toast exibe o erro em português citando plano e período; validação continua bloqueando o salvamento do plano conflitante.
@@ -1375,6 +1376,24 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
 5. **Acesso restrito à administração**:
    - Chamar a rota GET /backend/v1/admin/billing/client-subscription-details sem sessão admin (ex.: usuário comum ou sem login).
    - **Comportamento Esperado**: HTTP 403 "Acesso restrito à administração" — a rota não vaza dados de outros clientes.
+
+---
+
+## AX) Detector de Pergunta e MODO CONSULTA — Pergunta NUNCA vira Lançamento (v0.0.123/v0.0.124)
+> **Escopo (v0.0.123/0.0.124)**: pedido da dona — a pergunta "Você registrou duas vezes os 12 da padaria?" estava sendo REGISTRADA como lançamento no WhatsApp. O webhook (pocketbase/hooks/whatsapp_bridge.js) agora tem um detector DETERMINÍSTICO de perguntas que ativa o MODO CONSULTA do agente de IA: a resposta é SEMPRE baseada no conteúdo da BASE DE DADOS (coleções de transações e caixinhas — a fonte única de verdade, incluindo lançamentos feitos pelo app web) e NUNCA no histórico da conversa. O lançamento normal continua direto, sem confirmação extra.
+
+1. **Pergunta não cria transação e recebe resposta consultando a base**:
+   - Enviar via WhatsApp a pergunta exata: "Você registrou duas vezes os 12 da padaria?".
+   - **Comportamento Esperado**: NENHUMA transação é criada (nenhuma linha nova na coleção \`transactions\` com \`source = 'whatsapp_text'\`); o agente responde CONSULTANDO a base — citando o que de fato existe nos dados (ex.: quantos lançamentos de ~R$ 12 da padaria existem, em quais datas), nunca inventando a partir do histórico da conversa. Log do hook mostra o MODO CONSULTA ativado pelo detector de pergunta.
+2. **Lançamento normal continua direto (agilidade preservada)**:
+   - Enviar via WhatsApp um lançamento normal: "Padaria 12".
+   - **Comportamento Esperado**: a mensagem CONTINUA registrando direto — transação criada imediatamente com \`amount\` em centavos e \`source = 'whatsapp_text'\`, resposta de confirmação em menos de 30 segundos, SEM confirmação extra nem pergunta intermediária (o detector de pergunta NÃO captura lançamentos sem interrogação).
+3. **Resposta da consulta reflete a base mesmo com lançamento feito pelo app web**:
+   - Registrar um gasto de ~R$ 12 na caixinha da padaria PELO APP WEB (Dashboard/Transações), depois enviar a pergunta "Você registrou duas vezes os 12 da padaria?" via WhatsApp.
+   - **Comportamento Esperado**: a resposta do agente reflete o LANÇAMENTO DO APP (a base de dados é a fonte única de verdade, compartilhada entre WhatsApp e app) — ela não depende do histórico de conversa do WhatsApp, que não "enxerga" lançamentos feitos só pelo app.
+4. **Falha no MODO CONSULTA nunca pede reenvio de gasto**:
+   - Simular instabilidade na resposta do agente durante uma pergunta.
+   - **Comportamento Esperado**: o fallback do MODO CONSULTA é de INSTABILIDADE DE CONSULTA ("Tive uma instabilidade ao consultar seus dados na base agora...") e orienta verificar no app — NUNCA pede para "reenviar o gasto" (a pergunta não é um gasto).
 
 ---
 `

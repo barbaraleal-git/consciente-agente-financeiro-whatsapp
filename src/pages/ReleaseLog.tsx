@@ -25,10 +25,43 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.119',
+    date: '20/11/2026',
+    title: 'Assinaturas dos Clientes com Extrato Consolidado — Billing → Clientes',
+    tag: 'Atual',
+    highlights: [
+      'Pedido da dona (Billing → Clientes): visão geral de TODAS as assinaturas dos clientes com detalhes completos por cliente — KPIs no topo (Clientes ativos, Assinaturas ativas, Em carência, Receita mensal estimada), linhas expansíveis com o extrato de cobranças de cada cliente DESDE a assinatura (fusão de subscriptions_history + invoices Stripe + pagamentos únicos one_time) e total pago por cliente.',
+      'Extrato consolidado calculado 100% no backend (rota GET /backend/v1/admin/billing/client-subscription-details): o frontend apenas renderiza — mesmo padrão das demais rotas admin de billing.',
+      'Rótulos de evento do extrato traduzidos no frontend (getEventLabel): "Assinatura iniciada", "Renovação mensal", "Pagamento único (Pix/cartão)", etc.',
+      'Exportação de CSV do extrato por cliente dentro do diálogo de detalhes.',
+    ],
+    details: [
+      'pocketbase/hooks/billing_stripe.js: nova rota admin GET /admin/billing/client-subscription-details (fusão de subscriptions_history + invoices Stripe via Bearer secret key da stripe_config + one_time de users).',
+      'src/components/admin/ClientSubscriptionDetailsDialog.tsx: NOVO diálogo de detalhes por cliente — dados da assinatura, KPIs, extrato com rótulos em PT e total pago.',
+      'src/components/admin/BillingAdminSection.tsx: aba Clientes com KPIs, linhas expansíveis e botão de detalhes por cliente.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage restaurada novamente (MISSING_EXPORT recorrente quando o arquivo é tocado).',
+    ],
+  },
+  {
+    version: '0.0.118',
+    date: '20/11/2026',
+    title: 'Foto de Perfil do WhatsApp — Diagnóstico e Mensagens Amigáveis',
+    tag: 'Estável',
+    highlights: [
+      'Bug da dona corrigido: atualizar a foto de perfil do WhatsApp Business pelo app devolvia erro cru da Meta/JSVM — agora a rota loga cada passo (app id, debug_token, sessão de upload, bytes, atualização de perfil) e devolve sempre mensagem amigável em PT via getBackendErrorMessage.',
+      'Correção na RAIZ do ressurgimento do defeito de exportação de getBackendErrorMessage em src/lib/pocketbase/errors.ts (3ª vez que a função perdia a exportação quando o arquivo era tocado).',
+    ],
+    details: [
+      'pocketbase/hooks/whatsapp_bridge.js: rota /whatsapp/profile-picture com leitura defensiva de rawText/json em todos os passos da Meta.',
+      'src/pages/Settings.tsx: toast da foto de perfil usa getBackendErrorMessage(err, fallback).',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage reexportada de forma estrutural.',
+    ],
+  },
+  {
     version: '0.0.117',
     date: '15/11/2026',
     title: 'Buraco de Cobertura de Vigências vira AVISO — Ajustes Emergenciais da Dona',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Pedido da dona (Billing → Planos e Preços): a regra de cobertura contínua de vigências (v0.0.114) deixa de ser bloqueante — ao salvar um plano que deixa intervalo futuro sem cobertura, o salvamento é PERMITIDO e a resposta volta com aviso em PT descrevendo o intervalo descoberto e a analogia do cliente que chega sem plano.',
       'ALERTA CONSTANTE EM VERMELHO dentro do frame de Planos e Preços: enquanto qualquer trilha (mensal/anual) estiver com intervalo futuro sem cobertura, um banner vermelho persistente ("Há um intervalo de datas sem plano definido — ajuste o mais rápido possível", com a trilha e o intervalo) permanece visível — alimentado pelo diagnóstico GET /admin/billing/plans/coverage (v0.0.114), sobrevive a recarregar a tela e some quando a cobertura volta a ser contínua.',

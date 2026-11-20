@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { SubscriptionPlansTab } from '@/components/SubscriptionPlansTab'
+import { getBackendErrorMessage } from '@/lib/pocketbase/errors'
 
 export const Settings: React.FC = () => {
   const { user, refreshUser } = useAuth()
@@ -353,8 +354,8 @@ export const Settings: React.FC = () => {
         })
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Falha ao atualizar foto de perfil do WhatsApp'
+      // Mensagem amigável em PT extraída do corpo da resposta (sem GoError/genéricos)
+      const msg = getBackendErrorMessage(err, 'Falha ao atualizar foto de perfil do WhatsApp')
       toast({
         title: 'Erro ao atualizar foto',
         description: msg,

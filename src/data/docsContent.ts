@@ -1351,4 +1351,25 @@ Quando for necessário testar o fluxo de ponta a ponta como um novo cliente:
    - **Comportamento Esperado**: nenhum aviso de cobertura para rascunhos (active = false); a checagem só vale ao definir vigência e ativar a linha.
 
 ---
+
+## AW) Assinaturas dos Clientes com Extrato Consolidado (v0.0.119)
+> **Escopo (v0.0.119)**: pedido da dona — "quero ver TODAS as assinaturas dos clientes com detalhes completos de cada uma, KPIs no topo e o extrato de cobranças desde a assinatura, podendo exportar em CSV". Tudo consolidado 100% no backend (rota admin única GET /backend/v1/admin/billing/client-subscription-details); o frontend apenas renderiza. Rótulos de evento traduzidos em PT pelo frontend (getEventLabel). Status de assinatura sempre no feminino ("Cancelada").
+
+1. **KPIs no topo da aba Clientes (Billing → Clientes)**:
+   - Abrir o Backoffice (/admin) → Billing → aba Clientes.
+   - **Comportamento Esperado**: cards de KPI no topo — Clientes ativos, Assinaturas ativas, Em carência e Receita mensal estimada — consistentes com a lista de clientes exibida abaixo.
+2. **Diálogo de detalhes por cliente abre com KPIs e extrato**:
+   - Na lista de clientes, clicar em "Detalhes" (olho) numa linha expansível de cliente com assinatura ativa.
+   - **Comportamento Esperado**: abre o diálogo "Detalhes do cliente" com: e-mail, telefone, status (Ativa/Carência/Cancelada — feminino), plano (Mensal/Anual), "Cliente desde", totais (total pago, nº cobranças) e o EXTRATO de cobranças desde a assinatura em ordem cronológica — cada linha com data, evento em PT (ex.: "Assinatura iniciada", "Renovação mensal", "Pagamento único (Pix/cartão)") e valor. Sem dados → mensagem amigável em PT (nunca erro cru).
+3. **Extrato funde as 3 fontes (backend)**:
+   - Cliente com assinatura recorrente ativa (com invoices na Stripe) E histórico local (subscriptions_history) E/OU pagamento único (one_time em users).
+   - **Comportamento Esperado**: o extrato do backend mistura as 3 fontes numa única linha do tempo (histórico local, invoices Stripe pela secret key da stripe_config, pagamentos únicos), sem duplicar eventos e com total pago coerente.
+4. **Exportação de CSV do extrato**:
+   - No diálogo de detalhes, clicar em "Exportar CSV".
+   - **Comportamento Esperado**: arquivo .csv baixado com as linhas do extrato do cliente (data, evento, valor) — igual ao exibido no diálogo.
+5. **Acesso restrito à administração**:
+   - Chamar a rota GET /backend/v1/admin/billing/client-subscription-details sem sessão admin (ex.: usuário comum ou sem login).
+   - **Comportamento Esperado**: HTTP 403 "Acesso restrito à administração" — a rota não vaza dados de outros clientes.
+
+---
 `

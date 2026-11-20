@@ -4907,7 +4907,7 @@ routerAdd(
               '[whatsapp_bridge] [profile-picture] /app retornou HTTP ' +
                 appRes.statusCode +
                 ': ' +
-                appRes.rawText?.slice(0, 200),
+                (appRes.rawText || JSON.stringify(appRes.json || '')).slice(0, 200),
             )
           }
         } catch (appErr) {
@@ -4937,7 +4937,7 @@ routerAdd(
               '[whatsapp_bridge] [profile-picture] /debug_token retornou HTTP ' +
                 dbgRes.statusCode +
                 ': ' +
-                dbgRes.rawText?.slice(0, 200),
+                (dbgRes.rawText || JSON.stringify(dbgRes.json || '')).slice(0, 200),
             )
           }
         } catch (dbgErr) {
@@ -4980,7 +4980,7 @@ routerAdd(
           const sJson = sRes.json || (sRes.rawText ? JSON.parse(sRes.rawText) : {})
           console.log(
             `[whatsapp_bridge] [profile-picture] Tentativa sessão no alvo ${targetId}: HTTP ${sStatus}, retorno=`,
-            sRes.rawText?.slice(0, 300),
+            (sRes.rawText || JSON.stringify(sRes.json || '')).slice(0, 300),
           )
 
           if (sStatus >= 200 && sStatus < 300 && sJson.id) {
@@ -4991,6 +4991,12 @@ routerAdd(
             break
           } else {
             lastSessionErrorMsg = sJson.error?.message || sRes.rawText || `HTTP ${sStatus}`
+            if (!sRes.rawText) {
+              try {
+                lastSessionErrorMsg =
+                  sJson.error?.message || JSON.stringify(sJson) || `HTTP ${sStatus}`
+              } catch (_) {}
+            }
             lastSessionMetaError = sJson.error || null
           }
         } catch (netErr) {
@@ -5044,13 +5050,14 @@ routerAdd(
 
       console.log(
         `[whatsapp_bridge] [profile-picture] Passo 2 (Enviar bytes): HTTP ${uploadBytesStatus}, retorno=`,
-        uploadBytesRes.rawText?.slice(0, 300),
+        (uploadBytesRes.rawText || JSON.stringify(uploadBytesJson || '')).slice(0, 300),
       )
 
       if (uploadBytesStatus < 200 || uploadBytesStatus >= 300 || !uploadBytesJson.h) {
         const metaUpErr =
           uploadBytesJson.error?.message ||
           uploadBytesRes.rawText ||
+          JSON.stringify(uploadBytesJson || '') ||
           `Erro HTTP ${uploadBytesStatus} no envio de bytes`
         return e.json(400, {
           success: false,
@@ -5100,7 +5107,7 @@ routerAdd(
 
       console.log(
         `[whatsapp_bridge] [profile-picture] Passo 3 (Atualizar Perfil): HTTP ${profileStatus}, retorno=`,
-        profileRes.rawText?.slice(0, 300),
+        (profileRes.rawText || JSON.stringify(profileJson || '')).slice(0, 300),
       )
 
       if (profileStatus >= 200 && profileStatus < 300) {
@@ -5125,6 +5132,7 @@ routerAdd(
       const metaProfErr =
         profileJson.error?.message ||
         profileRes.rawText ||
+        JSON.stringify(profileJson || '') ||
         `Erro HTTP ${profileStatus} ao atualizar perfil`
 
       return e.json(profileStatus || 400, {

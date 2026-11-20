@@ -34,7 +34,7 @@ import {
   type CompanyLegalInfo,
   type StripeAdminConfig,
 } from '@/services/finance'
-import ClientSubscriptionDetailsDialog from './ClientSubscriptionDetailsDialog'
+import { ClientSubscriptionDetailsDialog } from './ClientSubscriptionDetailsDialog'
 import {
   Loader2,
   RefreshCw,
@@ -708,7 +708,9 @@ export const BillingAdminSection: React.FC = () => {
               <ClientSubscriptionDetailsDialog
                 userId={detailsClientId}
                 open={detailsClientId !== null}
-                onClose={() => setDetailsClientId(null)}
+                onOpenChange={(open) => {
+                  if (!open) setDetailsClientId(null)
+                }}
               />
             </>
           )}

@@ -400,6 +400,64 @@ export const importJobsService = {
 }
 
 // ----------------- WhatsApp Status Service -----------------
+
+/**
+ * Redimensiona a imagem no navegador (máx. 640x640, JPEG q0.85) e devolve o
+ * conteúdo em Base64 puro (sem o prefixo data:). Foto de perfil da Meta é
+ * exibida em 640px; com isso o corpo JSON cai de ~7 MB para ~100-250 KB e a
+ * requisição chega de fato ao backend (prova v0.0.121 nos logs de requests).
+ * Lança erro em PT-BR quando o arquivo não é uma imagem decodificável.
+ */
+async function prepareProfileImageBase64(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () =>
+      reject(new Error('Não foi possível ler o arquivo de imagem selecionado.'))
+    reader.readAsDataURL(file)
+  })
+
+  if (!dataUrl.includes(',')) {
+    throw new Error('Arquivo de imagem inválido. Escolha uma imagem JPG ou PNG.')
+  }
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () =>
+      reject(
+        new Error(
+          'A imagem não pôde ser processada pelo navegador (arquivo corrompido ou formato não suportado). Use uma imagem JPG ou PNG.',
+        ),
+      )
+    image.src = dataUrl
+  })
+
+  const maxDim = 640
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+  const width = Math.max(1, Math.round(img.width * scale))
+  const height = Math.max(1, Math.round(img.height * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    throw new Error('Falha ao processar a imagem no navegador. Tente novamente.')
+  }
+  // Fundo branco: fotos PNG com transparência não ficam pretas ao virar JPEG.
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(img, 0, 0, width, height)
+
+  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85)
+  const base64 = jpegDataUrl.split(',')[1] || ''
+  if (!base64) {
+    throw new Error('Falha ao converter a imagem para envio. Tente outra foto.')
+  }
+  return base64
+}
+
 export const whatsappService = {
   async getStatus(): Promise<WhatsAppStatus | null> {
     const owner = pb.authStore.record?.id
@@ -582,19 +640,14 @@ export const whatsappService = {
   async updateProfilePicture(
     file: File,
   ): Promise<{ success: boolean; message?: string; error?: string; phone_number_id?: string }> {
-    // Converte o arquivo para Base64 para garantir compatibilidade total de transporte
-    const base64Data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result || ''))
-      reader.onerror = (e) => reject(e)
-      reader.readAsDataURL(file)
-    })
-
-    const payload = {
-      image_base64: base64Data,
-      file_name: file.name || 'profile_picture.jpg',
-      file_type: file.type || 'image/jpeg',
-    }
+    // O envio anterior como JSON/base64 do arquivo ORIGINAL inflava o corpo em ~1,37x
+    // (foto de galeria de 5MB virava ~7MB) e a requisição MORRIA ANTES de chegar ao
+    // backend (nenhum log de POST /profile-picture no servidor, comprovado nos logs
+    // de requests em 3 dias). Correção v0.0.121: downsampling no navegador via canvas
+    // (máx. 640x640, JPEG q0.85 — a Meta exibe a foto de perfil em 640px de qualquer
+    // forma) e envio em base64/JSON (~100-250 KB), caminho que o backend já decodifica
+    // de forma confiável (Item 36).
+    const imageBase64 = await prepareProfileImageBase64(file)
 
     const res = await fetch(
       `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/profile-picture`,
@@ -604,7 +657,11 @@ export const whatsappService = {
           Authorization: pb.authStore.token,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          image_base64: imageBase64,
+          file_name: 'profile_picture.jpg',
+          file_type: 'image/jpeg',
+        }),
       },
     )
     const data = await res.json().catch(() => ({}))

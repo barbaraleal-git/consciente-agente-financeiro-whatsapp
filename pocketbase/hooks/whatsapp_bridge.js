@@ -4807,6 +4807,15 @@ routerAdd(
         }
       }
 
+      // Diagnóstico: com multipart/form-data do browser, findUploadedFiles pode não
+      // popular na JSVM (mesmo padrão de bug do cenário do Item 36, lado multipart).
+      if (!fileBytes) {
+        console.log(
+          '[whatsapp_bridge] [profile-picture] multipart vazio/ilegível; body keys=',
+          JSON.stringify(Object.keys(body || {})),
+        )
+      }
+
       if (!fileBytes || fileBytes.length === 0) {
         return e.json(400, {
           success: false,
@@ -4838,11 +4847,52 @@ routerAdd(
         })
       }
 
+      // NOVO v0.0.121: sniff dos magic bytes — se o arquivo é JPEG ou PNG de verdade,
+      // a Meta decide pelo CONTEÚDO e não pelo Content-Type declarado. Envia o
+      // file_type real do conteúdo (doc Meta: para foto de perfil a Meta aceita JPEG).
+      // Detecta WebP (RIFF....WEBP) e avisa em PT que a Meta não aceita para perfil.
+      if (fileBytes.length > 12) {
+        const b0 = fileBytes[0]
+        const b1 = fileBytes[1]
+        const b2 = fileBytes[2]
+        const b3 = fileBytes[3]
+        if (b0 === 0xff && b1 === 0xd8 && b2 === 0xff) {
+          fileType = 'image/jpeg'
+        } else if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4e && b3 === 0x47) {
+          fileType = 'image/png'
+        } else if (
+          b0 === 0x52 &&
+          b1 === 0x49 &&
+          b2 === 0x46 &&
+          b3 === 0x46 &&
+          fileBytes[8] === 0x57 &&
+          fileBytes[9] === 0x45 &&
+          fileBytes[10] === 0x42 &&
+          fileBytes[11] === 0x50
+        ) {
+          return e.json(400, {
+            success: false,
+            error:
+              'A imagem enviada está em formato WebP, que a Meta NÃO aceita para foto de perfil do WhatsApp Business. Converta a imagem para JPEG (ex.: abrir em qualquer editor e salvar como .jpg) e tente novamente.',
+          })
+        }
+      }
+
       // Normaliza o MIME para o que a Meta espera
       if (cleanMime.includes('png') || cleanName.endsWith('.png')) {
         fileType = 'image/png'
       } else {
         fileType = 'image/jpeg'
+      }
+
+      if (fileLength > 5 * 1024 * 1024) {
+        return e.json(400, {
+          success: false,
+          error:
+            'A imagem tem ' +
+            Math.round(fileLength / (1024 * 1024)) +
+            ' MB. A Meta aceita no máximo 5 MB para foto de perfil — escolha uma imagem menor (ou uma captura de tela redimensionada) e tente novamente.',
+        })
       }
 
       // 1. Obtém credenciais oficiais salvas em whatsapp_status (o token NUNCA é exposto)

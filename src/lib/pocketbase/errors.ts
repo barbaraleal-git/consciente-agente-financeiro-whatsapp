@@ -20,11 +20,6 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-// NOTA ESTRUTURAL (3 incidentes registrados): getBackendErrorMessage é exportada
-// OBRIGATORIAMENTE deste arquivo — não remover, não renomear, não mudar a aridade
-// (error, fallback?). Consumidores: BillingAdminSection, ClientSubscriptionDetailsDialog
-// e Settings (foto de perfil). Ver getBackendErrorMessage abaixo.
-
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
     return error instanceof Error ? error.message : 'An unexpected error occurred.'
@@ -34,44 +29,42 @@ export function getErrorMessage(error: unknown): string {
 }
 
 /**
- * Extrai a mensagem de erro amigável de uma ClientResponseError do PocketBase,
- * retornando a mensagem real do corpo (sem GoError, sem genéricos em inglês).
- * Aridade (error, fallback?) — convenção do projeto, obrigatória para o build.
- *
- * Estrutural: única fonte da função no projeto (getBackendErrorMessage),
- * aridade fixa e fallback sempre PT — evita que edições futuras do arquivo
- * derrubem a exportação novamente (3º incidente registrado).
+ * Extrai a mensagem real do corpo de uma resposta de erro do backend
+ * (message / error / data), remove prefixos da JSVM ("GoError: ...") e
+ * bloqueia as frases genéricas em inglês do SDK. Usada nos toasts de erro
+ * das telas — nunca mostrar erro cru ao usuário.
  */
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const FALLBACK_PADRAO = 'Não foi possível concluir a operação. Tente novamente.'
-  let mensagem = ''
-  if (error instanceof ClientResponseError) {
-    const data = error.response?.data as Record<string, unknown> | undefined
-    const corpo =
-      data && typeof data === 'object'
-        ? (data.error as string) ||
-          (data.message as string) ||
-          (typeof data.data === 'string' ? (data.data as string) : '') ||
-          ''
-        : ''
-    let bruta = corpo || error.message || ''
-    // Remove prefixos técnicos (GoError wrapping do PocketBase/JSVM)
-    bruta = bruta.replace(/^.*?GoError:\s*/, '')
-    // Mensagens genéricas em inglês são bloqueadas — preferimos o fallback PT
-    const genericas = [
-      'something went wrong',
-      'an unexpected error occurred',
-      'failed to fetch',
-      'network error',
-      'internal server error',
-    ]
-    const baixa = bruta.toLowerCase()
-    if (!bruta || genericas.some((g) => baixa.includes(g))) {
-      bruta = ''
-    }
-    mensagem = bruta
-  } else if (error instanceof Error) {
-    mensagem = error.message
+export function getBackendErrorMessage(
+  error: unknown,
+  fallback = 'Ocorreu um erro inesperado.',
+): string {
+  // Erros HTTP do fetch com corpo JSON são normalizados pelos services em Error(msg)
+  if (error instanceof Error && !(error instanceof ClientResponseError)) {
+    const raw = (error.message || '').trim()
+    if (raw && !/^(fetch failed|networkerror|failed to fetch)$/i.test(raw)) return raw
+    return fallback
   }
-  return mensagem || fallback || FALLBACK_PADRAO
+  if (!(error instanceof ClientResponseError)) {
+    return error instanceof Error && error.message ? error.message : fallback
+  }
+  const resp = (error.response || {}) as Record<string, unknown>
+  const candidates = [resp.message, resp.error, resp.data]
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) {
+      return c.replace(/^GoError:\s*/i, '').trim()
+    }
+    if (c && typeof c === 'object') {
+      const nested = c as Record<string, unknown>
+      const msg = nested.message || nested.error
+      if (typeof msg === 'string' && msg.trim()) {
+        return String(msg)
+          .replace(/^GoError:\s*/i, '')
+          .trim()
+      }
+    }
+  }
+  if (error.message && !/Something went wrong/i.test(error.message)) {
+    return error.message.replace(/^GoError:\s*/i, '').trim()
+  }
+  return fallback
 }

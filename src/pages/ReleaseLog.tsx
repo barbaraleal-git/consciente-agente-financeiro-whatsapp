@@ -25,10 +25,29 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
-    version: '0.0.119',
+    version: '0.0.121',
+    date: '20/11/2026',
+    title: 'Foto de Perfil do WhatsApp — Upload Morria Antes de Chegar ao Servidor (Corrigido)',
+    tag: 'Atual',
+    highlights: [
+      'Defeito REAL comprovado nos logs de requests (3 dias): a tentativa da dona NUNCA chegava ao backend — nenhum POST /backend/v1/whatsapp/profile-picture registrado, enquanto os GETs de /settings dela apareciam normalmente. O corpo JSON com a imagem original em base64 (~1,37x o arquivo; foto de 5MB virava ~7MB) era perdido/truncado no caminho até o hook.',
+      'Correção na raiz: a imagem agora é REDIMENSIONADA no navegador antes do envio (canvas, máx. 640x640, JPEG q0.85 — resolução que a Meta exibe para foto de perfil), caindo para ~100-250 KB em base64/JSON — caminho que o backend já decodifica de forma confiável (Item 36).',
+      'Blindagens novas na rota: sniff de magic bytes (JPEG/PNG detectados pelo CONTEÚDO, não pelo Content-Type declarado), rejeição de WebP com instrução em PT, checagem de 5 MB e log de diagnóstico quando o multipart chega vazio.',
+      'getBackendErrorMessage restaurada MAIS UMA VEZ em src/lib/pocketbase/errors.ts (4ª vez que a função desaparece do arquivo — agora com nota estrutural em comentário no topo).',
+    ],
+    details: [
+      'src/services/finance.ts: novo helper prepareProfileImageBase64 (FileReader + canvas downscale 640px + fundo branco para PNG com transparência) e updateProfilePicture enviando { image_base64, file_name, file_type } em JSON.',
+      'pocketbase/hooks/whatsapp_bridge.js: rota /whatsapp/profile-picture com magic-byte sniff (ff d8 ff = JPEG, 89 50 4e 47 = PNG, RIFF/WEBP = 400 com instrução), limite de 5 MB em PT e log de body keys quando multipart vier vazio.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage(error, fallback?) restaurada (extrai message/error/data do corpo, remove prefixo GoError, bloqueia o genérico do SDK).',
+      'src/data/docsContent.ts: cenário R atualizado com o caso do upload que não chegava ao servidor + linha "Atualização v0.0.121" no topo do roteiro.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.121 no topo com tag "Atual" (v0.0.120 volta a "Estável").',
+    ],
+  },
+  {
+    version: '0.0.120',
     date: '20/11/2026',
     title: 'Assinaturas dos Clientes com Extrato Consolidado — Billing → Clientes',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Pedido da dona (Billing → Clientes): visão geral de TODAS as assinaturas dos clientes com detalhes completos por cliente — KPIs no topo (Clientes ativos, Assinaturas ativas, Em carência, Receita mensal estimada), linhas expansíveis com o extrato de cobranças de cada cliente DESDE a assinatura (fusão de subscriptions_history + invoices Stripe + pagamentos únicos one_time) e total pago por cliente.',
       'Extrato consolidado calculado 100% no backend (rota GET /backend/v1/admin/billing/client-subscription-details): o frontend apenas renderiza — mesmo padrão das demais rotas admin de billing.',

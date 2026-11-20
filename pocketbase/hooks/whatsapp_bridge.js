@@ -148,19 +148,883 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       'Maio',
       'Junho',
       'Julho',
-      'Agosto',
-      'Setembro',
-      'Outubro',
-      'Novembro',
-      'Dezembro',
-    ]
+      }
 
-    const localResolveCaixinhaEmoji = function (iconId, categoryName) {
-      if (!iconId && !categoryName) return '📦'
+      if (budgetsList.length === 0) {
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      }
+
+      if (budgetsList.length === 0) {
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
       const idStr = String(iconId || '').trim()
       if (idStr.startsWith('emoji:')) {
         return idStr.slice(6) || '📦'
       }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+=======
+    ]
+=======
+      'Dezembro',
+    ]
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+=======
+    ]
+
+    const localResolveCaixinhaEmoji = function (iconId, categoryName) {
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+      if (
+        nameLow.includes('aliment') ||
+        nameLow.includes('restaurante') ||
+        nameLow.includes('refei')
+      )
+        return '🍽️'
+      if (nameLow.includes('mercad') || nameLow.includes('feira')) return '🛒'
+      if (
+        nameLow.includes('transp') ||
+        nameLow.includes('uber') ||
+        nameLow.includes('carro') ||
+        nameLow.includes('combust')
+      )
+        return '🚗'
+      if (
+        nameLow.includes('morad') ||
+        nameLow.includes('casa') ||
+        nameLow.includes('aluguel') ||
+        nameLow.includes('reform')
+      )
+        return '🏠'
+      if (
+        nameLow.includes('saúde') ||
+        nameLow.includes('saude') ||
+        nameLow.includes('farm') ||
+        nameLow.includes('médic')
+      )
+        return '🏥'
+      if (
+        nameLow.includes('lazer') ||
+        nameLow.includes('viagem') ||
+        nameLow.includes('passeio') ||
+        nameLow.includes('férias')
+      )
+        return '🌴'
+      if (nameLow.includes('estud') || nameLow.includes('educa') || nameLow.includes('curso'))
+        return '📚'
+      if (nameLow.includes('roupa') || nameLow.includes('compra')) return '🛍️'
+      if (
+        nameLow.includes('pet') ||
+        nameLow.includes('bicho') ||
+        nameLow.includes('gato') ||
+        nameLow.includes('cachorr')
+      )
+        return '🐾'
+      if (nameLow.includes('reserva') || nameLow.includes('emergên')) return '🐷'
+      if (nameLow.includes('present') || nameLow.includes('anivers')) return '🎁'
+      return '📦'
+    }
+
+    const localFormatCentsToBrl = function (cents) {
+=======
+      'Dezembro',
+    ]
+
+    const localResolveCaixinhaEmoji = function (iconId, categoryName) {
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+      if (
+        nameLow.includes('aliment') ||
+        nameLow.includes('restaurante') ||
+        nameLow.includes('refei')
+      )
+        return '🍽️'
+      if (nameLow.includes('mercad') || nameLow.includes('feira')) return '🛒'
+      if (
+        nameLow.includes('transp') ||
+        nameLow.includes('uber') ||
+        nameLow.includes('carro') ||
+        nameLow.includes('combust')
+      )
+        return '🚗'
+      if (
+        nameLow.includes('morad') ||
+        nameLow.includes('casa') ||
+        nameLow.includes('aluguel') ||
+        nameLow.includes('reform')
+      )
+        return '🏠'
+      if (
+        nameLow.includes('saúde') ||
+        nameLow.includes('saude') ||
+        nameLow.includes('farm') ||
+        nameLow.includes('médic')
+      )
+        return '🏥'
+      if (
+        nameLow.includes('lazer') ||
+        nameLow.includes('viagem') ||
+        nameLow.includes('passeio') ||
+        nameLow.includes('férias')
+      )
+        return '🌴'
+      if (nameLow.includes('estud') || nameLow.includes('educa') || nameLow.includes('curso'))
+        return '📚'
+      if (nameLow.includes('roupa') || nameLow.includes('compra')) return '🛍️'
+      if (
+        nameLow.includes('pet') ||
+        nameLow.includes('bicho') ||
+        nameLow.includes('gato') ||
+        nameLow.includes('cachorr')
+      )
+        return '🐾'
+      if (nameLow.includes('reserva') || nameLow.includes('emergên')) return '🐷'
+      if (nameLow.includes('present') || nameLow.includes('anivers')) return '🎁'
+      return '📦'
+    }
+
+    const localFormatCentsToBrl = function (cents) {
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+
+      output += `───────────────────────\n`
+      // v0.0.125 — Total do mês = TODOS os lançamentos do mês (batendo com o
+      // card "Despesas do Mês" do app), com composição em caixinhas x sem
+      // caixinha quando houver pendências de classificação.
+      output += `💰 *Total Gasto no Mês:* ${localFormatCentsToBrl(totalAllCents)}\n`
+      if (unlinkedCents > 0) {
+        output += `   (${localFormatCentsToBrl(totalSpentCents)} em caixinhas + ${localFormatCentsToBrl(unlinkedCents)} sem caixinha)\n`
+      }
+      if (totalBudgetCents > 0) {
+
+      if (budgetsList.length === 0) {
+=======
+      }
+
+      if (budgetsList.length === 0) {
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+=======
+    ]
+=======
+      'Dezembro',
+    ]
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+=======
+    ]
+
+    const localResolveCaixinhaEmoji = function (iconId, categoryName) {
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+      const nameLow = String(categoryName || '').toLowerCase()
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+        return idStr
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      const idStr = String(iconId || '').trim()
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+      if (/\p{Extended_Pictographic}/u.test(idStr)) {
+=======
+      if (idStr.startsWith('emoji:')) {
+        return idStr.slice(6) || '📦'
+      }
+      if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
+        return LOCAL_CAIXINHA_EMOJIS[idStr]
+      }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
       if (LOCAL_CAIXINHA_EMOJIS[idStr]) {
         return LOCAL_CAIXINHA_EMOJIS[idStr]
       }
@@ -579,14 +1443,46 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         spentByBudgetId[budgetsList[b].id] = 0
       }
 
+      // v0.0.125 — Decisão da dona: o Total Gasto do mês no WhatsApp deve bater
+      // com o card "Despesas do Mês" do app (soma de TODOS os lançamentos do
+      // mês, vinculados ou não). Lançamentos sem caixinha são coletados aqui
+      // para serem listados ao final do resumo, pedindo classificação.
+      let totalAllCents = 0
+      let unlinkedCents = 0
+      const unlinkedTxs = []
       for (let t = 0; t < transactions.length; t++) {
         const tx = transactions[t]
         const amt = tx.getInt('amount') || 0
+        totalAllCents += amt
         const matchedBudget = resolveTxBudget(tx)
         if (matchedBudget && matchedBudget.id) {
           spentByBudgetId[matchedBudget.id] = (spentByBudgetId[matchedBudget.id] || 0) + amt
+        } else {
+          unlinkedCents += amt
+          unlinkedTxs.push({
+            description: tx.getString('description') || 'Lançamento',
+            amount: amt,
+            date: tx.getString('date') || '',
+          })
         }
       }
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+      output += `───────────────────────\n`
+      output += `💰 *Total Gasto no Mês:* ${localFormatCentsToBrl(totalSpentCents)}\n`
+      if (totalBudgetCents > 0) {
+=======
+      const totalRemainingCents = totalBudgetCents - totalSpentCents
+
+      output += `───────────────────────\n`
+      // v0.0.125 — Total do mês = TODOS os lançamentos do mês (batendo com o
+      // card "Despesas do Mês" do app), com composição em caixinhas x sem
+      // caixinha quando houver pendências de classificação.
+      output += `💰 *Total Gasto no Mês:* ${localFormatCentsToBrl(totalAllCents)}\n`
+      if (unlinkedCents > 0) {
+        output += `   (${localFormatCentsToBrl(totalSpentCents)} em caixinhas + ${localFormatCentsToBrl(unlinkedCents)} sem caixinha)\n`
+      }
+      if (totalBudgetCents > 0) {
 
       if (budgetsList.length === 0) {
         return (
@@ -680,7 +1576,13 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
 
       const totalRemainingCents = totalBudgetCents - totalSpentCents
       output += `───────────────────────\n`
-      output += `💰 *Total Gasto no Mês:* ${localFormatCentsToBrl(totalSpentCents)}\n`
+      // v0.0.125 — Total do mês = TODOS os lançamentos do mês (batendo com o
+      // card "Despesas do Mês" do app), com composição em caixinhas x sem
+      // caixinha quando houver pendências de classificação.
+      output += `💰 *Total Gasto no Mês:* ${localFormatCentsToBrl(totalAllCents)}\n`
+      if (unlinkedCents > 0) {
+        output += `   (${localFormatCentsToBrl(totalSpentCents)} em caixinhas + ${localFormatCentsToBrl(unlinkedCents)} sem caixinha)\n`
+      }
       if (totalBudgetCents > 0) {
         output += `🎯 *Total dos Tetos:* ${localFormatCentsToBrl(totalBudgetCents)}\n`
         if (totalRemainingCents >= 0) {
@@ -690,6 +1592,20 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         }
       } else {
         output += `💡 *Dica:* Defina seus tetos para ter a barra de progresso do mês completa!`
+      }
+
+      // v0.0.125 — Decisão da dona (item 5): lançamentos do mês SEM caixinha
+      // ficam listados ao final do resumo, com descrição + valor, pedindo que
+      // o cliente classifique (no app, aba Lançamentos, ou respondendo por
+      // aqui a um novo registro).
+      if (unlinkedTxs.length > 0) {
+        output += `\n⚠️ *Lançamentos sem caixinha (${unlinkedTxs.length})*\n`
+        for (let u = 0; u < unlinkedTxs.length; u++) {
+          const ut = unlinkedTxs[u]
+          const utDate = ut.date ? ` (${localFormatDatePtBr(ut.date)})` : ''
+          output += `${localGetNumberEmoji(u)} ${ut.description} — ${localFormatCentsToBrl(ut.amount)}${utDate}\n`
+        }
+        output += `\n👉 Para manter suas caixinhas sempre certas, classifique esses lançamentos: abra o app na aba *Lançamentos*, toque no lançamento marcado como *Sem caixinha* e escolha a caixinha dele!`
       }
 
       return output.trim()
@@ -781,7 +1697,8 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         `1. Esta é a ÚNICA lista de caixinhas que existem hoje na base. Qualquer caixinha não listada acima foi EXCLUÍDA pelo usuário e é TERMINANTEMENTE PROIBIDO citá-la, sugeri-la ou ressuscitá-la.\n` +
         `2. Resumos visuais e cálculos oficiais de caixinhas são gerados automaticamente pelo sistema via comando "resumo". NUNCA gere números de caixinhas, totais ou saldos por conta própria.\n` +
         `3. Esta lista é recalculada e reenviada A CADA MENSAGEM direto da base de dados. NUNCA cite caixinhas mencionadas em mensagens anteriores da conversa que não estejam na lista acima — caixinhas excluídas pelo usuário deixaram de existir e ressuscitá-las é um erro grave.\n` +
-        `4. Se o usuário pedir resumo, visão geral ou estado das caixinhas, responda que o resumo oficial é enviado automaticamente pelo sistema com os dados atualizados — NUNCA monte a lista de caixinhas por conta própria.]`
+       `4. Se o usuário pedir resumo, visão geral ou estado das caixinhas, responda que o resumo oficial é enviado automaticamente pelo sistema com os dados atualizados — NUNCA monte a lista de caixinhas por conta própria.\n` +
+       `5. REGRA DA CAIXINHA OBRIGATÓRIA (v0.0.126 — decisão da dona): ao registrar uma DESPESA, vincule-a ao campo budget da caixinha correta da lista acima. Se NÃO for possível identificar COM CONFIANÇA qual caixinha corresponde ao gasto, NÃO crie a transação: PERGUNTE ao cliente em qual caixinha da lista oficial o lançamento deve ser vinculado (cite as opções pelo nome) e só registre DEPOIS da resposta dele. NUNCA salve um lançamento sem caixinha quando houver dúvida — só registre sem caixinha se o cliente disser expressamente que não quer vincular a nenhuma.]`
       )
     }
 
@@ -1761,6 +2678,55 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       }
 
       // Caso 3: ZERO VÍNCULOS PARAMETRIZADOS (=== 0)
+      // v0.0.125 — Decisão da dona: lançamento NUNCA é criado sem caixinha no
+      // fluxo normal. Sem vínculo categoria→caixinha, o gasto fica PENDENTE
+      // (pending_caixinha) com a pergunta "qual caixinha?", usando a lista
+      // completa de caixinhas do usuário, e só é gravado após a resposta
+      // (mesmo padrão do fluxo de escolha de caixinha; "cancelar" descarta).
+      let allUserBudgets = []
+      try {
+        const allBs = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-created', 100, 0)
+        for (let ab = 0; ab < allBs.length; ab++) {
+          allUserBudgets.push({
+            id: allBs[ab].id,
+            name: allBs[ab].getString('name') || 'Caixinha',
+            icon: allBs[ab].getString('icon') || '',
+            amount: allBs[ab].getInt('amount') || 0,
+          })
+        }
+      } catch (_) {}
+
+      if (allUserBudgets.length > 0 && contactRecord) {
+        contactRecord.set(
+          'pending_caixinha',
+          JSON.stringify({
+            amount: parsedExpense.amount,
+            description: parsedExpense.description,
+            category_id: parsedExpense.categoryId,
+            category_name: parsedExpense.categoryName,
+            date: parsedExpense.date,
+            is_retroactive: parsedExpense.isRetroactive || false,
+            candidate_budgets: allUserBudgets,
+            source: txSource,
+            created_at: new Date().toISOString(),
+          }),
+        )
+        try {
+          app.save(contactRecord)
+        } catch (_) {}
+
+        let allOptionsList = ''
+        for (let i = 0; i < allUserBudgets.length; i++) {
+          allOptionsList += `${localGetNumberEmoji(i)} ${allUserBudgets[i].name}\n`
+        }
+        const valFmt = localFormatCentsToBrl(parsedExpense.amount)
+
+        return {
+          handled: true,
+          reply: `Esse gasto de ${valFmt} (${parsedExpense.description}) entra em qual caixinha?\n\n${allOptionsList}\nResponda com o número ou nome da caixinha! 😊`,
+        }
+      }
+
       return { handled: false, reply: '' }
     }
     const normalizeDigits = function (raw) {

@@ -28,49 +28,30 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-// ---------------------------------------------------------------------------
-// getBackendErrorMessage (restaurada — MISSING_EXPORT recorrente v0.0.119/0.0.120/0.0.122)
-// Extrai a mensagem REAL do corpo de erro do backend PocketBase (message/error/data),
-// remove prefixos GoError/Error, bloqueia a mensagem genérica "Something went wrong"
-// e faz fallback em PT. NÃO remover este export: ele alimenta toda a UI de erro do app.
-// ---------------------------------------------------------------------------
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  let raw = ''
-
+// Extrai a mensagem real de erro do backend (ClientResponseError do PocketBase),
+// remove o prefixo GoError e bloqueia mensagens genéricas. Assinatura canônica:
+// 2º argumento opcional = fallback exibido ao usuário (PT).
+export function getBackendErrorMessage(
+  error: unknown,
+  fallback = 'Erro inesperado. Tente novamente.',
+): string {
+  let msg = ''
   if (error instanceof ClientResponseError) {
-    const res = error.response as unknown as Record<string, unknown> | undefined
-    if (res) {
-      if (typeof res.message === 'string' && res.message.trim()) raw = res.message
-      else if (typeof res.error === 'string' && res.error.trim()) raw = res.error
-      else if (res.data && typeof res.data === 'object') {
-        const d = res.data as Record<string, unknown>
-        const fieldMsgs = extractFieldErrors(error)
-        if (Object.keys(fieldMsgs).length > 0) {
-          raw = Object.values(fieldMsgs).join(' ')
-        } else if (typeof d.message === 'string' && d.message.trim()) {
-          raw = d.message
-        } else if (typeof d.error === 'string' && d.error.trim()) {
-          raw = d.error
-        }
-      }
-    }
-    if (!raw && error.message && error.message.trim()) raw = error.message
+    const fieldMsgs = Object.values(extractFieldErrors(error)).join(' ').trim()
+    const data = error.response as Record<string, unknown> | undefined
+    const bodyMsg =
+      data && typeof data === 'object' && typeof data['message'] === 'string'
+        ? (data['message'] as string)
+        : ''
+    msg = fieldMsgs || bodyMsg || error.message || ''
   } else if (error instanceof Error) {
-    raw = error.message
-  } else if (typeof error === 'string' && error.trim()) {
-    raw = error
+    msg = error.message
+  } else if (typeof error === 'string') {
+    msg = error
   }
-
-  let msg = String(raw || '').trim()
-  msg = msg
-    .replace(/^GoError[:\s]*/i, '')
-    .replace(/^Error[:\s]*/i, '')
+  msg = String(msg || '')
+    .replace(/^GoError:\s*/i, '')
     .trim()
-
-  if (!msg || /^something went wrong\.?$/i.test(msg)) {
-    return fallback && fallback.trim()
-      ? fallback
-      : 'Ocorreu um erro inesperado. Por favor, tente novamente em alguns instantes.'
-  }
+  if (!msg || /something went wrong/i.test(msg)) return fallback
   return msg
 }

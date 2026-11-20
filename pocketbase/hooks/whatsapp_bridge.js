@@ -797,6 +797,62 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         .trim()
     }
 
+    // DETECTOR DETERMINÍSTICO DE PERGUNTA (v0.0.123 — Opção A da dona):
+    // pergunta detectada => MODO CONSULTA (nenhuma transação é criada; a
+    // resposta deve ser baseada EXCLUSIVAMENTE no estado atual da base de
+    // dados — transações/caixinhas/orçamentos — e NUNCA no histórico da
+    // conversa, pois o cliente pode ter alterado dados pela interface web).
+    const localIsQuestionMessage = function (rawText) {
+      if (!rawText) return false
+      let t = ''
+      try {
+        t = String(rawText)
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+      } catch (_) {
+        return false
+      }
+      if (!t) return false
+      // 1) Interrogação explícita ("...?")
+      if (t.indexOf('?') !== -1) return true
+      // 2) Início com palavra interrogativa (com ou sem "?")
+      if (
+        /^(quanto|quanta|quantos|quantas|qual|quais|quando|onde|quem|como|por que|porque|porq|pq)\b/.test(
+          t,
+        )
+      ) {
+        return true
+      }
+      // 3) "você/vc/tu" + verbo de verificação/consulta ("você registrou...")
+      if (/^(voce|vc|tu|voces|vcs)\b/.test(t)) {
+        // Pedido educado de REGISTRO ("você pode registrar padaria 12")
+        // NÃO é pergunta — segue o fluxo normal de registro.
+        const isRegisterRequest =
+          /\b(pode|consegue|poderia)\b[^?]*\b(registrar|anotar|lancar|gravar|salvar|adicionar|cadastrar)\b/.test(
+            t,
+          )
+        const isCheck =
+          /\b(registr|anot|salv|grav|lanc|receb|confirm|chec|confer|verific|lembra|viu|fez|conseguiu|aparec|entrou|caiu|esta|tem|existe|eh)\w*/.test(
+            t,
+          )
+        if (isCheck && !isRegisterRequest) return true
+      }
+      // 4) "já ..." + verbo de registro/entrada ("já registrou os 12 da padaria")
+      if (
+        /\bja\s+(registrou|anotou|salvou|gravou|lancou|entrou|caiu|apareceu|foi|esta|tem|existe)\b/.test(
+          t,
+        )
+      ) {
+        return true
+      }
+      // 5) Pergunta de existência ("tem algum lançamento de padaria?")
+      if (/^(tem|existe|ha)\b/.test(t)) return true
+      return false
+    }
+
     const localGetNumberEmoji = function (index) {
       const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
       return emojis[index] || `${index + 1}.`
@@ -2734,9 +2790,37 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               agentReply = reliabilityHelper.OFF_TOPIC_GUARDRAIL_REPLY
             }
 
+            // 1.2 DETECTOR DETERMINÍSTICO DE PERGUNTA (v0.0.123 — Opção A da dona)
+            // Pergunta => MODO CONSULTA: NENHUMA transação pode ser criada e os
+            // fluxos que registram (cancelamento de pendência, escolha de caixinha,
+            // retroativo) são ignorados; o prompt do agente troca para consulta
+            // baseada EXCLUSIVAMENTE na base de dados atual (não no histórico).
+            let isConsultaMode = false
+            if (!agentReply && isRegistered && textContent) {
+              try {
+                isConsultaMode =
+                  typeof localIsQuestionMessage === 'function' &&
+                  localIsQuestionMessage(textContent)
+              } catch (qDetErr) {
+                console.log(
+                  '[whatsapp_bridge] Erro no detector de pergunta (seguindo fluxo normal):',
+                  qDetErr,
+                )
+                isConsultaMode = false
+              }
+              if (isConsultaMode) {
+                console.log(
+                  '[whatsapp_bridge] PERGUNTA detectada — MODO CONSULTA ativo (nenhuma transação será criada):',
+                  textContent,
+                )
+                promptForAgent = `[MODO CONSULTA — NÃO crie transações; responda à pergunta do cliente com base EXCLUSIVAMENTE nos dados atuais da base de dados (transações, caixinhas, orçamentos), consultando as coleções; NÃO use o histórico da conversa como fonte de verdade sobre lançamentos ou saldos — o cliente pode ter feito um lançamento ou uma alteração diretamente pela interface do app, que é a fonte mais atual. Responda à pergunta a seguir; se o cliente na verdade quis registrar um gasto, oriente-o a enviar no formato curto (ex.: "Padaria 12") SEM criar nada agora]: ${textContent}`
+              }
+            }
+
             // 2. Fluxo Conversacional de Cancelamento / Substituição (Item 23)
             if (
               !agentReply &&
+              !isConsultaMode &&
               isRegistered &&
               textContent &&
               reliabilityHelper &&
@@ -2767,6 +2851,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             // Executado primariamente via localHandleCaixinhaFlow 100% INLINE no callback (padrão localXxx sem require)
             if (
               !agentReply &&
+              !isConsultaMode &&
               isRegistered &&
               textContent &&
               typeof localHandleCaixinhaFlow === 'function'
@@ -2795,6 +2880,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               }
             } else if (
               !agentReply &&
+              !isConsultaMode &&
               isRegistered &&
               textContent &&
               reliabilityHelper &&
@@ -2825,6 +2911,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             let retroactiveInfo = null
             if (
               !agentReply &&
+              !isConsultaMode &&
               textContent &&
               reliabilityHelper &&
               typeof reliabilityHelper.parseRetroactiveDate === 'function'
@@ -3133,7 +3220,12 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
             // Fallback garantido: toda mensagem SEMPRE produz uma resposta amigável e acolhedora
             if (!agentReply) {
-              if (!isRegistered) {
+              if (isConsultaMode) {
+                // MODO CONSULTA: falha do agente NUNCA pede reenvio de gasto —
+                // responde com instabilidade de CONSULTA e aponta para o app.
+                agentReply =
+                  'Tive uma instabilidade ao consultar seus dados na base agora. 🙏\nPor favor, tente perguntar novamente em alguns instantes — ou confira seus lançamentos e caixinhas direto no app, que sempre mostram o estado mais atual.'
+              } else if (!isRegistered) {
                 agentReply =
                   'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está reconhecido no app.\n\n• Se ainda não tem conta, cadastre-se em: https://agente-financeiro-whatsapp-37fd3.goskip.app/register\n• Se já tem conta, faça login em: https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!'
               } else if (!hasCompletedOnboarding) {
@@ -3924,9 +4016,38 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
         agentReply = reliabilityHelperSim.OFF_TOPIC_GUARDRAIL_REPLY
       }
 
+      // 1.2 DETECTOR DETERMINÍSTICO DE PERGUNTA (v0.0.123 — Opção A da dona)
+      // Pergunta => MODO CONSULTA: NENHUMA transação pode ser criada e os
+      // fluxos que registram (cancelamento de pendência, escolha de caixinha,
+      // retroativo) são ignorados; o prompt do agente troca para consulta
+      // baseada EXCLUSIVAMENTE na base de dados atual (não no histórico).
+      let isConsultaMode = false
+      if (!agentReply && isRegistered && message) {
+        try {
+          isConsultaMode =
+            typeof globalThis !== 'undefined' &&
+            !!globalThis.__whatsappIsQuestionMessage &&
+            globalThis.__whatsappIsQuestionMessage(message)
+        } catch (qDetErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no detector de pergunta (seguindo fluxo normal):',
+            qDetErr,
+          )
+          isConsultaMode = false
+        }
+        if (isConsultaMode) {
+          console.log(
+            '[whatsapp_bridge] [simulate] PERGUNTA detectada — MODO CONSULTA ativo (nenhuma transação será criada):',
+            message,
+          )
+          promptForAgent = `[MODO CONSULTA — NÃO crie transações; responda à pergunta do cliente com base EXCLUSIVAMENTE nos dados atuais da base de dados (transações, caixinhas, orçamentos), consultando as coleções; NÃO use o histórico da conversa como fonte de verdade sobre lançamentos ou saldos — o cliente pode ter feito um lançamento ou uma alteração diretamente pela interface do app, que é a fonte mais atual. Responda à pergunta a seguir; se o cliente na verdade quis registrar um gasto, oriente-o a enviar no formato curto (ex.: "Padaria 12") SEM criar nada agora]: ${message}`
+        }
+      }
+
       // 2. Fluxo Conversacional de Cancelamento / Substituição (Item 23) no simulate
       if (
         !agentReply &&
+        !isConsultaMode &&
         isRegistered &&
         message &&
         reliabilityHelperSim &&
@@ -3956,7 +4077,13 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
 
       // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha no simulate (Item 29 / v0.0.56 / v0.0.69)
       // Executado primariamente via localHandleCaixinhaFlow inline no callback (padrão localXxx sem require)
-      if (!agentReply && isRegistered && message && typeof localHandleCaixinhaFlow === 'function') {
+      if (
+        !agentReply &&
+        !isConsultaMode &&
+        isRegistered &&
+        message &&
+        typeof localHandleCaixinhaFlow === 'function'
+      ) {
         try {
           const caixinhaRes = localHandleCaixinhaFlow(
             $app,
@@ -3981,6 +4108,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
         }
       } else if (
         !agentReply &&
+        !isConsultaMode &&
         isRegistered &&
         message &&
         reliabilityHelperSim &&
@@ -4013,6 +4141,7 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       // 3. Detecção e Ajuste de Data Retroativa (Item 28) no simulate
       if (
         !agentReply &&
+        !isConsultaMode &&
         message &&
         reliabilityHelperSim &&
         typeof reliabilityHelperSim.parseRetroactiveDate === 'function'
@@ -4293,7 +4422,12 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       }
 
       if (!agentReply) {
-        if (!isRegistered) {
+        if (isConsultaMode) {
+          // MODO CONSULTA: falha do agente NUNCA pede reenvio de gasto —
+          // responde com instabilidade de CONSULTA e aponta para o app.
+          agentReply =
+            'Tive uma instabilidade ao consultar seus dados na base agora. 🙏\nPor favor, tente perguntar novamente em alguns instantes — ou confira seus lançamentos e caixinhas direto no app, que sempre mostram o estado mais atual.'
+        } else if (!isRegistered) {
           agentReply =
             'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
         } else if (

@@ -20,39 +20,55 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
+// NOTA ESTRUTURAL (lição v0.0.118/0.0.120/0.0.121/0.0.122): getBackendErrorMessage é
+// importada NAMED por vários consumidores (BillingAdminSection, ClientSubscriptionDetailsDialog,
+// Settings). NÃO remover esta exportação — o build quebra com MISSING_EXPORT.
+
 export function getBackendErrorMessage(
   error: unknown,
-  fallback = 'Ocorreu um erro inesperado. Tente novamente.',
+  fallback = 'Não foi possível concluir a operação. Tente novamente.',
 ): string {
-  const raw =
-    error instanceof ClientResponseError
-      ? (() => {
-          const r = error.response as unknown as Record<string, unknown> | undefined
-          const candidates = [
-            r?.message,
-            r?.error,
-            (r?.data as Record<string, unknown> | undefined)?.message,
-            (r?.data as Record<string, unknown> | undefined)?.error,
-            error.message,
-          ]
-          const found = candidates.find((c) => typeof c === 'string' && c.trim().length > 0)
-          return typeof found === 'string' ? found : ''
-        })()
-      : error instanceof Error
-        ? error.message
-        : typeof error === 'string'
-          ? error
-          : ''
-
-  const cleaned = raw
-    .replace(/^GoError:\s*/i, '')
-    .replace(/^Error:\s*/i, '')
-    .trim()
-
-  if (!cleaned) return fallback
-  // Bloqueia o genérico do SDK/HTTP que não ajuda a usuária.
-  if (/^something went wrong$/i.test(cleaned)) return fallback
-  return cleaned
+  if (error && typeof error === 'object') {
+    const anyErr = error as {
+      response?: { message?: unknown; error?: unknown; data?: unknown }
+      message?: unknown
+    }
+    const body = anyErr.response
+    if (body && typeof body === 'object') {
+      const candidates: unknown[] = [body.message, body.error, body.data]
+      for (const cand of candidates) {
+        if (typeof cand === 'string' && cand.trim()) {
+          let msg = cand.trim()
+          msg = msg.replace(/^GoError:\s*/i, '').trim()
+          if (msg && !/something went wrong/i.test(msg)) return msg
+        }
+        if (cand && typeof cand === 'object') {
+          const inner = cand as { message?: unknown; error?: unknown }
+          const innerMsg =
+            typeof inner.message === 'string'
+              ? inner.message
+              : typeof inner.error === 'string'
+                ? inner.error
+                : ''
+          if (innerMsg.trim()) {
+            const cleaned = innerMsg
+              .trim()
+              .replace(/^GoError:\s*/i, '')
+              .trim()
+            if (cleaned && !/something went wrong/i.test(cleaned)) return cleaned
+          }
+        }
+      }
+    }
+    if (typeof anyErr.message === 'string' && anyErr.message.trim()) {
+      const cleaned = anyErr.message
+        .trim()
+        .replace(/^GoError:\s*/i, '')
+        .trim()
+      if (cleaned && !/something went wrong/i.test(cleaned)) return cleaned
+    }
+  }
+  return fallback
 }
 
 export function getErrorMessage(error: unknown): string {

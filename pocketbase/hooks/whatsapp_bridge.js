@@ -1795,6 +1795,9 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         newGuest.set('name', 'Visitante WhatsApp')
         newGuest.set('onboarding_completed', true)
         $app.save(newGuest)
+        console.log('[whatsapp_bridge] Usuário visitante criado sob demanda:', newGuest.id)
+        return newGuest
+      } catch (err) {
         console.log('[whatsapp_bridge] Falha ao criar usuário visitante sob demanda:', err)
       }
 
@@ -3998,3 +4001,1397 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
       // Helper de confiabilidade carregado no boot (seção 1.5), cacheado em globalThis.
       const reliabilityHelperSim =
         typeof globalThis !== 'undefined' ? globalThis.__reliabilityHelper : null
+
+      // 1. Guardrail de Temas (Item 22) no simulate
+      if (
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.isOffTopicQuery === 'function' &&
+        reliabilityHelperSim.isOffTopicQuery(message)
+      ) {
+        console.log(
+          '[whatsapp_bridge] [simulate] Mensagem fora de escopo detectada pelo guardrail:',
+          message,
+        )
+        agentReply = reliabilityHelperSim.OFF_TOPIC_GUARDRAIL_REPLY
+      }
+
+      // 1.2 DETECTOR DETERMINÍSTICO DE PERGUNTA (v0.0.123 — Opção A da dona)
+      // Pergunta => MODO CONSULTA: NENHUMA transação pode ser criada e os
+      // fluxos que registram (cancelamento de pendência, escolha de caixinha,
+      // retroativo) são ignorados; o prompt do agente troca para consulta
+      // baseada EXCLUSIVAMENTE na base de dados atual (não no histórico).
+      let isConsultaMode = false
+      if (!agentReply && isRegistered && message) {
+        try {
+          isConsultaMode =
+            typeof globalThis !== 'undefined' &&
+            !!globalThis.__whatsappIsQuestionMessage &&
+            globalThis.__whatsappIsQuestionMessage(message)
+        } catch (qDetErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no detector de pergunta (seguindo fluxo normal):',
+            qDetErr,
+          )
+          isConsultaMode = false
+        }
+        if (isConsultaMode) {
+          console.log(
+            '[whatsapp_bridge] [simulate] PERGUNTA detectada — MODO CONSULTA ativo (nenhuma transação será criada):',
+            message,
+          )
+          promptForAgent = `[MODO CONSULTA — NÃO crie transações; responda à pergunta do cliente com base EXCLUSIVAMENTE nos dados atuais da base de dados (transações, caixinhas, orçamentos), consultando as coleções; NÃO use o histórico da conversa como fonte de verdade sobre lançamentos ou saldos — o cliente pode ter feito um lançamento ou uma alteração diretamente pela interface do app, que é a fonte mais atual. Responda à pergunta a seguir; se o cliente na verdade quis registrar um gasto, oriente-o a enviar no formato curto (ex.: "Padaria 12") SEM criar nada agora]: ${message}`
+        }
+      }
+
+      // 2. Fluxo Conversacional de Cancelamento / Substituição (Item 23) no simulate
+      if (
+        !agentReply &&
+        !isConsultaMode &&
+        isRegistered &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.handleCancellationFlow === 'function'
+      ) {
+        try {
+          const cancelRes = reliabilityHelperSim.handleCancellationFlow(
+            $app,
+            activeUserId,
+            contact,
+            message,
+          )
+          if (cancelRes && cancelRes.handled && cancelRes.reply) {
+            agentReply = cancelRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de cancelamento interceptado:',
+              agentReply,
+            )
+          }
+        } catch (cFlowErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de cancelamento seguro:',
+            cFlowErr,
+          )
+        }
+      }
+
+      // 2.1 Fluxo Conversacional de Escolha Obrigatória de Caixinha no simulate (Item 29 / v0.0.56 / v0.0.69)
+      // Executado primariamente via localHandleCaixinhaFlow inline no callback (padrão localXxx sem require)
+      if (
+        !agentReply &&
+        !isConsultaMode &&
+        isRegistered &&
+        message &&
+        typeof localHandleCaixinhaFlow === 'function'
+      ) {
+        try {
+          const caixinhaRes = localHandleCaixinhaFlow(
+            $app,
+            activeUserId,
+            message,
+            contact,
+            todayStr,
+            'whatsapp_text',
+          )
+          if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
+            agentReply = caixinhaRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha (inline) executado:',
+              agentReply,
+            )
+          }
+        } catch (cxFlowErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha (inline):',
+            cxFlowErr,
+          )
+        }
+      } else if (
+        !agentReply &&
+        !isConsultaMode &&
+        isRegistered &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.handleCaixinhaFlow === 'function'
+      ) {
+        try {
+          const caixinhaRes = reliabilityHelperSim.handleCaixinhaFlow(
+            $app,
+            activeUserId,
+            message,
+            contact,
+            todayStr,
+            'whatsapp_text',
+          )
+          if (caixinhaRes && caixinhaRes.handled && caixinhaRes.reply) {
+            agentReply = caixinhaRes.reply
+            console.log(
+              '[whatsapp_bridge] [simulate] Fluxo de escolha de caixinha executado (fallback helper):',
+              agentReply,
+            )
+          }
+        } catch (cxFlowErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro no fluxo de escolha de caixinha:',
+            cxFlowErr,
+          )
+        }
+      }
+
+      // 3. Detecção e Ajuste de Data Retroativa (Item 28) no simulate
+      if (
+        !agentReply &&
+        !isConsultaMode &&
+        message &&
+        reliabilityHelperSim &&
+        typeof reliabilityHelperSim.parseRetroactiveDate === 'function'
+      ) {
+        try {
+          const retroactiveInfo = reliabilityHelperSim.parseRetroactiveDate(message, todayStr)
+          if (retroactiveInfo && retroactiveInfo.isRetroactive && retroactiveInfo.targetDateStr) {
+            promptForAgent =
+              `[ATENÇÃO: LANÇAMENTO RETROATIVO DETECTADO. O cliente informou expressamente que o gasto ocorreu em: ${retroactiveInfo.targetDateStr} (frase: "${retroactiveInfo.matchedPhrase}"). REGISTRE com campo 'date' = '${retroactiveInfo.targetDateStr}', 'is_retroactive' = true, 'status' = 'active'. Na confirmação, cite expressamente a data retroativa no formato "contabilizado em ${retroactiveInfo.matchedPhrase} (${retroactiveInfo.targetDateStr.slice(8, 10)}/${retroactiveInfo.targetDateStr.slice(5, 7)})"]: ` +
+              promptForAgent
+          }
+        } catch (retErr) {
+          console.log('[whatsapp_bridge] [simulate] Erro ao interpretar data retroativa:', retErr)
+        }
+      }
+
+      // MOTOR DETERMINÍSTICO DE RESUMO no simulate — SEM REQUIRE (padrão
+      // comprovado: require de módulos de hook falha com "GoError: Invalid
+      // module"). Resolução idêntica à do webhook.
+      const resolveCaixinhasEngineSim = function () {
+        try {
+          if (
+            typeof globalThis !== 'undefined' &&
+            globalThis.__caixinhasInlineEngine &&
+            typeof globalThis.__caixinhasInlineEngine.isCaixinhasOverviewIntent === 'function' &&
+            typeof globalThis.__caixinhasInlineEngine.buildCaixinhasSummaryForUser === 'function' &&
+            typeof globalThis.__caixinhasInlineEngine.buildCaixinhasContextPrompt === 'function'
+          ) {
+            return globalThis.__caixinhasInlineEngine
+          }
+        } catch (_) {}
+        try {
+          if (
+            typeof inlineIsCaixinhasOverviewIntent === 'function' &&
+            typeof inlineBuildCaixinhasSummaryForUser === 'function' &&
+            typeof inlineBuildCaixinhasContextPrompt === 'function'
+          ) {
+            return {
+              isCaixinhasOverviewIntent: inlineIsCaixinhasOverviewIntent,
+              buildCaixinhasSummaryForUser: inlineBuildCaixinhasSummaryForUser,
+              buildCaixinhasContextPrompt: inlineBuildCaixinhasContextPrompt,
+            }
+          }
+        } catch (_) {}
+        return null
+      }
+      const caixinhasEngineSim = resolveCaixinhasEngineSim()
+      if (!caixinhasEngineSim) {
+        console.error(
+          '[whatsapp_bridge] [simulate] ATENÇÃO: motor determinístico de resumo INDISPONÍVEL (sem require). Resumo responderá mensagem honesta de instabilidade — NUNCA via IA.',
+        )
+      }
+      let isCaixinhasOverview = false
+      if (isRegistered && message) {
+        try {
+          if (
+            caixinhasEngineSim &&
+            typeof caixinhasEngineSim.isCaixinhasOverviewIntent === 'function'
+          ) {
+            isCaixinhasOverview = caixinhasEngineSim.isCaixinhasOverviewIntent(message)
+          }
+        } catch (intentErr) {
+          console.log(
+            '[whatsapp_bridge] [simulate] Erro na checagem de intenção de resumo:',
+            intentErr,
+          )
+        }
+      }
+
+      if (isCaixinhasOverview) {
+        console.log(
+          `[whatsapp_bridge] [simulate] Interceptação determinística de resumo (inline) para usuário ${activeUserId}. Montando resumo DIRETO da base (SEM IA)...`,
+        )
+        try {
+          if (!caixinhasEngineSim) {
+            throw new Error('motor determinístico de resumo não resolvido (sem require)')
+          }
+          const summary = caixinhasEngineSim.buildCaixinhasSummaryForUser(
+            $app,
+            activeUserId,
+            todayStr.slice(0, 7),
+          )
+          if (summary) {
+            agentReply = summary
+            console.log(
+              `[whatsapp_bridge] [simulate] Resumo visual das caixinhas montado com sucesso (tamanho=${agentReply.length}).`,
+            )
+          } else {
+            agentReply =
+              'Não consegui carregar suas caixinhas no momento. Por favor, tente novamente em alguns instantes ou consulte pelo app!'
+          }
+        } catch (sumErr) {
+          console.error(
+            '[whatsapp_bridge] [simulate] Falha ao construir resumo visual das caixinhas:',
+            sumErr,
+          )
+          agentReply =
+            'Ocorreu uma instabilidade ao consultar suas caixinhas na base de dados agora. Por favor, tente novamente em alguns instantes ou acesse pelo app!'
+        }
+      }
+
+      const isConvNotFoundError = function (err) {
+        if (!err) return false
+        const errStr = String(err).toLowerCase()
+        return (
+          errStr.includes('conversation not found') ||
+          errStr.includes('conversation_not_found') ||
+          (err.message && /conversation not found/i.test(err.message))
+        )
+      }
+
+      if (activeUserId && !agentReply) {
+        // INJEÇÃO DE CONTEXTO DETERMINÍSTICO DE CAIXINHAS ATIVAS (Anti-alucinação) no simulate:
+        // Motor determinístico SEM REQUIRE via caixinhasEngineSim (globalThis/closure).
+        if (isRegistered) {
+          try {
+            if (
+              !caixinhasEngineSim ||
+              typeof caixinhasEngineSim.buildCaixinhasContextPrompt !== 'function'
+            ) {
+              throw new Error('motor determinístico de contexto não resolvido (sem require)')
+            }
+            const caixinhasContext = caixinhasEngineSim.buildCaixinhasContextPrompt(
+              $app,
+              activeUserId,
+              todayStr.slice(0, 7),
+            )
+            if (caixinhasContext) {
+              promptForAgent = `${caixinhasContext}\n\n${promptForAgent}`
+            }
+          } catch (ctxErr) {
+            console.log(
+              '[whatsapp_bridge] [simulate] Erro ao injetar contexto fresco de caixinhas no prompt:',
+              ctxErr,
+            )
+          }
+        }
+        const maxSimAttempts = 3
+        let simAttempt = 0
+        let currentConvIdForSim = existingConvId
+
+        while (simAttempt < maxSimAttempts && !agentReply) {
+          simAttempt++
+          try {
+            console.log(
+              `[whatsapp_bridge] [simulate] Chamando $ai.agent('financeiro-whatsapp').chat (tentativa ${simAttempt}/${maxSimAttempts}) user_id=${activeUserId}, conv_id=${currentConvIdForSim || 'null'}`,
+            )
+            const agentResult = $ai.agent('financeiro-whatsapp').chat({
+              user_id: activeUserId,
+              conversation_id: currentConvIdForSim,
+              message: promptForAgent,
+            })
+            agentReply = agentResult.content || ''
+            newConvId = agentResult.conversation_id || currentConvIdForSim
+          } catch (aErr) {
+            console.error(
+              `[whatsapp_bridge] [simulate] Falha ao executar agente na tentativa ${simAttempt}/${maxSimAttempts}:`,
+              aErr,
+            )
+
+            if (currentConvIdForSim && isConvNotFoundError(aErr)) {
+              console.log(
+                `[whatsapp_bridge] [simulate] Conversation_id inválido (${currentConvIdForSim}). Resetando para conversa limpa na próxima tentativa...`,
+              )
+              currentConvIdForSim = null
+            } else if (
+              /context canceled|context deadline|gateway call|timeout|deadline exceeded/i.test(
+                String(aErr),
+              )
+            ) {
+              console.warn(
+                `[whatsapp_bridge] [simulate] Falha transitória de gateway/timeout detectada na tentativa ${simAttempt}. Tentando conversa limpa e backoff...`,
+              )
+              currentConvIdForSim = null
+              if (simAttempt < maxSimAttempts) {
+                const backoffMs = simAttempt * 700
+                try {
+                  if (typeof $sleep === 'function') {
+                    $sleep(backoffMs)
+                  } else {
+                    const sStart = Date.now()
+                    while (Date.now() - sStart < backoffMs) {}
+                  }
+                } catch (_) {}
+              }
+            } else {
+              currentConvIdForSim = null
+            }
+          }
+        }
+      }
+
+      // Funções de fallback 100% INLINE dentro do callback de simulação
+      const isSpendingMessageSimInline = function (rawText) {
+        if (!rawText) return false
+        const t = String(rawText)
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+        const hasNumber = /\d+([.,]\d{1,2})?/.test(t)
+        if (hasNumber) {
+          if (
+            t.includes('real') ||
+            t.includes('reais') ||
+            t.includes('r$') ||
+            t.includes('gastei') ||
+            t.includes('comprei') ||
+            t.includes('paguei') ||
+            t.includes('custou') ||
+            t.includes('despesa') ||
+            t.includes('almo') ||
+            t.includes('uber') ||
+            t.includes('mercado') ||
+            t.includes('padaria') ||
+            t.includes('farmacia') ||
+            t.includes('cafe') ||
+            t.includes('gasolina') ||
+            t.includes('lanche') ||
+            t.includes('pizza') ||
+            t.includes('jantar') ||
+            t.includes('ifood') ||
+            t.includes('combustivel')
+          ) {
+            return true
+          }
+          if (/^[a-z\s]{3,20}\s+\d+([.,]\d{1,2})?$/.test(t)) {
+            return true
+          }
+        }
+        if (
+          t.startsWith('gastei ') ||
+          t.startsWith('paguei ') ||
+          t.startsWith('comprei ') ||
+          t.includes(' novo gasto') ||
+          t.includes('registrar gasto') ||
+          t.includes('registra gasto') ||
+          t.includes('lancar gasto') ||
+          t.includes('lança gasto')
+        ) {
+          return true
+        }
+        return false
+      }
+
+      const buildGracefulFallbackSimInline = function (rawText) {
+        const raw = String(rawText || '').trim()
+        const isSpending = isSpendingMessageSimInline(raw)
+        if (isSpending) {
+          return 'Olá! Não consegui processar seu gasto agora no Consciente devido a uma oscilação momentânea. Por favor, envie novamente com o valor e a categoria (ex: "Almoço 35 reais") para eu registrar na sua caixinha!'
+        }
+        const lower = raw.toLowerCase()
+        if (
+          lower.includes('deu certo') ||
+          lower.includes('conseguiu') ||
+          lower.includes('registrou') ||
+          lower.includes('salvou') ||
+          lower.includes('gravou')
+        ) {
+          return 'Olá! O Consciente está aqui com você! 👋\nTivemos uma oscilação rápida agora há pouco e sua última solicitação pode não ter sido concluída. Você pode me mandar novamente o que gostaria de registrar ou checar? Se foi um gasto, pode mandar o valor e a caixinha (ex: "Almoço 35").'
+        }
+        if (
+          lower === 'oi' ||
+          lower === 'ola' ||
+          lower === 'olá' ||
+          lower.startsWith('oi ') ||
+          lower.startsWith('ola ') ||
+          lower.startsWith('olá ') ||
+          lower.startsWith('bom dia') ||
+          lower.startsWith('boa tarde') ||
+          lower.startsWith('boa noite') ||
+          lower.includes('tudo bem') ||
+          lower.includes('e agora')
+        ) {
+          return 'Olá! Eu sou o Consciente - Seu parceiro nas finanças! 👋\nComo posso te ajudar agora? Você pode registrar um gasto (ex: "Almoço 35"), ver o resumo das caixinhas enviando "resumo", ou tirar uma dúvida financeira!'
+        }
+        return 'Olá! O Consciente está conectado com você! 👋\nTivemos uma oscilação momentânea e não consegui interpretar sua mensagem agora. Como posso te ajudar? Você pode me enviar um gasto para registrar (ex: "Mercado 120") ou mandar "resumo" para ver suas caixinhas!'
+      }
+
+      if (!agentReply) {
+        if (isConsultaMode) {
+          // MODO CONSULTA: falha do agente NUNCA pede reenvio de gasto —
+          // responde com instabilidade de CONSULTA e aponta para o app.
+          agentReply =
+            'Tive uma instabilidade ao consultar seus dados na base agora. 🙏\nPor favor, tente perguntar novamente em alguns instantes — ou confira seus lançamentos e caixinhas direto no app, que sempre mostram o estado mais atual.'
+        } else if (!isRegistered) {
+          agentReply =
+            'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+        } else if (
+          reliabilityHelperSim &&
+          typeof reliabilityHelperSim.buildGracefulFallbackReply === 'function'
+        ) {
+          try {
+            agentReply = reliabilityHelperSim.buildGracefulFallbackReply(message, false)
+          } catch (relSimErr) {
+            console.error(
+              '[whatsapp_bridge] [simulate] Erro ao chamar reliabilityHelperSim, usando inline:',
+              relSimErr,
+            )
+            agentReply = buildGracefulFallbackSimInline(message)
+          }
+        } else {
+          // Fallback interno 100% inline no handler
+          agentReply = buildGracefulFallbackSimInline(message)
+        }
+      }
+
+      // Atualiza contato
+      try {
+        const currentCount = contact.getInt('messages_count') || 0
+        contact.set('messages_count', currentCount + 1)
+        contact.set('last_message_at', new Date().toISOString())
+        if (newConvId) {
+          contact.set('conversation_id', newConvId)
+        }
+        $app.save(contact)
+      } catch (_) {}
+
+      // Envia via Meta Cloud API se solicitado
+      let remoteSent = false
+      let remoteError = null
+
+      if (sendRemote && agentReply) {
+        const metaRes = sendMetaMessage(phoneDigits, agentReply)
+        remoteSent = metaRes.success
+        remoteError = metaRes.error || null
+      }
+
+      return e.json(200, {
+        success: true,
+        simulation: true,
+        phone: phoneDigits,
+        user_id: activeUserId,
+        user_name: matchedUser ? matchedUser.getString('name') : 'Visitante',
+        is_registered: isRegistered,
+        conversation_id: newConvId,
+        reply: agentReply,
+        remote_sent: remoteSent,
+        remote_error: remoteError,
+      })
+    } catch (err) {
+      console.log('[whatsapp_bridge] Erro na rota de simulação:', err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 6. Rota para consultar status do canal WhatsApp oficial
+// O token NUNCA é retornado no JSON — apenas token_configurado: boolean
+// RESTRITA A ADMIN: Cliente comum recebe 403 para não vazar IDs/webhooks da Meta
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/whatsapp/status',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+      let sttKey = $os.getenv('GROQ_API_KEY') || $os.getenv('OPENAI_API_KEY') || ''
+      let userConfiguredPhone = '+55 11 94998-9868'
+      let userWaActive = true
+      let wabaId = '1888947369148112'
+      let appName = 'Consciente'
+      let verifyToken = 'agente-financeiro'
+      let lastSendStatus = ''
+      let lastSendError = ''
+      let lastSendAt = ''
+
+      try {
+        const filterStr = authUser ? `owner = '${authUser.id}'` : ''
+        const wsList = $app.findRecordsByFilter('whatsapp_status', filterStr, '-created', 1, 0)
+        if (wsList.length > 0) {
+          const rec = wsList[0]
+          userConfiguredPhone = rec.getString('phone_number') || userConfiguredPhone
+          userWaActive = rec.getBool('connected')
+          activePhoneId = rec.getString('phone_number_id') || activePhoneId
+          wabaId = rec.getString('waba_id') || wabaId
+          appName = rec.getString('app_name') || appName
+          verifyToken = rec.getString('verify_token') || verifyToken
+          lastSendStatus = rec.getString('last_send_status')
+          lastSendError = rec.getString('last_send_error')
+          lastSendAt = rec.getString('last_send_at')
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+          }
+          const recSttKey = rec.getString('stt_api_key')
+          if (recSttKey && !sttKey) {
+            sttKey = recSttKey
+          }
+        }
+      } catch (_) {}
+
+      // Fallback para encontrar se há qualquer token ou chave stt configurados na coleção
+      if (!token || !sttKey) {
+        try {
+          const anyWs = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+          for (let i = 0; i < anyWs.length; i++) {
+            if (!token) {
+              const tk = anyWs[i].getString('access_token')
+              if (tk) token = tk
+            }
+            if (!sttKey) {
+              const sk = anyWs[i].getString('stt_api_key')
+              if (sk) sttKey = sk
+            }
+            if (token && sttKey) break
+          }
+        } catch (_) {}
+      }
+
+      const hasToken = !!token
+      const hasSttKey = !!sttKey
+
+      const instanceUrl =
+        $os.getenv('PB_INSTANCE_URL') ||
+        'https://agente-financeiro-whatsapp-37fd3.shrd01.internal.goskip.dev'
+
+      const webhookUrl = `${instanceUrl}/backend/v1/whatsapp/webhook`
+
+      return e.json(200, {
+        owner_connected: hasToken,
+        token_configurado: hasToken,
+        stt_configurado: hasSttKey,
+        owner_phone: userConfiguredPhone,
+        phone_number_id: activePhoneId,
+        waba_id: wabaId,
+        app_name: appName,
+        verify_token: verifyToken,
+        user_phone: userConfiguredPhone,
+        user_connected: userWaActive,
+        last_send_status: lastSendStatus,
+        last_send_error: lastSendError,
+        last_send_at: lastSendAt,
+        webhook_url: webhookUrl,
+      })
+    } catch (err) {
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 7. Rota para listar contatos que interagiram pelo WhatsApp - RESTRITA A ADMIN
+// ----------------------------------------------------
+routerAdd(
+  'GET',
+  '/backend/v1/whatsapp/contacts',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+      const contacts = $app.findRecordsByFilter(
+        'whatsapp_contacts',
+        '',
+        '-last_message_at,-created',
+        100,
+        0,
+      )
+      const list = []
+      for (let i = 0; i < contacts.length; i++) {
+        const c = contacts[i]
+        const userId = c.getString('user')
+        let userName = ''
+        if (userId) {
+          try {
+            const u = $app.findRecordById('_pb_users_auth_', userId)
+            userName = u.getString('name') || u.getString('email')
+          } catch (_) {}
+        }
+
+        list.push({
+          id: c.id,
+          phone_number: c.getString('phone_number'),
+          name: c.getString('name'),
+          user_id: userId,
+          user_name: userName,
+          is_registered: !!userId,
+          conversation_id: c.getString('conversation_id'),
+          messages_count: c.getInt('messages_count'),
+          last_message_at: c.getString('last_message_at'),
+          created: c.getString('created'),
+        })
+      }
+      return e.json(200, { contacts: list })
+    } catch (err) {
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ----------------------------------------------------
+// 7.1 Rota de Diagnóstico de Transcrição de Áudio (Admin)
+// ----------------------------------------------------
+
+// ----------------------------------------------------
+// 8. Rota para vincular contato a um usuário
+// ----------------------------------------------------
+
+// ----------------------------------------------------
+// 9. Rota para Atualizar Foto do Perfil do WhatsApp via API da Meta (ITEM 20) - RESTRITA A ADMIN
+// Utiliza o Resumable Upload da Meta para obter o upload handle e
+// em seguida atualiza o perfil via POST /{phone_number_id}/whatsapp_business_profile com profile_picture_handle.
+// O token NUNCA é exposto ao frontend.
+// ----------------------------------------------------
+routerAdd('GET', '/backend/v1/whatsapp/test-decoder', (e) => {
+  try {
+    // 1x1 JPEG de teste válido padrão (SOI: FF D8, APP0: FF E0, etc.)
+    const sampleJpegB64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA='
+
+    const query = e.requestInfo().query || {}
+    const rawB64 = query.b64 || sampleJpegB64
+    const cleanB64 = rawB64.replace(/^data:[^;]+;base64,/, '').replace(/[\s\r\n]+/g, '')
+
+    if (!cleanB64 || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(cleanB64)) {
+      return e.json(400, { success: false, error: 'A string fornecida não é um Base64 válido.' })
+    }
+
+    const decodedArray = $security.base64Decode(cleanB64)
+    const outputLen = decodedArray.length
+    const byte0 = outputLen > 0 ? decodedArray[0] : 0
+    const byte1 = outputLen > 1 ? decodedArray[1] : 0
+    const isJpegMagic = byte0 === 0xff && byte1 === 0xd8
+
+    console.log(
+      `[whatsapp_bridge] [test-decoder] Decodificados ${outputLen} bytes. byte0=0x${(byte0 || 0).toString(16)}, byte1=0x${(byte1 || 0).toString(16)}, isJpegMagic=${isJpegMagic}`,
+    )
+
+    return e.json(200, {
+      success: true,
+      length: outputLen,
+      byte0_hex: (byte0 || 0).toString(16),
+      byte1_hex: (byte1 || 0).toString(16),
+      isJpegMagic: isJpegMagic,
+      first_8_bytes: Array.from(decodedArray.slice(0, 8)),
+    })
+  } catch (err) {
+    return e.json(500, { success: false, error: String(err) })
+  }
+})
+
+// ----------------------------------------------------
+// 8.b Rota de diagnóstico do resumo determinístico de caixinhas (Admin)
+// Valida que o módulo carrega e que o resumo é montado direto da base.
+// ----------------------------------------------------
+routerAdd('GET', '/backend/v1/whatsapp/diag-summary', (e) => {
+  try {
+    const authUser = e.auth
+    const isAdmin =
+      authUser &&
+      (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+        authUser.getString('role') === 'admin')
+    if (!isAdmin) {
+      return e.json(403, { error: 'Acesso restrito à administração' })
+    }
+
+    const result = {
+      module_loaded: false,
+      module_error: '',
+      module_source: 'globalthis_or_inline_no_require',
+      summary_preview: '',
+      summary_error: '',
+      active_user_id: '',
+    }
+
+    // Motor determinístico SEM REQUIRE (mesma resolução do webhook/simulate):
+    // valida o carregamento e a prévia do resumo direto da base.
+    const resolveCaixinhasEngineDiag = function () {
+      try {
+        if (
+          typeof globalThis !== 'undefined' &&
+          globalThis.__caixinhasInlineEngine &&
+          typeof globalThis.__caixinhasInlineEngine.isCaixinhasOverviewIntent === 'function' &&
+          typeof globalThis.__caixinhasInlineEngine.buildCaixinhasSummaryForUser === 'function' &&
+          typeof globalThis.__caixinhasInlineEngine.buildCaixinhasContextPrompt === 'function'
+        ) {
+          return globalThis.__caixinhasInlineEngine
+        }
+      } catch (_) {}
+      try {
+        if (
+          typeof inlineIsCaixinhasOverviewIntent === 'function' &&
+          typeof inlineBuildCaixinhasSummaryForUser === 'function' &&
+          typeof inlineBuildCaixinhasContextPrompt === 'function'
+        ) {
+          return {
+            isCaixinhasOverviewIntent: inlineIsCaixinhasOverviewIntent,
+            buildCaixinhasSummaryForUser: inlineBuildCaixinhasSummaryForUser,
+            buildCaixinhasContextPrompt: inlineBuildCaixinhasContextPrompt,
+          }
+        }
+      } catch (_) {}
+      return null
+    }
+
+    try {
+      const engineDiag = resolveCaixinhasEngineDiag()
+      result.module_loaded =
+        !!engineDiag && typeof engineDiag.buildCaixinhasSummaryForUser === 'function'
+      if (engineDiag && typeof engineDiag.isCaixinhasOverviewIntent === 'function') {
+        result.intent_resumo = engineDiag.isCaixinhasOverviewIntent('Resumo')
+        result.intent_visao_geral = engineDiag.isCaixinhasOverviewIntent(
+          'Me envie uma visão geral das minhas caixinhas',
+        )
+        result.intent_negativo = engineDiag.isCaixinhasOverviewIntent('Gastei 50 reais no mercado')
+      }
+      if (result.module_loaded) {
+        let activeUserId = ''
+        try {
+          const realUsers = $app.findRecordsByFilter(
+            '_pb_users_auth_',
+            "email != 'whatsapp-visitante@agente.internal'",
+            '-created',
+            10,
+            0,
+          )
+          if (realUsers.length > 0) activeUserId = realUsers[0].id
+        } catch (_) {}
+        result.active_user_id = activeUserId
+        const now = new Date()
+        const monthStr = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2)
+        const summary = engineDiag.buildCaixinhasSummaryForUser($app, activeUserId, monthStr)
+        result.summary_preview = summary || ''
+        result.summary_error = summary ? '' : 'resumo vazio'
+      } else if (!result.module_error) {
+        result.summary_error = 'motor determinístico não resolvido (sem require)'
+      }
+    } catch (modErr) {
+      result.module_error = String(modErr)
+      result.module_loaded = false
+    }
+
+    return e.json(200, result)
+  } catch (err) {
+    return e.json(500, { success: false, error: String(err) })
+  }
+})
+
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/profile-picture',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const isAdmin =
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      if (!isAdmin) {
+        return e.json(403, { error: 'Acesso restrito à administração' })
+      }
+
+      // Lê arquivo ou base64 enviado no corpo
+      const req = e.requestInfo()
+      const body = req.body || {}
+
+      let fileBytes = null
+      let fileType = 'image/jpeg'
+      let fileName = 'profile_picture.jpg'
+
+      // Suporte a multipart/form-data
+      try {
+        const uploadedFiles =
+          (e.findUploadedFiles && (e.findUploadedFiles('file') || e.findUploadedFiles('image'))) ||
+          []
+        const uploadedFile =
+          (uploadedFiles && uploadedFiles[0]) ||
+          (e.findUploadedFile && (e.findUploadedFile('file') || e.findUploadedFile('image')))
+        if (uploadedFile) {
+          fileName =
+            uploadedFile.name || uploadedFile.originalName || uploadedFile.filename || fileName
+          if (uploadedFile.size && uploadedFile.reader) {
+            let r = null
+            try {
+              r = uploadedFile.reader.open()
+              const buf = new Uint8Array(uploadedFile.size)
+              r.read(buf)
+              fileBytes = buf
+            } catch (rErr) {
+              console.log('[whatsapp_bridge] [profile-picture] Falha ao ler reader:', rErr)
+            } finally {
+              if (r && r.close) {
+                try {
+                  r.close()
+                } catch (_) {}
+              }
+            }
+          }
+          if (!fileBytes && typeof uploadedFile.bytes === 'function') {
+            fileBytes = uploadedFile.bytes()
+          }
+          const possibleType = uploadedFile.header?.get('Content-Type') || uploadedFile.contentType
+          if (possibleType) fileType = possibleType
+        }
+      } catch (mpErr) {
+        console.log('[whatsapp_bridge] [profile-picture] Erro ao extrair multipart:', mpErr)
+      }
+
+      // Suporte a JSON com base64
+      if (!fileBytes && body.image_base64) {
+        let rawB64 = String(body.image_base64)
+        if (rawB64.includes(',')) {
+          const match = rawB64.match(/^data:([^;]+);base64,/)
+          if (match && match[1]) {
+            fileType = match[1]
+          }
+          rawB64 = rawB64.split(',')[1]
+        }
+        if (body.file_type) fileType = String(body.file_type)
+        if (body.file_name) fileName = String(body.file_name)
+
+        try {
+          // Decodificador Base64 puro para Goja / PocketBase v0.36
+          // Verifica se há método nativo no runtime como preferencial
+          if (typeof $security !== 'undefined' && typeof $security.base64Decode === 'function') {
+            fileBytes = $security.base64Decode(rawB64)
+          } else {
+            // Decodificador puro JS com validação estrita
+            const cleanB64 = rawB64.replace(/[\s\r\n]+/g, '')
+            if (!cleanB64 || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(cleanB64)) {
+              throw new Error('A string fornecida não é um Base64 válido.')
+            }
+
+            const b64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+            const b64Lookup = {}
+            for (let idx = 0; idx < b64Alphabet.length; idx++) {
+              b64Lookup[b64Alphabet[idx]] = idx
+            }
+            b64Lookup['-'] = 62
+            b64Lookup['_'] = 63
+
+            let padCount = 0
+            if (cleanB64.endsWith('==')) padCount = 2
+            else if (cleanB64.endsWith('=')) padCount = 1
+
+            const b64Len = cleanB64.length
+            const outputLen = Math.floor((b64Len * 3) / 4) - padCount
+            if (outputLen <= 0) {
+              throw new Error('Conteúdo Base64 vazio.')
+            }
+
+            const decodedArray = new Uint8Array(outputLen)
+            let outIdx = 0
+
+            for (let i = 0; i < b64Len; i += 4) {
+              const b0 = b64Lookup[cleanB64[i]]
+              const b1 = i + 1 < b64Len ? b64Lookup[cleanB64[i + 1]] : undefined
+              const b2 =
+                i + 2 < b64Len && cleanB64[i + 2] !== '=' ? b64Lookup[cleanB64[i + 2]] : undefined
+              const b3 =
+                i + 3 < b64Len && cleanB64[i + 3] !== '=' ? b64Lookup[cleanB64[i + 3]] : undefined
+
+              if (b0 === undefined || b1 === undefined) {
+                throw new Error('Caractere Base64 corrompido na posição ' + i)
+              }
+
+              const triple =
+                (b0 << 18) |
+                (b1 << 12) |
+                ((b2 !== undefined ? b2 : 0) << 6) |
+                (b3 !== undefined ? b3 : 0)
+
+              if (outIdx < outputLen) decodedArray[outIdx++] = (triple >> 16) & 255
+              if (b2 !== undefined && outIdx < outputLen)
+                decodedArray[outIdx++] = (triple >> 8) & 255
+              if (b3 !== undefined && outIdx < outputLen) decodedArray[outIdx++] = triple & 255
+            }
+
+            fileBytes = decodedArray
+          }
+        } catch (b64Err) {
+          return e.json(400, {
+            success: false,
+            error:
+              'Formato de imagem inválido (base64 inválido): ' + String(b64Err.message || b64Err),
+          })
+        }
+      }
+
+      // Diagnóstico: com multipart/form-data do browser, findUploadedFiles pode não
+      // popular na JSVM (mesmo padrão de bug do cenário do Item 36, lado multipart).
+      if (!fileBytes) {
+        console.log(
+          '[whatsapp_bridge] [profile-picture] multipart vazio/ilegível; body keys=',
+          JSON.stringify(Object.keys(body || {})),
+        )
+      }
+
+      if (!fileBytes || fileBytes.length === 0) {
+        return e.json(400, {
+          success: false,
+          error: 'Nenhum dado de imagem recebido pelo servidor. Tente reenviar a imagem.',
+        })
+      }
+
+      const fileLength = fileBytes.length
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Recebida imagem: ${fileName}, tipo=${fileType}, tamanho=${fileLength} bytes, bytesIniciais=${(fileBytes[0] || 0).toString(16)} ${(fileBytes[1] || 0).toString(16)}`,
+      )
+
+      // Validação de tipo suportado pela Meta (tolerante a extensões e variações de MIME como image/pjpeg)
+      const cleanMime = (fileType || '').toLowerCase()
+      const cleanName = (fileName || '').toLowerCase()
+      const isAccepted =
+        cleanMime.includes('jpeg') ||
+        cleanMime.includes('jpg') ||
+        cleanMime.includes('png') ||
+        cleanMime.includes('pjpeg') ||
+        cleanName.endsWith('.jpg') ||
+        cleanName.endsWith('.jpeg') ||
+        cleanName.endsWith('.png')
+
+      if (!isAccepted) {
+        return e.json(400, {
+          success: false,
+          error: `Formato de imagem não suportado (${fileType || fileName}). A Meta aceita apenas imagens JPEG ou PNG.`,
+        })
+      }
+
+      // NOVO v0.0.121: sniff dos magic bytes — se o arquivo é JPEG ou PNG de verdade,
+      // a Meta decide pelo CONTEÚDO e não pelo Content-Type declarado. Envia o
+      // file_type real do conteúdo (doc Meta: para foto de perfil a Meta aceita JPEG).
+      // Detecta WebP (RIFF....WEBP) e avisa em PT que a Meta não aceita para perfil.
+      if (fileBytes.length > 12) {
+        const b0 = fileBytes[0]
+        const b1 = fileBytes[1]
+        const b2 = fileBytes[2]
+        const b3 = fileBytes[3]
+        if (b0 === 0xff && b1 === 0xd8 && b2 === 0xff) {
+          fileType = 'image/jpeg'
+        } else if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4e && b3 === 0x47) {
+          fileType = 'image/png'
+        } else if (
+          b0 === 0x52 &&
+          b1 === 0x49 &&
+          b2 === 0x46 &&
+          b3 === 0x46 &&
+          fileBytes[8] === 0x57 &&
+          fileBytes[9] === 0x45 &&
+          fileBytes[10] === 0x42 &&
+          fileBytes[11] === 0x50
+        ) {
+          return e.json(400, {
+            success: false,
+            error:
+              'A imagem enviada está em formato WebP, que a Meta NÃO aceita para foto de perfil do WhatsApp Business. Converta a imagem para JPEG (ex.: abrir em qualquer editor e salvar como .jpg) e tente novamente.',
+          })
+        }
+      }
+
+      // Normaliza o MIME para o que a Meta espera
+      if (cleanMime.includes('png') || cleanName.endsWith('.png')) {
+        fileType = 'image/png'
+      } else {
+        fileType = 'image/jpeg'
+      }
+
+      if (fileLength > 5 * 1024 * 1024) {
+        return e.json(400, {
+          success: false,
+          error:
+            'A imagem tem ' +
+            Math.round(fileLength / (1024 * 1024)) +
+            ' MB. A Meta aceita no máximo 5 MB para foto de perfil — escolha uma imagem menor (ou uma captura de tela redimensionada) e tente novamente.',
+        })
+      }
+
+      // 1. Obtém credenciais oficiais salvas em whatsapp_status (o token NUNCA é exposto)
+      let activePhoneId = '1314873981716321'
+      let token = $os.getenv('META_WHATSAPP_TOKEN') || $os.getenv('WHATSAPP_ACCESS_TOKEN') || ''
+      let wabaId = '1888947369148112'
+
+      try {
+        const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 10, 0)
+        for (let idx = 0; idx < wsList.length; idx++) {
+          const rec = wsList[idx]
+          if (rec.getString('phone_number_id')) {
+            activePhoneId = rec.getString('phone_number_id')
+          }
+          if (rec.getString('waba_id')) {
+            wabaId = rec.getString('waba_id')
+          }
+          const recToken = rec.getString('access_token')
+          if (recToken && !token) {
+            token = recToken
+            break
+          }
+        }
+      } catch (_) {}
+
+      if (!token) {
+        return e.json(400, {
+          success: false,
+          error:
+            'Token Permanente da Meta não configurado. Salve seu Token em Minha Conta > Canal Oficial WhatsApp Business antes de alterar a foto.',
+        })
+      }
+
+      // 2. Descobre o APP_ID da Meta para o Resumable Upload
+      // O Resumable Upload exige POST /{APP_ID}/uploads.
+      // Tentativas em ordem:
+      // (a) $os.getenv('META_APP_ID')
+      // (b) Consulta /app com o access_token
+      // (c) Consulta /debug_token
+      // (d) Consulta waba_id?fields=owner_business_info,primary_business_location ou /me
+      let metaAppId = $os.getenv('META_APP_ID') || ''
+
+      if (!metaAppId) {
+        try {
+          console.log('[whatsapp_bridge] [profile-picture] Consultando App ID via /app...')
+          const appRes = $http.send({
+            url: 'https://graph.facebook.com/v21.0/app',
+            method: 'GET',
+            headers: {
+              Authorization: 'Bearer ' + token,
+            },
+            timeout: 15,
+          })
+          if (appRes.statusCode >= 200 && appRes.statusCode < 300) {
+            const appJson = appRes.json || (appRes.rawText ? JSON.parse(appRes.rawText) : {})
+            if (appJson.id) {
+              metaAppId = String(appJson.id)
+              console.log('[whatsapp_bridge] [profile-picture] App ID obtido via /app:', metaAppId)
+            }
+          } else {
+            console.log(
+              '[whatsapp_bridge] [profile-picture] /app retornou HTTP ' +
+                appRes.statusCode +
+                ': ' +
+                (appRes.rawText || JSON.stringify(appRes.json || '')).slice(0, 200),
+            )
+          }
+        } catch (appErr) {
+          console.log('[whatsapp_bridge] [profile-picture] Falha ao consultar /app:', appErr)
+        }
+      }
+
+      if (!metaAppId) {
+        try {
+          console.log('[whatsapp_bridge] [profile-picture] Consultando /debug_token...')
+          const dbgRes = $http.send({
+            url: `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`,
+            method: 'GET',
+            timeout: 15,
+          })
+          if (dbgRes.statusCode >= 200 && dbgRes.statusCode < 300) {
+            const dbgJson = dbgRes.json || (dbgRes.rawText ? JSON.parse(dbgRes.rawText) : {})
+            if (dbgJson.data && dbgJson.data.app_id) {
+              metaAppId = String(dbgJson.data.app_id)
+              console.log(
+                '[whatsapp_bridge] [profile-picture] App ID obtido via /debug_token:',
+                metaAppId,
+              )
+            }
+          } else {
+            console.log(
+              '[whatsapp_bridge] [profile-picture] /debug_token retornou HTTP ' +
+                dbgRes.statusCode +
+                ': ' +
+                (dbgRes.rawText || JSON.stringify(dbgRes.json || '')).slice(0, 200),
+            )
+          }
+        } catch (dbgErr) {
+          console.log('[whatsapp_bridge] [profile-picture] Falha em debug_token:', dbgErr)
+        }
+      }
+
+      // Lista de alvos possíveis para iniciar sessão de uploads caso metaAppId falhe
+      const candidateTargets = []
+      if (metaAppId) candidateTargets.push(metaAppId)
+      if (activePhoneId && !candidateTargets.includes(activePhoneId))
+        candidateTargets.push(activePhoneId)
+      if (wabaId && !candidateTargets.includes(wabaId)) candidateTargets.push(wabaId)
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Candidatos para Resumable Upload:`,
+        JSON.stringify(candidateTargets),
+      )
+
+      // 3. PASSO 1 DO RESUMABLE UPLOAD: Criar Sessão de Upload
+      let uploadSessionId = null
+      let lastSessionErrorMsg = ''
+      let lastSessionMetaError = null
+
+      for (let tIdx = 0; tIdx < candidateTargets.length; tIdx++) {
+        const targetId = candidateTargets[tIdx]
+        const sessionUrl = `https://graph.facebook.com/v21.0/${targetId}/uploads?file_length=${fileLength}&file_type=${encodeURIComponent(fileType)}&file_name=${encodeURIComponent(fileName)}`
+
+        try {
+          const sRes = $http.send({
+            url: sessionUrl,
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer ' + token,
+            },
+            timeout: 25,
+          })
+
+          const sStatus = sRes.statusCode
+          const sJson = sRes.json || (sRes.rawText ? JSON.parse(sRes.rawText) : {})
+          console.log(
+            `[whatsapp_bridge] [profile-picture] Tentativa sessão no alvo ${targetId}: HTTP ${sStatus}, retorno=`,
+            (sRes.rawText || JSON.stringify(sRes.json || '')).slice(0, 300),
+          )
+
+          if (sStatus >= 200 && sStatus < 300 && sJson.id) {
+            uploadSessionId = sJson.id
+            console.log(
+              `[whatsapp_bridge] [profile-picture] Sessão criada com sucesso no alvo ${targetId}: ${uploadSessionId}`,
+            )
+            break
+          } else {
+            lastSessionErrorMsg = sJson.error?.message || sRes.rawText || `HTTP ${sStatus}`
+            if (!sRes.rawText) {
+              try {
+                lastSessionErrorMsg =
+                  sJson.error?.message || JSON.stringify(sJson) || `HTTP ${sStatus}`
+              } catch (_) {}
+            }
+            lastSessionMetaError = sJson.error || null
+          }
+        } catch (netErr) {
+          lastSessionErrorMsg = netErr.message || String(netErr)
+        }
+      }
+
+      if (!uploadSessionId) {
+        return e.json(400, {
+          success: false,
+          error: `Meta recusou a criação da sessão de upload: ${lastSessionErrorMsg}`,
+          meta_error: lastSessionMetaError,
+        })
+      }
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Sessão pronta para envio de bytes: ${uploadSessionId}`,
+      )
+
+      // 4. PASSO 2 DO RESUMABLE UPLOAD: Enviar os bytes da imagem
+      // POST https://graph.facebook.com/v21.0/{uploadSessionId}
+      // Header: file_offset: 0
+      // Body: bytes da imagem (raw binary)
+      const uploadBytesUrl = `https://graph.facebook.com/v21.0/${uploadSessionId}`
+
+      let uploadBytesRes = null
+      try {
+        uploadBytesRes = $http.send({
+          url: uploadBytesUrl,
+          method: 'POST',
+          headers: {
+            Authorization: 'OAuth ' + token,
+            file_offset: '0',
+            'Content-Type': 'application/octet-stream',
+          },
+          body: fileBytes,
+          timeout: 40,
+        })
+      } catch (upNetErr) {
+        return e.json(500, {
+          success: false,
+          error:
+            'Erro de conexão ao enviar bytes da imagem para a Meta: ' +
+            (upNetErr ? upNetErr.message || String(upNetErr) : ''),
+        })
+      }
+
+      const uploadBytesStatus = uploadBytesRes.statusCode
+      const uploadBytesJson =
+        uploadBytesRes.json || (uploadBytesRes.rawText ? JSON.parse(uploadBytesRes.rawText) : {})
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Passo 2 (Enviar bytes): HTTP ${uploadBytesStatus}, retorno=`,
+        (uploadBytesRes.rawText || JSON.stringify(uploadBytesJson || '')).slice(0, 300),
+      )
+
+      if (uploadBytesStatus < 200 || uploadBytesStatus >= 300 || !uploadBytesJson.h) {
+        const metaUpErr =
+          uploadBytesJson.error?.message ||
+          uploadBytesRes.rawText ||
+          JSON.stringify(uploadBytesJson || '') ||
+          `Erro HTTP ${uploadBytesStatus} no envio de bytes`
+        return e.json(400, {
+          success: false,
+          error: `Falha ao transmitir imagem para a Meta: ${metaUpErr}`,
+          meta_error: uploadBytesJson.error || null,
+        })
+      }
+
+      const profilePictureHandle = uploadBytesJson.h // Handle do upload concluído
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Handle da foto gerado com sucesso: ${profilePictureHandle}`,
+      )
+
+      // 5. PASSO 3: Atualizar o Perfil Comercial do WhatsApp com a foto
+      // POST https://graph.facebook.com/v21.0/{phone_number_id}/whatsapp_business_profile
+      // Body: { messaging_product: 'whatsapp', profile_picture_handle: profilePictureHandle }
+      const profileEndpoint = `https://graph.facebook.com/v21.0/${activePhoneId}/whatsapp_business_profile`
+      const profilePayload = {
+        messaging_product: 'whatsapp',
+        profile_picture_handle: profilePictureHandle,
+      }
+
+      let profileRes = null
+      try {
+        profileRes = $http.send({
+          url: profileEndpoint,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(profilePayload),
+          timeout: 25,
+        })
+      } catch (profNetErr) {
+        return e.json(500, {
+          success: false,
+          error:
+            'Erro ao vincular foto ao perfil do WhatsApp na Meta: ' +
+            (profNetErr ? profNetErr.message || String(profNetErr) : ''),
+        })
+      }
+
+      const profileStatus = profileRes.statusCode
+      const profileJson =
+        profileRes.json || (profileRes.rawText ? JSON.parse(profileRes.rawText) : {})
+
+      console.log(
+        `[whatsapp_bridge] [profile-picture] Passo 3 (Atualizar Perfil): HTTP ${profileStatus}, retorno=`,
+        (profileRes.rawText || JSON.stringify(profileJson || '')).slice(0, 300),
+      )
+
+      if (profileStatus >= 200 && profileStatus < 300) {
+        // Atualiza carimbo no whatsapp_status
+        try {
+          const wsList = $app.findRecordsByFilter('whatsapp_status', '', '-created', 1, 0)
+          if (wsList.length > 0) {
+            const rec = wsList[0]
+            rec.set('last_send_error', '')
+            $app.save(rec)
+          }
+        } catch (_) {}
+
+        return e.json(200, {
+          success: true,
+          message:
+            'Foto atualizada com sucesso — pode levar alguns minutos para aparecer para os clientes.',
+          phone_number_id: activePhoneId,
+        })
+      }
+
+      const metaProfErr =
+        profileJson.error?.message ||
+        profileRes.rawText ||
+        JSON.stringify(profileJson || '') ||
+        `Erro HTTP ${profileStatus} ao atualizar perfil`
+
+      return e.json(profileStatus || 400, {
+        success: false,
+        error: `Meta recusou a alteração da foto: ${metaProfErr}`,
+        meta_error: profileJson.error || null,
+      })
+    } catch (err) {
+      console.log('[whatsapp_bridge] [profile-picture] Exceção inesperada:', err)
+      return e.json(500, {
+        success: false,
+        error: 'Erro interno ao processar atualização da foto: ' + String(err),
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+routerAdd(
+  'POST',
+  '/backend/v1/whatsapp/link-contact',
+  (e) => {
+    try {
+      const normalizeDigits = function (raw) {
+        if (!raw) return ''
+        let digits = String(raw).replace(/\D/g, '')
+        if (digits.length === 10 || digits.length === 11) {
+          digits = '55' + digits
+        }
+        return digits
+      }
+
+      const authUser = e.auth
+      if (!authUser) {
+        return e.json(401, { error: 'Não autenticado' })
+      }
+
+      const body = e.requestInfo().body || {}
+      const contactId = body.contact_id
+      const phone = body.phone_number
+
+      let contact = null
+      if (contactId) {
+        try {
+          contact = $app.findRecordById('whatsapp_contacts', contactId)
+        } catch (_) {}
+      } else if (phone) {
+        const cleanPhone = normalizeDigits(phone)
+        try {
+          contact = $app.findFirstRecordByData('whatsapp_contacts', 'phone_number', cleanPhone)
+        } catch (_) {}
+      }
+
+      if (!contact) {
+        return e.json(404, { error: 'Contato não encontrado' })
+      }
+
+      contact.set('user', authUser.id)
+      if (authUser.getString('name') && !contact.getString('name')) {
+        contact.set('name', authUser.getString('name'))
+      }
+      $app.save(contact)
+
+      // Atualiza também o telefone do usuário se não tiver
+      try {
+        if (!authUser.getString('phone')) {
+          authUser.set('phone', contact.getString('phone_number'))
+          $app.save(authUser)
+        }
+      } catch (_) {}
+
+      return e.json(200, { success: true, contact_id: contact.id, user_id: authUser.id })
+    } catch (err) {
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)

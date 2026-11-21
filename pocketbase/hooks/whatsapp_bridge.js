@@ -1465,7 +1465,64 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             }
           }
 
-          // Subcaso 3: Categoria escolhida possui 0 caixinhas vinculadas (=== 0) -> Deixa passar para o agente/fallback
+          // Subcaso 3: Categoria escolhida possui 0 caixinhas vinculadas (=== 0) -> Pendência de caixinha com TODAS as caixinhas do usuário
+          if (contactRecord) {
+            let allBudgetsB = []
+            try {
+              allBudgetsB = app.findRecordsByFilter(
+                'budgets',
+                `owner = '${userId}'`,
+                '-created',
+                100,
+                0,
+              )
+            } catch (_) {}
+
+            if (allBudgetsB.length > 0) {
+              const allCandidatesB = []
+              for (let b = 0; b < allBudgetsB.length; b++) {
+                const bgB = allBudgetsB[b]
+                allCandidatesB.push({
+                  id: bgB.id,
+                  name: bgB.getString('name') || 'Caixinha',
+                  icon: bgB.getString('icon') || '',
+                  amount: bgB.getInt('amount') || 0,
+                })
+              }
+
+              contactRecord.set(
+                'pending_caixinha',
+                JSON.stringify({
+                  amount: pendingCategoryData.amount,
+                  description: pendingCategoryData.description,
+                  category_id: chosenCategoryId,
+                  category_name: chosenCategoryName,
+                  date: catExpenseDate,
+                  is_retroactive: pendingCategoryData.is_retroactive || false,
+                  candidate_budgets: allCandidatesB,
+                  source: pendingCategoryData.source || txSource,
+                  note: pendingCategoryData.note || '',
+                  created_at: new Date().toISOString(),
+                }),
+              )
+              try {
+                app.save(contactRecord)
+              } catch (_) {}
+
+              let allOptionsListB = ''
+              for (let i = 0; i < allCandidatesB.length; i++) {
+                allOptionsListB += `${localGetNumberEmoji(i)} ${allCandidatesB[i].name}\n`
+              }
+              const valFmtB = localFormatCentsToBrl(pendingCategoryData.amount)
+
+              return {
+                handled: true,
+                reply: `Esse gasto de ${valFmtB} (${pendingCategoryData.description}) entra em qual caixinha?\n\n${allOptionsListB}\nResponda com o número ou nome da caixinha! 😊`,
+              }
+            }
+          }
+
+          // Sem contato ou sem caixinhas cadastradas: mantém comportamento anterior
           return { handled: false, reply: '' }
         }
 
@@ -1760,7 +1817,58 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         }
       }
 
-      // Caso 3: ZERO VÍNCULOS PARAMETRIZADOS (=== 0)
+      // Caso 3: ZERO VÍNCULOS PARAMETRIZADOS (=== 0) -> Pendência de caixinha com TODAS as caixinhas do usuário
+      if (contactRecord) {
+        let allBudgets = []
+        try {
+          allBudgets = app.findRecordsByFilter('budgets', `owner = '${userId}'`, '-created', 100, 0)
+        } catch (_) {}
+
+        if (allBudgets.length > 0) {
+          const allCandidates = []
+          for (let b = 0; b < allBudgets.length; b++) {
+            const bg = allBudgets[b]
+            allCandidates.push({
+              id: bg.id,
+              name: bg.getString('name') || 'Caixinha',
+              icon: bg.getString('icon') || '',
+              amount: bg.getInt('amount') || 0,
+            })
+          }
+
+          contactRecord.set(
+            'pending_caixinha',
+            JSON.stringify({
+              amount: parsedExpense.amount,
+              description: parsedExpense.description,
+              category_id: parsedExpense.categoryId,
+              category_name: parsedExpense.categoryName,
+              date: parsedExpense.date,
+              is_retroactive: parsedExpense.isRetroactive,
+              candidate_budgets: allCandidates,
+              source: txSource,
+              note: '',
+              created_at: new Date().toISOString(),
+            }),
+          )
+          try {
+            app.save(contactRecord)
+          } catch (_) {}
+
+          let allOptionsList = ''
+          for (let i = 0; i < allCandidates.length; i++) {
+            allOptionsList += `${localGetNumberEmoji(i)} ${allCandidates[i].name}\n`
+          }
+          const valFmt = localFormatCentsToBrl(parsedExpense.amount)
+
+          return {
+            handled: true,
+            reply: `Esse gasto de ${valFmt} (${parsedExpense.description}) entra em qual caixinha?\n\n${allOptionsList}\nResponda com o número ou nome da caixinha! 😊`,
+          }
+        }
+      }
+
+      // Sem contato ou sem caixinhas cadastradas: mantém comportamento anterior
       return { handled: false, reply: '' }
     }
     const normalizeDigits = function (raw) {

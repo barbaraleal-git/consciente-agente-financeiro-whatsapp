@@ -1,4 +1,7 @@
-import { ClientResponseError } from 'pocketbase'
+import {
+  ClientResponseError,
+  type ClientResponseError as ClientResponseErrorType,
+} from 'pocketbase'
 
 export type FieldErrors = Record<string, string>
 
@@ -20,10 +23,68 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-export function getErrorMessage(error: unknown): string {
-  if (!(error instanceof ClientResponseError)) {
-    return error instanceof Error ? error.message : 'An unexpected error occurred.'
+const GENERIC_MESSAGES = [
+  'something went wrong',
+  'an unexpected error occurred',
+  'ocorreu um erro inesperado',
+]
+
+function looksGeneric(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  if (!normalized) return true
+  return GENERIC_MESSAGES.includes(normalized)
+}
+
+function cleanMessage(message: string): string {
+  let cleaned = message.trim()
+  for (;;) {
+    const next = cleaned.replace(/^(GoError|Error)\s*:\s*/i, '')
+    if (next === cleaned) break
+    cleaned = next.trim()
   }
-  const msgs = Object.values(extractFieldErrors(error))
-  return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
+  return cleaned
+}
+
+function extractFromBody(error: unknown): string | undefined {
+  if (error instanceof ClientResponseError) {
+    const response = error.response as Partial<ClientResponseErrorType['response']> | undefined
+    const candidates = [response?.message, response?.error, (response as { data?: unknown })?.data]
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) return cleanMessage(candidate)
+      if (candidate && typeof candidate === 'object') {
+        const nested = candidate as { message?: unknown; error?: unknown }
+        const nestedMsg =
+          typeof nested.message === 'string'
+            ? nested.message
+            : typeof nested.error === 'string'
+              ? nested.error
+              : undefined
+        if (nestedMsg && nestedMsg.trim()) return cleanMessage(nestedMsg)
+      }
+    }
+    return undefined
+  }
+  if (error instanceof Error) {
+    const raw = (error as { raw?: unknown }).raw
+    if (raw && typeof raw === 'object') {
+      const rawObj = raw as { message?: unknown; error?: unknown }
+      const rawMsg =
+        typeof rawObj.message === 'string'
+          ? rawObj.message
+          : typeof rawObj.error === 'string'
+            ? rawObj.error
+            : undefined
+      if (rawMsg && rawMsg.trim()) return cleanMessage(rawMsg)
+    }
+  }
+  return undefined
+}
+
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const extracted = extractFromBody(error)
+  if (extracted && !looksGeneric(extracted)) return extracted
+  if (error instanceof ClientResponseError && !looksGeneric(error.message)) {
+    return cleanMessage(error.message)
+  }
+  return fallback ?? 'Ocorreu um erro inesperado. Tente novamente.'
 }

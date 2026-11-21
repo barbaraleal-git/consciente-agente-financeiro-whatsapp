@@ -20,39 +20,32 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-// NOTA ESTRUTURAL: getBackendErrorMessage DEVE permanecer exportada aqui —
-// ela some recorrentemente quando o arquivo é tocado (MISSING_EXPORT em builds).
+// NOTA ESTRUTURAL (permanente): a exportação getBackendErrorMessage abaixo
+// é OBRIGATÓRIA neste arquivo — já sumiu 5 vezes (MISSING_EXPORT em build).
+// NÃO remover ao editar este arquivo.
 
 export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  let raw = ''
-  if (error instanceof ClientResponseError) {
-    const res = error.response as { message?: unknown; error?: unknown; data?: unknown } | undefined
-    const candidates: unknown[] = [res?.message, res?.error]
-    if (res?.data && typeof res.data === 'object' && 'message' in (res.data as object)) {
-      candidates.push((res.data as { message: unknown }).message)
-    }
-    for (const c of candidates) {
-      if (typeof c === 'string' && c.trim().length > 0) {
-        raw = c
-        break
-      }
-    }
-  } else if (error instanceof Error && error.message) {
-    raw = error.message
+  const defaultFallback = 'Ocorreu um erro inesperado. Tente novamente.'
+  if (!(error instanceof ClientResponseError)) {
+    return fallback || (error instanceof Error ? error.message : defaultFallback)
   }
-
-  if (raw) {
-    raw = raw
-      .replace(/^GoError:\s*/i, '')
-      .replace(/^Error:\s*/i, '')
-      .trim()
+  const raw =
+    error.response?.message ||
+    (error.response as unknown as { error?: string } | undefined)?.error ||
+    error.message ||
+    ''
+  let msg = String(raw || '').trim()
+  msg = msg.replace(/^(GoError|Error)\s*[:-]\s*/i, '').trim()
+  const lowered = msg.toLowerCase()
+  if (
+    !msg ||
+    lowered === 'something went wrong' ||
+    lowered.startsWith('failed to fetch') ||
+    lowered.startsWith('network')
+  ) {
+    return fallback || defaultFallback
   }
-
-  const GENERIC = ['something went wrong', 'an unexpected error occurred']
-  if (raw && !GENERIC.includes(raw.toLowerCase())) {
-    return raw
-  }
-  return fallback ?? raw ?? 'Ocorreu um erro inesperado.'
+  return msg
 }
 
 export function getErrorMessage(error: unknown): string {

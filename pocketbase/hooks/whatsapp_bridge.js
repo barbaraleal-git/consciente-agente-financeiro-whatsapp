@@ -875,6 +875,66 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       return emojis[index] || `${index + 1}.`
     }
 
+    // BLINDAGEM DO PARSER DE PENDÊNCIA (v0.0.137): durante uma pendência
+    // aberta, só conta como "escolha" o que a dona autorizou — número limpo
+    // de 1..N (N = tamanho da lista guardada no pending) ou menção explícita
+    // "caixinha N"/"opção N". Números monetários (R$, decimais como 21,00)
+    // e frases soltas com números NUNCA são escolha.
+    const localDetectPendingChoice = function (rawText, candCount) {
+      if (!rawText) return { isChoice: false }
+      let t = ''
+      try {
+        t = localNorm(rawText).replace(/\s+/g, ' ')
+      } catch (_) {
+        return { isChoice: false }
+      }
+      if (!t) return { isChoice: false }
+      // Números monetários (R$ 21 / 21,00 / 21.00) NUNCA são escolha
+      if (t.indexOf('r$') !== -1 || /\b\d+[.,]\d{2}\b/.test(t)) {
+        return { isChoice: false }
+      }
+      // (a) Mensagem inteira é um número limpo de 1..N
+      if (/^\d{1,2}$/.test(t)) {
+        const n = parseInt(t, 10)
+        if (!isNaN(n) && n >= 1 && n <= candCount) return { isChoice: true, index: n }
+        return { isChoice: false }
+      }
+      // (b) Menção explícita "caixinha N" / "opção N" / "numero N" / "N caixinha"
+      const m = t.match(/\b(?:caixinha|opcao|numero|alternativa|item)\s*n?[°º.]?\s*(\d{1,2})\b/)
+      if (m) {
+        const n = parseInt(m[1], 10)
+        if (!isNaN(n) && n >= 1 && n <= candCount) return { isChoice: true, index: n }
+        return { isChoice: false }
+      }
+      const m2 = t.match(/^(\d{1,2})\s*(?:caixinha|opcao)\b/)
+      if (m2) {
+        const n = parseInt(m2[1], 10)
+        if (!isNaN(n) && n >= 1 && n <= candCount) return { isChoice: true, index: n }
+        return { isChoice: false }
+      }
+      // Nada numérico: o chamador decide se casa com NOME de caixinha/categoria
+      return { isChoice: false, allowNameMatch: true }
+    }
+
+    // BLINDAGEM (v0.0.137): intenção conservadora de CRIAR caixinha/orçamento.
+    // Detecção não grava transação e não consome a pendência.
+    const localDetectCreateCaixinhaIntent = function (rawText) {
+      if (!rawText) return false
+      let t = ''
+      try {
+        t = localNorm(rawText).replace(/\s+/g, ' ')
+      } catch (_) {
+        return false
+      }
+      if (!t) return false
+      const mentionsCaixinha =
+        /\b(caixinha|caixinhas|orcamento|orcamentos|cofrinho|cofrinhos)\b/.test(t)
+      if (!mentionsCaixinha) return false
+      return /\b(cria|criar|crie|criando|nova|novo|novas|novos|adiciona|adicionar|adicione|faz|fazer|faca|monta|montar|monte|quero)\b/.test(
+        t,
+      )
+    }
+
     const localFormatDatePtBr = function (ymdStr) {
       if (!ymdStr || ymdStr.length < 10) return ''
       const parts = ymdStr.slice(0, 10).split('-')
@@ -1350,10 +1410,21 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const catCands = pendingCategoryData.candidate_categories
         let chosenCategory = null
 
-        const numCatIdx = parseInt(cleanText, 10)
-        if (!isNaN(numCatIdx) && numCatIdx >= 1 && numCatIdx <= catCands.length) {
-          chosenCategory = catCands[numCatIdx - 1]
-        } else {
+        // BLINDAGEM (v0.0.137): pedido de CRIAR caixinha não grava e não
+        // consome a pendência — responde reconhecendo o pedido.
+        if (localDetectCreateCaixinhaIntent(cleanText)) {
+          const valFmtCatC = localFormatCentsToBrl(pendingCategoryData.amount)
+          return {
+            handled: true,
+            reply: `Entendi que você quer criar uma nova caixinha! 📦 Em breve você poderá fazer isso por aqui. Por enquanto, responda com o número da categoria em que quer colocar o gasto de *${valFmtCatC}* (${pendingCategoryData.description}):`,
+          }
+        }
+
+        // BLINDAGEM (v0.0.137): só número limpo 1..N ou "opção N" é escolha
+        const shieldCat = localDetectPendingChoice(cleanText, catCands.length)
+        if (shieldCat.isChoice) {
+          chosenCategory = catCands[shieldCat.index - 1]
+        } else if (shieldCat.allowNameMatch) {
           const normInput = localNorm(cleanText)
           for (let i = 0; i < catCands.length; i++) {
             const cName = localNorm(catCands[i].name)
@@ -1586,10 +1657,22 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const cands = pendingData.candidate_budgets
         let chosenBudget = null
 
-        const numIdx = parseInt(cleanText, 10)
-        if (!isNaN(numIdx) && numIdx >= 1 && numIdx <= cands.length) {
-          chosenBudget = cands[numIdx - 1]
-        } else {
+        // BLINDAGEM (v0.0.137): pedido de CRIAR caixinha não grava e não
+        // consome a pendência — responde reconhecendo o pedido.
+        if (localDetectCreateCaixinhaIntent(cleanText)) {
+          const valFmtPendC = localFormatCentsToBrl(pendingData.amount)
+          return {
+            handled: true,
+            reply: `Entendi que você quer criar uma nova caixinha! 📦 Em breve você poderá fazer isso por aqui. Por enquanto, responda com o número da caixinha em que quer colocar o gasto de *${valFmtPendC}* (${pendingData.description}):`,
+          }
+        }
+
+        // BLINDAGEM (v0.0.137): só número limpo 1..N, "caixinha N" ou "opção N"
+        // é escolha; números monetários e frases com números não são.
+        const shieldPick = localDetectPendingChoice(cleanText, cands.length)
+        if (shieldPick.isChoice) {
+          chosenBudget = cands[shieldPick.index - 1]
+        } else if (shieldPick.allowNameMatch) {
           const normInput = localNorm(cleanText)
           for (let i = 0; i < cands.length; i++) {
             const cName = localNorm(cands[i].name)

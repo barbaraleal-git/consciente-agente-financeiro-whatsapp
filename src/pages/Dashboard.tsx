@@ -514,6 +514,11 @@ export const Dashboard: React.FC = () => {
                   const cat = categories.find((c) => c.id === tx.category)
                   const isExp = tx.type === 'despesa'
                   const isInc = tx.type === 'receita'
+                  const effTx = getEffectiveCategory(tx, categories, budgets, userLinks)
+                  const semCaixinha =
+                    tx.type === 'despesa' &&
+                    (tx.status || 'active') === 'active' &&
+                    !effTx.isCaixinha
 
                   return (
                     <div
@@ -544,6 +549,14 @@ export const Dashboard: React.FC = () => {
                                 </p>
                                 <div className="flex items-center gap-1.5 text-[11px] text-slate-400 flex-wrap">
                                   <span className="font-medium text-slate-700">{eff.name}</span>
+                                  {semCaixinha && (
+                                    <span
+                                      className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-300"
+                                      title="Despesa sem caixinha vinculada — defina uma caixinha para organizar"
+                                    >
+                                      sem caixinha
+                                    </span>
+                                  )}
                                   {eff.badge && (
                                     <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                                       {eff.badge}

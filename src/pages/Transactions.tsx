@@ -355,6 +355,11 @@ export const Transactions: React.FC = () => {
                       const isInc = tx.type === 'receita'
                       const isCancelled = tx.status === 'cancelled'
                       const isDeleted = tx.status === 'deleted'
+                      const effTx = getEffectiveCategory(tx, categories, budgets, userLinks)
+                      const semCaixinha =
+                        tx.type === 'despesa' &&
+                        (tx.status || 'active') === 'active' &&
+                        !effTx.isCaixinha
 
                       return (
                         <tr
@@ -396,6 +401,15 @@ export const Transactions: React.FC = () => {
                                     title={`Lançamento retroativo com data original: ${formatDate(tx.date)}`}
                                   >
                                     Retroativo
+                                  </Badge>
+                                )}
+                                {semCaixinha && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-semibold"
+                                    title="Despesa sem caixinha vinculada — defina uma caixinha para organizar"
+                                  >
+                                    sem caixinha
                                   </Badge>
                                 )}
                               </div>
@@ -537,6 +551,11 @@ export const Transactions: React.FC = () => {
                   const isInc = tx.type === 'receita'
                   const isCancelled = tx.status === 'cancelled'
                   const isDeleted = tx.status === 'deleted'
+                  const effTx = getEffectiveCategory(tx, categories, budgets, userLinks)
+                  const semCaixinha =
+                    tx.type === 'despesa' &&
+                    (tx.status || 'active') === 'active' &&
+                    !effTx.isCaixinha
 
                   return (
                     <div
@@ -578,6 +597,15 @@ export const Transactions: React.FC = () => {
                                 title={`Lançamento retroativo com data original: ${formatDate(tx.date)}`}
                               >
                                 Retroativo
+                              </Badge>
+                            )}
+                            {semCaixinha && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-semibold"
+                                title="Despesa sem caixinha vinculada — defina uma caixinha para organizar"
+                              >
+                                sem caixinha
                               </Badge>
                             )}
                           </div>

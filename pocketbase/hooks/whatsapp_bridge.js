@@ -575,6 +575,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       }
 
       const spentByBudgetId = {}
+      const unmatchedTxs = []
       for (let b = 0; b < budgetsList.length; b++) {
         spentByBudgetId[budgetsList[b].id] = 0
       }
@@ -585,6 +586,11 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const matchedBudget = resolveTxBudget(tx)
         if (matchedBudget && matchedBudget.id) {
           spentByBudgetId[matchedBudget.id] = (spentByBudgetId[matchedBudget.id] || 0) + amt
+        } else {
+          unmatchedTxs.push({
+            description: tx.getString('description') || tx.getString('note') || 'Lançamento',
+            amount: amt,
+          })
         }
       }
 
@@ -690,6 +696,17 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         }
       } else {
         output += `💡 *Dica:* Defina seus tetos para ter a barra de progresso do mês completa!`
+      }
+
+      if (unmatchedTxs.length > 0) {
+        output += `\n\n⚠️ *Sem caixinha (defina para organizar):*\n`
+        const shownTxs = unmatchedTxs.slice(0, 10)
+        for (let u = 0; u < shownTxs.length; u++) {
+          output += `• ${shownTxs[u].description} — ${localFormatCentsToBrl(shownTxs[u].amount)}\n`
+        }
+        if (unmatchedTxs.length > shownTxs.length) {
+          output += `• ... e mais ${unmatchedTxs.length - shownTxs.length} lançamento(s)\n`
+        }
       }
 
       return output.trim()

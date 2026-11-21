@@ -20,40 +20,39 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-export function getBackendErrorMessage(error: unknown, fallbackMessage?: string): string {
-  if (!(error instanceof ClientResponseError)) {
-    return error instanceof Error ? error.message : 'An unexpected error occurred.'
-  }
+// NOTA ESTRUTURAL: getBackendErrorMessage DEVE permanecer exportada aqui —
+// ela some recorrentemente quando o arquivo é tocado (MISSING_EXPORT em builds).
 
-  const resp = error.response as { data?: unknown; message?: string } | undefined
-  const data = resp?.data
-  let msg = ''
-  if (data && typeof data === 'object') {
-    const entries = Object.values(data as Record<string, unknown>)
-    for (const entry of entries) {
-      if (entry && typeof entry === 'object' && 'message' in (entry as object)) {
-        const m = (entry as { message: unknown }).message
-        if (typeof m === 'string' && m) {
-          msg = m
-          break
-        }
-      } else if (typeof entry === 'string' && entry) {
-        msg = entry
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  let raw = ''
+  if (error instanceof ClientResponseError) {
+    const res = error.response as { message?: unknown; error?: unknown; data?: unknown } | undefined
+    const candidates: unknown[] = [res?.message, res?.error]
+    if (res?.data && typeof res.data === 'object' && 'message' in (res.data as object)) {
+      candidates.push((res.data as { message: unknown }).message)
+    }
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim().length > 0) {
+        raw = c
         break
       }
     }
-    if (!msg && typeof (data as Record<string, unknown>).message === 'string') {
-      msg = (data as { message: string }).message
-    }
+  } else if (error instanceof Error && error.message) {
+    raw = error.message
   }
-  if (!msg) msg = resp?.message || error.message || ''
 
-  // Remove prefixos internos do PocketBase (GoError) e bloqueia mensagens genéricas
-  msg = msg.replace(/GoError[:\s]*/gi, '').trim()
-  if (!msg || /^something went wrong$/i.test(msg)) {
-    msg = fallbackMessage || 'Não foi possível concluir a operação. Tente novamente em instantes.'
+  if (raw) {
+    raw = raw
+      .replace(/^GoError:\s*/i, '')
+      .replace(/^Error:\s*/i, '')
+      .trim()
   }
-  return msg
+
+  const GENERIC = ['something went wrong', 'an unexpected error occurred']
+  if (raw && !GENERIC.includes(raw.toLowerCase())) {
+    return raw
+  }
+  return fallback ?? raw ?? 'Ocorreu um erro inesperado.'
 }
 
 export function getErrorMessage(error: unknown): string {

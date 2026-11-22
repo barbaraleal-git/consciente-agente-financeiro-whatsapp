@@ -20,32 +20,28 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-// NOTA ESTRUTURAL (permanente): a exportação getBackendErrorMessage abaixo
-// é OBRIGATÓRIA neste arquivo — já sumiu 5 vezes (MISSING_EXPORT em build).
-// NÃO remover ao editar este arquivo.
-
 export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const defaultFallback = 'Ocorreu um erro inesperado. Tente novamente.'
   if (!(error instanceof ClientResponseError)) {
-    return fallback || (error instanceof Error ? error.message : defaultFallback)
+    return error instanceof Error ? error.message : fallback || 'An unexpected error occurred.'
   }
-  const raw =
-    error.response?.message ||
-    (error.response as unknown as { error?: string } | undefined)?.error ||
-    error.message ||
-    ''
-  let msg = String(raw || '').trim()
-  msg = msg.replace(/^(GoError|Error)\s*[:-]\s*/i, '').trim()
-  const lowered = msg.toLowerCase()
+  const data = error.response?.data
+  let realMsg = ''
+  if (data && typeof data === 'object') {
+    const d = data as Record<string, unknown>
+    if (typeof d.message === 'string') realMsg = d.message
+    else if (typeof d.error === 'string') realMsg = d.error
+    const fieldMsgs = Object.values(extractFieldErrors(error))
+    if (!realMsg && fieldMsgs.length > 0) realMsg = fieldMsgs.join(' ')
+  }
   if (
-    !msg ||
-    lowered === 'something went wrong' ||
-    lowered.startsWith('failed to fetch') ||
-    lowered.startsWith('network')
+    !realMsg ||
+    realMsg === 'Something went wrong' ||
+    realMsg.startsWith('GoError') ||
+    realMsg.startsWith('Error:')
   ) {
-    return fallback || defaultFallback
+    realMsg = error.message || 'An unexpected error occurred.'
   }
-  return msg
+  return realMsg || fallback || 'An unexpected error occurred.'
 }
 
 export function getErrorMessage(error: unknown): string {

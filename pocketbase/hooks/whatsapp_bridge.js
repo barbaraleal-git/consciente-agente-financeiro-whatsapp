@@ -935,6 +935,204 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       )
     }
 
+    // v0.0.138: criação REAL de caixinha durante pendência (substitui o
+    // "Em breve você poderá fazer isso por aqui"). Extrai o nome da frase
+    // ("chamada Saúde", "com o nome de saúde", "chamado X" → "Saúde"/"X").
+    // Retorna { hasName, name } — name já normalizado para exibição
+    // (capitalizado), sem gravar nada aqui.
+    const localExtractNewCaixinhaName = function (rawText) {
+      if (!rawText) return { hasName: false, name: '' }
+      let t = ''
+      try {
+        t = localNorm(rawText).replace(/\s+/g, ' ').trim()
+      } catch (_) {
+        return { hasName: false, name: '' }
+      }
+      if (!t) return { hasName: false, name: '' }
+      const patterns = [
+        /\b(?:chamada|chamado|chamada de|chamado de|chamada como|chamado como|com o nome de|com nome de|com o nome|com nome|nome de|nome:|nome)\s+(.+)$/,
+        /\b(?:caixinha|cofrinho|orcamento)\s+(.+)$/,
+      ]
+      let candidate = ''
+      for (let pi = 0; pi < patterns.length; pi++) {
+        const mN = t.match(patterns[pi])
+        if (mN && mN[1]) {
+          candidate = mN[1]
+          break
+        }
+      }
+      if (!candidate) return { hasName: false, name: '' }
+      // Remove verbo/resíduo inicial ("criar ", "crie ", "uma ", "nova "...)
+      candidate = candidate.replace(
+        /^(?:cria|criar|crie|criando|monta|montar|monte|faz|fazer|faca|adiciona|adicionar|adicione|quero|uma|um|o|a|nova|novo|novo caixinha|de)\s+/,
+        '',
+      )
+      // Remove frases de guarda do lançamento pendente no fim
+      candidate = candidate
+        .replace(
+          /\s*(?:e\s+)?(?:guarda|guarde|registra|registre|grava|grave|coloque|coloca|salva|salve|lanca|lance|joga|jogue)(?:\s+(?:esse|esta|este|isso|o|a|os|as|meu|minha))?\b.*$/,
+          '',
+        )
+        .trim()
+      // Remove resíduos de cortesia ("pra mim", "por favor"...) que sobramam
+      candidate = candidate
+        .replace(/\s*(?:pra|para)\s+mim\s*$/, '')
+        .replace(/\s*(?:por\s+favor|pf|pfv)\s*$/, '')
+        .replace(/\s*(?:aqui|agora)\s*$/, '')
+        .trim()
+      candidate = candidate.replace(/\s+/g, ' ').trim()
+      if (!candidate || candidate.length > 60) return { hasName: false, name: '' }
+      // Capitaliza cada palavra para exibição ("saúde" → "Saúde")
+      const words = candidate.split(' ')
+      for (let wi = 0; wi < words.length; wi++) {
+        if (words[wi].length > 2) {
+          words[wi] = words[wi].charAt(0).toUpperCase() + words[wi].slice(1)
+        }
+      }
+      return { hasName: true, name: words.join(' ') }
+    }
+
+    // v0.0.138: cria a caixinha (se ainda não existir, case-insensitive) e
+    // grava o lançamento pendente nela, reaproveitando o shape de transação
+    // e o aviso de teto do fluxo de escolha já existente (~1694). Retorna
+    // { reply } — o chamador responde com handled: true.
+    const localCreateCaixinhaAndRecord = function (
+      app,
+      userId,
+      pendingInfo,
+      caixinhaName,
+      todayStr,
+      txSource,
+      contactRef,
+    ) {
+      const amount = pendingInfo.amount || 0
+      const description = pendingInfo.description || 'Gasto'
+      const expenseDate = pendingInfo.date || todayStr
+      const valFmt = localFormatCentsToBrl(amount)
+      const normTarget = localNorm(caixinhaName)
+
+      // 2. Se já existe caixinha do mesmo owner com nome equivalente
+      // (case-insensitive), usa a existente — nunca duplica.
+      let budgetRec = null
+      let wasCreated = false
+      try {
+        const existing = app.findRecordsByFilter(
+          'budgets',
+          `owner = '${userId}'`,
+          '-created',
+          500,
+          0,
+        )
+        for (let i = 0; i < existing.length; i++) {
+          if (localNorm(existing[i].getString('name')) === normTarget) {
+            budgetRec = existing[i]
+            break
+          }
+        }
+      } catch (_) {}
+
+      // 3. Não existe: cria com teto zero (aviso de teto só quando há teto).
+      if (!budgetRec) {
+        try {
+          const budgetsCol = app.findCollectionByNameOrId('budgets')
+          const created = new Record(budgetsCol)
+          created.set('owner', userId)
+          created.set('name', caixinhaName)
+          created.set('month', expenseDate.slice(0, 7))
+          created.set('amount', 0)
+          app.save(created)
+          budgetRec = created
+          wasCreated = true
+        } catch (e) {
+          console.log(
+            `[whatsapp_bridge] v0.0.138: falha ao criar caixinha '${caixinhaName}' p/ user ${userId}: ${e}`,
+          )
+          return {
+            reply: `Não consegui criar a caixinha *${caixinhaName}* agora. 😕 Tente responder com o número da caixinha da lista, por favor!`,
+          }
+        }
+      }
+
+      // 4. Grava o lançamento pendente (mesmo shape do fluxo de escolha).
+      let savedTx = false
+      try {
+        const txCol = app.findCollectionByNameOrId('transactions')
+        const newTx = new Record(txCol)
+        newTx.set('owner', userId)
+        newTx.set('amount', amount)
+        newTx.set('description', description)
+        newTx.set('date', expenseDate)
+        newTx.set('category', pendingInfo.category_id)
+        newTx.set('type', 'despesa')
+        newTx.set('source', pendingInfo.source || txSource)
+        newTx.set('status', 'active')
+        newTx.set('is_retroactive', pendingInfo.is_retroactive || false)
+        newTx.set('budget', budgetRec.id)
+        newTx.set('message_timestamp', new Date().toISOString())
+        if (pendingInfo.note) {
+          newTx.set('note', pendingInfo.note)
+        }
+        app.save(newTx)
+        savedTx = true
+      } catch (e) {
+        console.log(
+          `[whatsapp_bridge] v0.0.138: falha ao gravar lançamento na caixinha '${caixinhaName}' p/ user ${userId}: ${e}`,
+        )
+      }
+
+      if (!savedTx) {
+        return {
+          reply: `Criei a caixinha *${caixinhaName}*, mas não consegui gravar o gasto agora. 😕 Pode mandar o lançamento de novo, por favor?`,
+        }
+      }
+
+      // 5. Limpa a pendência (mesmos campos que o fluxo já limpa).
+      contactRef.set('pending_category', '')
+      contactRef.set('pending_caixinha', '')
+      try {
+        app.save(contactRef)
+      } catch (_) {}
+
+      // Aviso de teto (só quando há teto definido — teto zero não avisa).
+      let remainingPhrase = ''
+      try {
+        const monthPrefix = expenseDate.slice(0, 7)
+        const tetoCents = budgetRec.getInt('amount') || 0
+        if (tetoCents > 0) {
+          const txs = app.findRecordsByFilter(
+            'transactions',
+            `owner = '${userId}' && budget = '${budgetRec.id}' && type = 'despesa' && (status = 'active' || status = '' || status = null) && date >= '${monthPrefix}-01' && date <= '${monthPrefix}-31'`,
+            '',
+            500,
+            0,
+          )
+          let spentTotal = 0
+          for (let st = 0; st < txs.length; st++) {
+            spentTotal += txs[st].getInt('amount') || 0
+          }
+          const rest = tetoCents - spentTotal
+          if (rest >= 0) {
+            remainingPhrase = ` Restam ${localFormatCentsToBrl(rest)} do seu teto neste mês.`
+          } else {
+            remainingPhrase = ` 🚨 Atenção: caixinha estourada por ${localFormatCentsToBrl(Math.abs(rest))}.`
+          }
+        }
+      } catch (_) {}
+
+      const retroPhrase =
+        pendingInfo.is_retroactive && expenseDate
+          ? ` (contabilizado em ${localFormatDatePtBr(expenseDate)})`
+          : ''
+
+      // 6. Confirmação.
+      const confirmMsg = wasCreated
+        ? `Caixinha *${caixinhaName}* criada ✅ Registrei o gasto de *${valFmt}* (${description}) nela${retroPhrase}. Ela nasceu sem teto — defina um no app quando quiser.`
+        : `Registrei o gasto de *${valFmt}* (${description}) na caixinha *${caixinhaName}*, que você já tinha${retroPhrase} ✅`
+      return {
+        reply: confirmMsg + remainingPhrase,
+      }
+    }
+
     const localFormatDatePtBr = function (ymdStr) {
       if (!ymdStr || ymdStr.length < 10) return ''
       const parts = ymdStr.slice(0, 10).split('-')
@@ -1410,14 +1608,26 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const catCands = pendingCategoryData.candidate_categories
         let chosenCategory = null
 
-        // BLINDAGEM (v0.0.137): pedido de CRIAR caixinha não grava e não
-        // consome a pendência — responde reconhecendo o pedido.
+        // v0.0.138: pedido de CRIAR caixinha durante pendência agora CRIA
+        // de verdade (teto zero) e grava o lançamento pendente nela.
         if (localDetectCreateCaixinhaIntent(cleanText)) {
-          const valFmtCatC = localFormatCentsToBrl(pendingCategoryData.amount)
-          return {
-            handled: true,
-            reply: `Entendi que você quer criar uma nova caixinha! 📦 Em breve você poderá fazer isso por aqui. Por enquanto, responda com o número da categoria em que quer colocar o gasto de *${valFmtCatC}* (${pendingCategoryData.description}):`,
+          const nomeExtraido = localExtractNewCaixinhaName(cleanText)
+          if (!nomeExtraido.hasName) {
+            return {
+              handled: true,
+              reply: 'Perfeito! Qual o nome da caixinha? (ex.: "Crie uma caixinha chamada Saúde")',
+            }
           }
+          const respCatC = localCreateCaixinhaAndRecord(
+            app,
+            userId,
+            pendingCategoryData,
+            nomeExtraido.name,
+            todayStr,
+            txSource,
+            contactRecord,
+          )
+          return { handled: true, reply: respCatC.reply }
         }
 
         // BLINDAGEM (v0.0.137): só número limpo 1..N ou "opção N" é escolha
@@ -1657,14 +1867,26 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         const cands = pendingData.candidate_budgets
         let chosenBudget = null
 
-        // BLINDAGEM (v0.0.137): pedido de CRIAR caixinha não grava e não
-        // consome a pendência — responde reconhecendo o pedido.
+        // v0.0.138: pedido de CRIAR caixinha durante pendência agora CRIA
+        // de verdade (teto zero) e grava o lançamento pendente nela.
         if (localDetectCreateCaixinhaIntent(cleanText)) {
-          const valFmtPendC = localFormatCentsToBrl(pendingData.amount)
-          return {
-            handled: true,
-            reply: `Entendi que você quer criar uma nova caixinha! 📦 Em breve você poderá fazer isso por aqui. Por enquanto, responda com o número da caixinha em que quer colocar o gasto de *${valFmtPendC}* (${pendingData.description}):`,
+          const nomeExtraidoB = localExtractNewCaixinhaName(cleanText)
+          if (!nomeExtraidoB.hasName) {
+            return {
+              handled: true,
+              reply: 'Perfeito! Qual o nome da caixinha? (ex.: "Crie uma caixinha chamada Saúde")',
+            }
           }
+          const respPendC = localCreateCaixinhaAndRecord(
+            app,
+            userId,
+            pendingData,
+            nomeExtraidoB.name,
+            todayStr,
+            txSource,
+            contactRecord,
+          )
+          return { handled: true, reply: respPendC.reply }
         }
 
         // BLINDAGEM (v0.0.137): só número limpo 1..N, "caixinha N" ou "opção N"

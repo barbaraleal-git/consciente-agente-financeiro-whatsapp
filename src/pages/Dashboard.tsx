@@ -50,8 +50,18 @@ export const Dashboard: React.FC = () => {
   const [userLinks, setUserLinks] = useState<CategoryCaixinhaLink[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const [lastGood, setLastGood] = useState<{
+    transactions: Transaction[]
+    budgets: Budget[]
+    categories: Category[]
+    userLinks: CategoryCaixinhaLink[]
+    alerts: Alert[]
+  } | null>(null)
 
   const loadData = async () => {
+    setRetrying(true)
     try {
       const [txData, bData, cData, aData, linksData] = await Promise.all([
         transactionsService.getFullList(),
@@ -60,15 +70,28 @@ export const Dashboard: React.FC = () => {
         alertsService.list(),
         categoryCaixinhaLinksService.listByUser().catch(() => [] as CategoryCaixinhaLink[]),
       ])
+      const next = {
+        transactions: txData,
+        budgets: bData,
+        categories: cData,
+        alerts: aData,
+        userLinks: linksData,
+      }
+      setLastGood(next)
       setTransactions(txData)
       setBudgets(bData)
       setCategories(cData)
       setAlerts(aData)
       setUserLinks(linksData)
+      setLoadError(false)
     } catch (err) {
       console.error(err)
+      // Falha de carregamento NUNCA vira zeros silenciosos: mantém os últimos
+      // dados válidos e exibe o estado de erro visível no lugar da tela.
+      setLoadError(true)
     } finally {
       setLoading(false)
+      setRetrying(false)
     }
   }
 
@@ -208,6 +231,36 @@ export const Dashboard: React.FC = () => {
     const max = Math.max(...evolutionData.map((d) => Math.max(d.income, d.expense)), 10000)
     return max
   }, [evolutionData])
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Não foi possível carregar seus dados
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Ocorreu uma falha ao buscar suas transações, caixinhas e alertas. Seus números
+                anteriores continuam guardados — nada foi perdido.
+              </p>
+            </div>
+            <Button
+              onClick={() => loadData()}
+              disabled={retrying}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-medium"
+            >
+              {retrying ? 'Carregando…' : 'Tentar novamente'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

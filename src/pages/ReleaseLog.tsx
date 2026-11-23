@@ -25,10 +25,27 @@ interface ReleaseEntry {
 
 const RELEASES: ReleaseEntry[] = [
   {
+    version: '0.0.140',
+    date: '22/11/2026',
+    title: 'Estado de Erro Visível no Dashboard — Fim dos Zeros Silenciosos',
+    tag: 'Atual',
+    highlights: [
+      'Defeito da dona corrigido: quando qualquer uma das 5 buscas de dados do Dashboard (transações, caixinhas, categorias, vínculos categoria↔caixinha, alertas) falhava, o erro era engolido em silêncio (só console) e a tela pintava TUDO como zero — mesmo com o backend respondendo 200, a tela ficava zerada sem explicação.',
+      'Agora, qualquer falha de carregamento exibe um ESTADO DE ERRO VISÍVEL no lugar dos números zerados: mensagem "Não foi possível carregar seus dados" com botão "Tentar novamente" que refaz as buscas; o Dashboard NUNCA mais pinta zeros quando houve falha de carregamento.',
+      'Com os dados carregando normalmente, o Dashboard fica exatamente como antes (zero regressão visual — o estado de erro só aparece quando há falha).',
+      'getBackendErrorMessage restaurada pela 8ª vez em src/lib/pocketbase/errors.ts (MISSING_EXPORT recorrente), agora com NOTA ESTRUTURAL PERMANENTE no arquivo listando os consumidores e a contagem de ressurgências.',
+    ],
+    details: [
+      'src/pages/Dashboard.tsx: novo estado loadError + dados em buffer (últimos dados válidos); qualquer Promise.all rejeitada ativa o estado de erro (banner vermelho com AlertTriangle, "Não foi possível carregar seus dados" + botão "Tentar novamente" que chama loadData) e congela os cards nos últimos dados válidos em vez de zerar; linksData permanece com fallback tolerante ([]) como antes; console.error preservado.',
+      'src/lib/pocketbase/errors.ts: getBackendErrorMessage(error, fallback?) restaurada (lê message/error/data do corpo, remove prefixos GoError/Error, bloqueia o genérico "Something went wrong" do SDK) + nota estrutural permanente no topo da função.',
+      'src/pages/ReleaseLog.tsx: entrada v0.0.140 no topo com tag "Atual" (v0.0.124 volta a "Estável").',
+    ],
+  },
+  {
     version: '0.0.124',
     date: '20/11/2026',
     title: 'Pergunta no WhatsApp NUNCA vira Lançamento — Detector de Pergunta + MODO CONSULTA',
-    tag: 'Atual',
+    tag: 'Estável',
     highlights: [
       'Pedido da dona: a pergunta "Você registrou duas vezes os 12 da padaria?" estava sendo REGISTRADA como lançamento no WhatsApp. Agora o webhook tem um detector DETERMINÍSTICO de perguntas (frases interrogativas como "você registrou...?", "quanto...?", frases terminadas em "?") que ativa o MODO CONSULTA do agente de IA.',
       'MODO CONSULTA fundado na BASE DE DADOS: o agente NÃO cria transações e responde consultando as coleções de transações/caixinhas — a fonte única de verdade, que reflete lançamentos feitos também pelo app web — e NUNCA o histórico da conversa.',

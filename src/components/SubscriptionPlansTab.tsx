@@ -471,7 +471,7 @@ export const SubscriptionPlansTab: React.FC = () => {
       <Card className="border-slate-200">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-indigo-600" />
+            <Sparkles className="w-4 h-4 text-brand-petrol" />
             Planos disponíveis
           </CardTitle>
           <CardDescription className="text-xs text-slate-500 mt-1">
@@ -495,7 +495,7 @@ export const SubscriptionPlansTab: React.FC = () => {
                   </span>
                   {pt === 'anual' && (
                     <Badge
-                      className="bg-indigo-100 text-indigo-700 border-indigo-200"
+                      className="bg-brand-gold/20 text-brand-petrol-dark border-brand-gold"
                       variant="outline"
                     >
                       Economize 10%

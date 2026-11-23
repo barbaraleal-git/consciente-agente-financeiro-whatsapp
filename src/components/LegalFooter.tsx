@@ -73,10 +73,7 @@ export const LegalFooter: React.FC<{ className?: string }> = ({ className = '' }
               <Mail className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
               <span>
                 <strong>Atendimento/Suporte:</strong>{' '}
-                <a
-                  href={`mailto:${email}`}
-                  className="text-indigo-600 dark:text-indigo-400 hover:underline"
-                >
+                <a href={`mailto:${email}`} className="text-brand-petrol hover:underline">
                   {email}
                 </a>
               </span>

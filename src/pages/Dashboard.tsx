@@ -235,9 +235,9 @@ export const Dashboard: React.FC = () => {
   if (loadError) {
     return (
       <div className="space-y-6">
-        <Card className="border-amber-300 bg-amber-50/60">
+        <Card className="border-brand-terracotta/40 bg-brand-terracotta/5">
           <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-brand-terracotta/15 text-brand-terracotta flex items-center justify-center">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
@@ -252,7 +252,7 @@ export const Dashboard: React.FC = () => {
             <Button
               onClick={() => loadData()}
               disabled={retrying}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-medium"
+              className="bg-brand-petrol hover:bg-brand-petrol-dark text-white text-xs sm:text-sm font-medium"
             >
               {retrying ? 'Carregando…' : 'Tentar novamente'}
             </Button>
@@ -265,21 +265,21 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Monthly Balance */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 text-white p-6 sm:p-8 shadow-lg shadow-indigo-950/20">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-petrol-dark via-brand-petrol to-[#1E4A5A] text-white p-6 sm:p-8 shadow-lg shadow-brand-petrol-dark/30">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wider font-semibold text-indigo-300">
+              <span className="text-xs uppercase tracking-wider font-semibold text-brand-gold">
                 Saldo do Mês • {formatMonthName(currentMonth)}
               </span>
-              <Badge className="bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px]">
+              <Badge className="bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-[10px]">
                 Tempo Real
               </Badge>
             </div>
             <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight tabular-nums">
               {formatCurrency(monthlyMetrics.netBalance)}
             </div>
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-indigo-200 pt-1">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-brand-cream/80 pt-1">
               {monthlyMetrics.balanceDiff >= 0 ? (
                 <span className="flex items-center text-emerald-400 font-medium">
                   <TrendingUp className="w-4 h-4 mr-1 inline" />+{monthlyMetrics.balanceDiff}% em
@@ -301,13 +301,13 @@ export const Dashboard: React.FC = () => {
               className="bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-sm text-xs sm:text-sm font-medium"
             >
               <Link to="/assistant">
-                <Sparkles className="w-4 h-4 mr-1.5 text-indigo-300" />
+                <Sparkles className="w-4 h-4 mr-1.5 text-brand-gold" />
                 Falar com Agente WhatsApp
               </Link>
             </Button>
             <Button
               asChild
-              className="bg-indigo-500 hover:bg-indigo-400 text-white shadow-md text-xs sm:text-sm font-medium"
+              className="bg-brand-gold hover:bg-brand-gold-dark text-brand-petrol-dark shadow-md text-xs sm:text-sm font-medium"
             >
               <Link to="/transactions">
                 <Receipt className="w-4 h-4 mr-1.5" />
@@ -318,7 +318,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Decorative background glow */}
-        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-brand-gold/20 rounded-full blur-3xl pointer-events-none" />
       </div>
 
       {/* Metric Cards Grid */}
@@ -365,7 +365,7 @@ export const Dashboard: React.FC = () => {
             <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
               Investimentos
             </CardTitle>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-brand-petrol/10 text-brand-petrol flex items-center justify-center">
               <TrendingUp className="w-4 h-4" />
             </div>
           </CardHeader>
@@ -383,7 +383,7 @@ export const Dashboard: React.FC = () => {
             <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
               Restante nas Caixinhas
             </CardTitle>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-brand-cream text-[#B8892B] flex items-center justify-center">
               <PiggyBank className="w-4 h-4" />
             </div>
           </CardHeader>
@@ -417,11 +417,11 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center gap-4 text-xs font-medium">
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-emerald-500" />
+                <span className="w-3 h-3 rounded bg-brand-petrol" />
                 <span className="text-slate-600">Receitas</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-red-500" />
+                <span className="w-3 h-3 rounded bg-brand-terracotta" />
                 <span className="text-slate-600">Despesas</span>
               </div>
             </div>
@@ -441,7 +441,7 @@ export const Dashboard: React.FC = () => {
                       <div className="w-full flex items-end justify-center gap-1 sm:gap-2 h-full">
                         {/* Income bar */}
                         <div
-                          className="w-3 sm:w-5 bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-sm transition-all duration-500 group-hover:brightness-110 relative"
+                          className="w-3 sm:w-5 bg-gradient-to-t from-brand-petrol-dark to-brand-petrol rounded-t-sm transition-all duration-500 group-hover:brightness-110 relative"
                           style={{ height: `${Math.max(incHeight, 4)}%` }}
                         >
                           <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2 py-0.5 rounded pointer-events-none whitespace-nowrap z-20 shadow">
@@ -451,7 +451,7 @@ export const Dashboard: React.FC = () => {
 
                         {/* Expense bar */}
                         <div
-                          className="w-3 sm:w-5 bg-gradient-to-t from-red-600 to-red-400 rounded-t-sm transition-all duration-500 group-hover:brightness-110 relative"
+                          className="w-3 sm:w-5 bg-gradient-to-t from-[#C4532F] to-brand-terracotta rounded-t-sm transition-all duration-500 group-hover:brightness-110 relative"
                           style={{ height: `${Math.max(expHeight, 4)}%` }}
                         >
                           <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2 py-0.5 rounded pointer-events-none whitespace-nowrap z-20 shadow">
@@ -474,7 +474,7 @@ export const Dashboard: React.FC = () => {
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <PieIcon className="w-4 h-4 text-indigo-600" />
+              <PieIcon className="w-4 h-4 text-brand-petrol" />
               Despesas por Categoria
             </CardTitle>
             <CardDescription className="text-xs text-slate-500">
@@ -548,7 +548,7 @@ export const Dashboard: React.FC = () => {
               asChild
               variant="ghost"
               size="sm"
-              className="text-xs text-indigo-600 hover:text-indigo-700"
+              className="text-xs text-brand-petrol hover:text-brand-petrol-dark"
             >
               <Link to="/transactions">
                 Ver todas <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -604,7 +604,7 @@ export const Dashboard: React.FC = () => {
                                   <span className="font-medium text-slate-700">{eff.name}</span>
                                   {semCaixinha && (
                                     <span
-                                      className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-300"
+                                      className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-brand-terracotta/10 text-brand-terracotta border border-brand-terracotta/40"
                                       title="Despesa sem caixinha vinculada — defina uma caixinha para organizar"
                                     >
                                       sem caixinha
@@ -627,20 +627,24 @@ export const Dashboard: React.FC = () => {
                       <div className="text-right shrink-0">
                         <p
                           className={`text-xs sm:text-sm font-bold tabular-nums ${
-                            isInc ? 'text-emerald-600' : isExp ? 'text-red-600' : 'text-indigo-600'
+                            isInc
+                              ? 'text-brand-petrol'
+                              : isExp
+                                ? 'text-brand-terracotta'
+                                : 'text-[#B8892B]'
                           }`}
                         >
                           {isInc ? '+' : isExp ? '-' : ''} {formatCurrency(tx.amount)}
                         </p>
                         <div className="flex items-center justify-end gap-1 text-[11px] text-slate-400">
                           {tx.source === 'whatsapp_audio' ? (
-                            <Mic className="w-3 h-3 text-indigo-500" />
+                            <Mic className="w-3 h-3 text-brand-petrol" />
                           ) : tx.source === 'whatsapp_text' || tx.source === 'whatsapp' ? (
-                            <MessageSquare className="w-3 h-3 text-emerald-500" />
+                            <MessageSquare className="w-3 h-3 text-brand-petrol" />
                           ) : tx.source === 'import' ? (
-                            <FileSpreadsheet className="w-3 h-3 text-sky-500" />
+                            <FileSpreadsheet className="w-3 h-3 text-[#B8892B]" />
                           ) : tx.source === 'agent' ? (
-                            <Bot className="w-3 h-3 text-purple-500" />
+                            <Bot className="w-3 h-3 text-brand-terracotta" />
                           ) : (
                             <PenLine className="w-3 h-3 text-slate-400" />
                           )}
@@ -667,7 +671,7 @@ export const Dashboard: React.FC = () => {
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <AlertTriangle className="w-4 h-4 text-brand-terracotta" />
               Alertas das Caixinhas
             </CardTitle>
             <CardDescription className="text-xs text-slate-500">
@@ -679,7 +683,7 @@ export const Dashboard: React.FC = () => {
             {budgets.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">
                 Nenhuma caixinha configurada.{' '}
-                <Link to="/budgets" className="text-indigo-600 hover:underline">
+                <Link to="/budgets" className="text-brand-petrol hover:underline">
                   Criar caixinha
                 </Link>
               </div>
@@ -724,16 +728,18 @@ export const Dashboard: React.FC = () => {
                         value={pct}
                         className={`h-2 ${
                           isExceeded
-                            ? '[&>div]:bg-red-500'
+                            ? '[&>div]:bg-brand-terracotta'
                             : isWarning
-                              ? '[&>div]:bg-amber-500'
-                              : '[&>div]:bg-emerald-500'
+                              ? '[&>div]:bg-brand-gold'
+                              : '[&>div]:bg-brand-petrol'
                         }`}
                       />
                       <div className="flex items-center justify-between text-[10px] text-slate-400">
                         <span>{pct}% utilizado</span>
-                        {isExceeded && <span className="text-red-500 font-semibold">Crítico</span>}
-                        {isWarning && <span className="text-amber-500 font-semibold">Atenção</span>}
+                        {isExceeded && (
+                          <span className="text-brand-terracotta font-semibold">Crítico</span>
+                        )}
+                        {isWarning && <span className="text-[#B8892B] font-semibold">Atenção</span>}
                       </div>
                     </div>
                   )

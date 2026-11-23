@@ -299,12 +299,12 @@ export const Onboarding: React.FC = () => {
   const firstName = user?.name ? user.name.split(' ')[0] : 'você'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center p-4 sm:p-6 text-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-[#1E4A5A] via-[#173F4D] to-[#1E4A5A] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-100">
       <div className="w-full max-w-2xl my-auto">
         {/* Brand & Progress Bar */}
         <div className="mb-6 text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-400/20 text-indigo-300 text-xs font-medium">
-            <PiggyBank className="w-4 h-4 text-indigo-400" />
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-gold/10 border border-brand-gold/30 text-brand-gold text-xs font-medium">
+            <PiggyBank className="w-4 h-4 text-brand-gold" />
             <span>Configuração Inicial das Caixinhas</span>
           </div>
 
@@ -312,17 +312,17 @@ export const Onboarding: React.FC = () => {
           <div className="flex items-center justify-center gap-2 pt-1">
             <div
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                step >= 1 ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-700'
+                step >= 1 ? 'w-8 bg-brand-gold' : 'w-2 bg-slate-700'
               }`}
             />
             <div
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                step >= 2 ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-700'
+                step >= 2 ? 'w-8 bg-brand-gold' : 'w-2 bg-slate-700'
               }`}
             />
             <div
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                step >= 3 ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-700'
+                step >= 3 ? 'w-8 bg-brand-gold' : 'w-2 bg-slate-700'
               }`}
             />
           </div>
@@ -333,7 +333,7 @@ export const Onboarding: React.FC = () => {
           <CardContent className="p-6 sm:p-8">
             {loading ? (
               <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
+                <Loader2 className="w-8 h-8 animate-spin text-brand-gold" />
                 <p className="text-sm">Preparando suas caixinhas...</p>
               </div>
             ) : (
@@ -343,7 +343,7 @@ export const Onboarding: React.FC = () => {
                   <div className="space-y-6 animate-in fade-in duration-300">
                     {/* Conversational Bubble */}
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/30 mt-1">
+                      <div className="w-10 h-10 rounded-2xl bg-brand-gold text-[#1E4A5A] flex items-center justify-center shrink-0 shadow-lg shadow-brand-gold/30 mt-1">
                         <Bot className="w-5 h-5" />
                       </div>
                       <div className="space-y-1.5 bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl rounded-tl-sm text-sm text-slate-200 leading-relaxed shadow-sm">
@@ -362,7 +362,7 @@ export const Onboarding: React.FC = () => {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
                         <span>Escolha ou crie suas caixinhas para este mês:</span>
-                        <span className="text-indigo-400 font-medium">
+                        <span className="text-brand-gold font-medium">
                           {selectedCatIds.length} selecionada(s)
                         </span>
                       </div>
@@ -379,7 +379,7 @@ export const Onboarding: React.FC = () => {
                               onClick={() => toggleCategory(cat.id)}
                               className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 relative group ${
                                 isSelected
-                                  ? 'bg-indigo-950/60 border-indigo-500 shadow-md shadow-indigo-950/40 text-white'
+                                  ? 'bg-brand-petrol/40 border-brand-gold shadow-md shadow-black/40 text-white'
                                   : 'bg-slate-800/40 border-slate-750 border-slate-700/50 hover:bg-slate-800 text-slate-300 hover:border-slate-600'
                               }`}
                             >
@@ -393,7 +393,7 @@ export const Onboarding: React.FC = () => {
                                 <div
                                   className={`w-5 h-5 rounded-full flex items-center justify-center border transition-colors ${
                                     isSelected
-                                      ? 'bg-indigo-600 border-indigo-500 text-white'
+                                      ? 'bg-brand-petrol border-brand-gold text-white'
                                       : 'border-slate-600 bg-slate-800/60 text-transparent'
                                   }`}
                                 >
@@ -412,16 +412,16 @@ export const Onboarding: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setIsCreatingCustom(true)}
-                            className="p-3 rounded-xl border border-dashed border-indigo-400/40 hover:border-indigo-400 hover:bg-indigo-950/30 text-indigo-300 hover:text-white transition-all flex flex-col justify-between items-start gap-2 text-left group"
+                            className="p-3 rounded-xl border border-dashed border-brand-gold/40 hover:border-brand-gold hover:bg-brand-petrol/30 text-brand-gold hover:text-white transition-all flex flex-col justify-between items-start gap-2 text-left group"
                           >
-                            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <div className="w-8 h-8 rounded-lg bg-brand-gold/20 border border-brand-gold/30 text-brand-gold flex items-center justify-center group-hover:scale-105 transition-transform">
                               <Plus className="w-4 h-4" />
                             </div>
                             <div>
                               <span className="text-xs font-semibold block leading-tight text-white">
                                 + Criar Caixinha
                               </span>
-                              <span className="text-[10px] text-indigo-300/70 block mt-0.5">
+                              <span className="text-[10px] text-brand-gold/70 block mt-0.5">
                                 Ex: Viagem a Paris
                               </span>
                             </div>
@@ -431,10 +431,10 @@ export const Onboarding: React.FC = () => {
 
                       {/* Inline Custom Caixinha Creator Card */}
                       {isCreatingCustom && (
-                        <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 text-slate-200 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-4 rounded-2xl bg-brand-petrol/30 border border-brand-gold/40 text-slate-200 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <Sparkles className="w-4 h-4 text-pink-400" />
+                              <Sparkles className="w-4 h-4 text-brand-gold" />
                               <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                                 Nova Caixinha Personalizada
                               </h4>
@@ -457,7 +457,7 @@ export const Onboarding: React.FC = () => {
                                 placeholder="Ex: Viagem a Paris, Casamento, Reforma..."
                                 value={customName}
                                 onChange={(e) => setCustomName(e.target.value)}
-                                className="h-9 bg-slate-900 border-slate-700 text-white text-xs placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                                className="h-9 bg-slate-900 border-slate-700 text-white text-xs placeholder:text-slate-500 focus-visible:ring-brand-petrol"
                                 autoFocus
                               />
                             </div>
@@ -476,7 +476,7 @@ export const Onboarding: React.FC = () => {
                                     setCustomInitialCap(maskCurrencyInput(e.target.value))
                                   }
                                   placeholder="1.500,00"
-                                  className="h-9 pl-8 bg-slate-900 border-slate-700 text-white text-xs font-semibold tabular-nums focus-visible:ring-indigo-500"
+                                  className="h-9 pl-8 bg-slate-900 border-slate-700 text-white text-xs font-semibold tabular-nums focus-visible:ring-brand-petrol"
                                 />
                               </div>
                             </div>
@@ -499,7 +499,7 @@ export const Onboarding: React.FC = () => {
                                     title={iconOpt.label}
                                     className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
                                       isSelected
-                                        ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                                        ? 'bg-brand-petrol text-white ring-2 ring-brand-gold'
                                         : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                     }`}
                                   >
@@ -536,7 +536,7 @@ export const Onboarding: React.FC = () => {
                               onClick={handleCreateCustomCaixinha}
                               disabled={creatingLoading || !customName.trim()}
                               size="sm"
-                              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-8 px-4 shadow"
+                              className="bg-brand-petrol hover:bg-brand-petrol-dark text-white text-xs h-8 px-4 shadow"
                             >
                               {creatingLoading ? (
                                 <>
@@ -570,7 +570,7 @@ export const Onboarding: React.FC = () => {
                       <Button
                         type="button"
                         onClick={handleProceedToStep2}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/30 w-full sm:w-auto px-6 text-sm"
+                        className="bg-brand-petrol hover:bg-brand-petrol-dark text-white font-medium shadow-md shadow-brand-petrol/30 w-full sm:w-auto px-6 text-sm"
                       >
                         Continuar para os tetos
                         <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -584,7 +584,7 @@ export const Onboarding: React.FC = () => {
                   <div className="space-y-6 animate-in fade-in duration-300">
                     {/* Conversational Bubble */}
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/30 mt-1">
+                      <div className="w-10 h-10 rounded-2xl bg-brand-gold text-[#1E4A5A] flex items-center justify-center shrink-0 shadow-lg shadow-brand-gold/30 mt-1">
                         <Bot className="w-5 h-5" />
                       </div>
                       <div className="space-y-1.5 bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl rounded-tl-sm text-sm text-slate-200 leading-relaxed shadow-sm">
@@ -621,7 +621,7 @@ export const Onboarding: React.FC = () => {
                                 <div className="flex items-center gap-2">
                                   <h4 className="text-xs font-semibold text-white">{cat.name}</h4>
                                   {!DEFAULT_AMOUNT_SUGGESTIONS[cat.name] && (
-                                    <span className="text-[10px] bg-pink-500/20 text-pink-300 px-1.5 py-0.2 rounded border border-pink-500/30 font-medium">
+                                    <span className="text-[10px] bg-brand-terracotta/20 text-brand-terracotta px-1.5 py-0.2 rounded border border-brand-terracotta/30 font-medium">
                                       Personalizada
                                     </span>
                                   )}
@@ -639,7 +639,7 @@ export const Onboarding: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => handleApplySuggestion(cat.id, suggestion)}
-                                  className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline px-2 py-1 rounded bg-indigo-950/40 border border-indigo-900/60"
+                                  className="text-[11px] text-brand-gold hover:brightness-110 hover:underline px-2 py-1 rounded bg-brand-petrol/40 border border-brand-gold/30"
                                   title="Aplicar valor sugerido"
                                 >
                                   Usar R$ {suggestion}
@@ -654,7 +654,7 @@ export const Onboarding: React.FC = () => {
                                   value={currentVal}
                                   onChange={(e) => handleAmountChange(cat.id, e.target.value)}
                                   placeholder="0,00"
-                                  className="pl-9 h-9 bg-slate-900 border-slate-700 text-white font-semibold text-sm tabular-nums text-right focus-visible:ring-indigo-500"
+                                  className="pl-9 h-9 bg-slate-900 border-slate-700 text-white font-semibold text-sm tabular-nums text-right focus-visible:ring-brand-petrol"
                                 />
                               </div>
                             </div>
@@ -668,7 +668,7 @@ export const Onboarding: React.FC = () => {
                       <span className="text-slate-400">
                         Total planejado nas caixinhas ({formatMonthName(currentMonth)}):
                       </span>
-                      <span className="text-sm font-bold text-indigo-400 tabular-nums">
+                      <span className="text-sm font-bold text-brand-gold tabular-nums">
                         {formatCurrency(totalMonthlyCap)}
                       </span>
                     </div>
@@ -690,7 +690,7 @@ export const Onboarding: React.FC = () => {
                         type="button"
                         onClick={handleProceedToStep3}
                         disabled={saving}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/30 w-full sm:w-auto px-6 text-sm"
+                        className="bg-brand-petrol hover:bg-brand-petrol-dark text-white font-medium shadow-md shadow-brand-petrol/30 w-full sm:w-auto px-6 text-sm"
                       >
                         {saving ? (
                           <>
@@ -738,7 +738,7 @@ export const Onboarding: React.FC = () => {
                         <span className="font-semibold text-slate-300">
                           {selectedCategoriesList.length} caixinhas ativas
                         </span>
-                        <span className="text-indigo-400 font-bold tabular-nums">
+                        <span className="text-brand-gold font-bold tabular-nums">
                           Teto total: {formatCurrency(totalMonthlyCap)}
                         </span>
                       </div>
@@ -764,7 +764,7 @@ export const Onboarding: React.FC = () => {
                         type="button"
                         onClick={handleFinish}
                         disabled={saving}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-lg shadow-indigo-600/30 px-8 py-2.5 text-base w-full sm:w-auto"
+                        className="bg-brand-petrol hover:bg-brand-petrol-dark text-white font-medium shadow-lg shadow-brand-petrol/30 px-8 py-2.5 text-base w-full sm:w-auto"
                       >
                         {saving ? (
                           <>

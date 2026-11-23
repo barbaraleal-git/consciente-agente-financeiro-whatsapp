@@ -74,7 +74,7 @@ export const NotificationsPopover: React.FC = () => {
               variant="ghost"
               size="sm"
               onClick={handleMarkAllRead}
-              className="text-xs text-indigo-600 hover:text-indigo-700 h-7 px-2"
+              className="text-xs text-brand-petrol hover:text-brand-petrol-dark h-7 px-2"
             >
               <CheckCheck className="w-3.5 h-3.5 mr-1" />
               Marcar lidos
@@ -94,14 +94,14 @@ export const NotificationsPopover: React.FC = () => {
                   key={alert.id}
                   onClick={() => !alert.read && handleMarkSingleRead(alert.id)}
                   className={`p-3 text-xs transition-colors cursor-pointer hover:bg-slate-50 flex items-start gap-2.5 ${
-                    !alert.read ? 'bg-indigo-50/40' : ''
+                    !alert.read ? 'bg-brand-cream/60' : ''
                   }`}
                 >
                   <div className="mt-0.5 shrink-0">
                     {alert.type === 'budget' || alert.type === 'warning' ? (
                       <AlertTriangle className="w-4 h-4 text-amber-500" />
                     ) : (
-                      <Info className="w-4 h-4 text-indigo-500" />
+                      <Info className="w-4 h-4 text-brand-petrol" />
                     )}
                   </div>
                   <div className="flex-1 space-y-0.5">
@@ -121,7 +121,7 @@ export const NotificationsPopover: React.FC = () => {
                     </p>
                   </div>
                   {!alert.read && (
-                    <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1" />
+                    <span className="w-2 h-2 rounded-full bg-brand-gold shrink-0 mt-1" />
                   )}
                 </div>
               ))}

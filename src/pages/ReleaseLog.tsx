@@ -783,7 +783,7 @@ export const ReleaseLog: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-600/20">
+              <span className="p-2 bg-brand-petrol text-white rounded-xl shadow-md shadow-brand-petrol/20">
                 <Sparkles className="w-5 h-5" />
               </span>
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -806,20 +806,20 @@ export const ReleaseLog: React.FC = () => {
         </div>
 
         {/* Info Banner */}
-        <Card className="border-indigo-100 bg-indigo-50/60 shadow-sm">
+        <Card className="border-brand-gold bg-brand-cream/60 shadow-sm">
           <CardContent className="p-4 flex items-start gap-3">
-            <BookOpen className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-indigo-900 space-y-1">
+            <BookOpen className="w-5 h-5 text-brand-petrol shrink-0 mt-0.5" />
+            <div className="text-xs text-brand-navy space-y-1">
               <p className="font-semibold">
                 Compromisso com a Estabilidade e Documentação do Produto
               </p>
-              <p className="leading-relaxed text-indigo-800">
+              <p className="leading-relaxed text-brand-petrol-dark">
                 Todas as alterações sistêmicas seguem a documentação técnica central em{' '}
-                <code className="px-1 py-0.5 bg-indigo-100 rounded font-mono">
+                <code className="px-1 py-0.5 bg-white/70 rounded font-mono">
                   docs/ARQUITETURA.md
                 </code>{' '}
                 e o roteiro obrigatório em{' '}
-                <code className="px-1 py-0.5 bg-indigo-100 rounded font-mono">
+                <code className="px-1 py-0.5 bg-white/70 rounded font-mono">
                   docs/TESTES_REGRESSIVOS.md
                 </code>
                 , assegurando que nenhuma conquista alcançada seja perdida em novas atualizações.
@@ -835,7 +835,7 @@ export const ReleaseLog: React.FC = () => {
               <CardHeader className="bg-white border-b border-slate-100 pb-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-xs">
+                    <Badge className="bg-brand-petrol hover:bg-brand-petrol-dark text-white font-mono text-xs">
                       {rel.version}
                     </Badge>
                     <Badge variant="outline" className="text-xs font-normal border-slate-300">
@@ -873,7 +873,7 @@ export const ReleaseLog: React.FC = () => {
                   <ul className="space-y-1.5 text-xs text-slate-700">
                     {rel.highlights.map((h, i) => (
                       <li key={i} className="flex items-start gap-2">
-                        <span className="text-indigo-600 font-bold">•</span>
+                        <span className="text-brand-petrol font-bold">•</span>
                         <span>{h}</span>
                       </li>
                     ))}
@@ -908,10 +908,10 @@ export const ReleaseLog: React.FC = () => {
             <span>Infraestrutura validada com Meta Cloud API e PocketBase Cloud</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/settings" className="hover:text-indigo-600 underline">
+            <Link to="/settings" className="hover:text-brand-petrol underline">
               Minha Conta
             </Link>
-            <Link to="/onboarding" className="hover:text-indigo-600 underline">
+            <Link to="/onboarding" className="hover:text-brand-petrol underline">
               Onboarding
             </Link>
           </div>

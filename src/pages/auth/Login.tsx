@@ -13,8 +13,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Bot, Loader2, AlertCircle, ArrowRight, Eye } from 'lucide-react'
+import { Loader2, AlertCircle, ArrowRight, Eye } from 'lucide-react' // eslint-disable-line -- Eye/Closed usados abaixo
 import { EyeClosedIcon } from '@/components/icons/EyeClosedIcon'
+import { BrandLogoCard } from '@/components/brand/BrandLogo'
 
 export const Login: React.FC = () => {
   const { login, isAuthenticated, user, logout } = useAuth()
@@ -67,36 +68,25 @@ export const Login: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-cream via-[#FDFBF5] to-brand-cream p-4">
       <div className="w-full max-w-md">
-        {/* Header brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 mb-4 animate-in zoom-in duration-300">
-            <Bot className="w-8 h-8" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
-            Consciente
-            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
-              WhatsApp AI
-            </span>
-          </h1>
-          <p className="text-sm text-indigo-300 font-medium mt-1">
-            Consciente - Seu parceiro nas finanças
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Controle inteligente de custos e caixinhas em tempo real
-          </p>
+        {/* Header brand — logo completo oficial (balão+sol, nome e tagline) */}
+        <div className="flex justify-center mb-8 animate-in zoom-in duration-300">
+          <BrandLogoCard title="Consciente — Seu Parceiro nas Finanças" />
         </div>
+        <p className="text-center text-xs text-slate-500 -mt-4 mb-8">
+          Controle inteligente de custos e caixinhas em tempo real
+        </p>
 
         {isAuthenticated && user && (
-          <div className="mb-4 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/50 backdrop-blur-md text-slate-200">
+          <div className="mb-4 p-4 rounded-xl border border-brand-petrol/30 bg-brand-petrol/5 backdrop-blur-md text-slate-800">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs text-slate-400">Sessão já conectada neste navegador:</p>
-                <p className="text-sm font-semibold text-white truncate">
+                <p className="text-xs text-slate-500">Sessão já conectada neste navegador:</p>
+                <p className="text-sm font-semibold text-brand-petrol-dark truncate">
                   {user.name || user.email}
                 </p>
-                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                <p className="text-xs text-slate-500 truncate">{user.email}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Button
@@ -104,7 +94,7 @@ export const Login: React.FC = () => {
                   size="sm"
                   variant="outline"
                   onClick={handleSwitchAccount}
-                  className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs h-8"
+                  className="border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs h-8"
                 >
                   Sair / Trocar
                 </Button>
@@ -112,7 +102,7 @@ export const Login: React.FC = () => {
                   type="button"
                   size="sm"
                   onClick={handleContinueAsActiveUser}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-8"
+                  className="bg-brand-petrol hover:bg-brand-petrol-dark text-white text-xs h-8"
                 >
                   Continuar
                 </Button>
@@ -121,20 +111,19 @@ export const Login: React.FC = () => {
           </div>
         )}
 
-        <Card className="border-slate-800 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-md">
+        <Card className="border-brand-cream bg-white/95 text-slate-800 shadow-2xl backdrop-blur-md">
           <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-xl font-semibold text-white">Bem-vindo de volta</CardTitle>
-            <CardDescription className="text-slate-400">
+            <CardTitle className="text-xl font-semibold text-brand-petrol-dark">
+              Bem-vindo de volta
+            </CardTitle>
+            <CardDescription className="text-slate-500">
               Acesse sua conta para continuar gerenciando seus custos
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             {error && (
-              <Alert
-                variant="destructive"
-                className="mb-4 bg-red-950/60 border-red-800 text-red-200"
-              >
+              <Alert variant="destructive" className="mb-4 bg-red-50 border-red-200 text-red-800">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
@@ -154,7 +143,7 @@ export const Login: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onBlur={() => setEmailTouched(true)}
-                  className={`bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 ${
+                  className={`bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-brand-petrol ${
                     emailTouched && !isEmailValid ? 'border-red-500' : ''
                   }`}
                   disabled={isLoading}
@@ -171,7 +160,7 @@ export const Login: React.FC = () => {
                   </Label>
                   <Link
                     to="/forgot-password"
-                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                    className="text-xs text-brand-petrol hover:text-brand-petrol-dark hover:underline transition-colors"
                   >
                     Esqueci minha senha
                   </Link>
@@ -186,7 +175,7 @@ export const Login: React.FC = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onBlur={() => setPassTouched(true)}
-                    className={`bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 pr-10 ${
+                    className={`bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-brand-petrol pr-10 ${
                       passTouched && !isPassValid ? 'border-red-500' : ''
                     }`}
                     disabled={isLoading}
@@ -194,7 +183,7 @@ export const Login: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-r-md flex items-center justify-center"
+                    className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-petrol rounded-r-md flex items-center justify-center"
                     tabIndex={-1}
                     aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                   >
@@ -213,7 +202,7 @@ export const Login: React.FC = () => {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/30 transition-all hover:scale-[1.01] active:scale-[0.99] mt-2"
+                className="w-full bg-brand-petrol hover:bg-brand-petrol-dark text-white font-medium shadow-md shadow-brand-petrol/30 transition-all hover:scale-[1.01] active:scale-[0.99] mt-2"
               >
                 {isLoading ? (
                   <>
@@ -230,12 +219,12 @@ export const Login: React.FC = () => {
             </form>
           </CardContent>
 
-          <CardFooter className="pt-0 flex justify-center border-t border-slate-800/80 py-4">
-            <p className="text-sm text-slate-400">
+          <CardFooter className="pt-0 flex justify-center border-t border-brand-cream py-4">
+            <p className="text-sm text-slate-500">
               Não tem conta?{' '}
               <Link
                 to="/register"
-                className="font-medium text-indigo-400 hover:text-indigo-300 underline underline-offset-4"
+                className="font-medium text-brand-petrol hover:text-brand-petrol-dark underline underline-offset-4"
               >
                 Cadastre-se gratuitamente
               </Link>

@@ -238,7 +238,7 @@ export const AdminBackoffice: React.FC = () => {
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-        <ShieldAlert className="w-16 h-16 text-rose-500 mb-4" />
+        <ShieldAlert className="w-16 h-16 text-brand-terracotta mb-4" />
         <h1 className="text-2xl font-bold text-slate-800">Acesso Restrito</h1>
         <p className="text-slate-600 max-w-md mt-2">
           Esta área é restrita a administradores do Consciente. Se você acredita que deveria ter
@@ -255,7 +255,10 @@ export const AdminBackoffice: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-bold text-slate-900">Backoffice Administrativo</h1>
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+            <Badge
+              variant="outline"
+              className="bg-brand-petrol/10 text-brand-petrol border-brand-petrol/30"
+            >
               Admin
             </Badge>
           </div>
@@ -268,10 +271,10 @@ export const AdminBackoffice: React.FC = () => {
           <Button
             asChild
             variant="outline"
-            className="flex items-center gap-2 bg-white text-indigo-700 hover:text-indigo-800 border-indigo-200"
+            className="flex items-center gap-2 bg-white text-brand-petrol hover:text-brand-petrol-dark border-brand-petrol/30"
           >
             <a href="/admin/docs">
-              <BookOpen className="w-4 h-4 text-indigo-600" />
+              <BookOpen className="w-4 h-4 text-brand-petrol" />
               Documentação do Sistema
             </a>
           </Button>
@@ -293,7 +296,7 @@ export const AdminBackoffice: React.FC = () => {
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-slate-600">Total de Clientes</CardTitle>
-            <Users className="w-4 h-4 text-emerald-600" />
+            <Users className="w-4 h-4 text-brand-petrol" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-900">
@@ -308,7 +311,7 @@ export const AdminBackoffice: React.FC = () => {
             <CardTitle className="text-sm font-medium text-slate-600">
               Clientes Ativos (7d / 30d)
             </CardTitle>
-            <Activity className="w-4 h-4 text-sky-600" />
+            <Activity className="w-4 h-4 text-brand-gold" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-900">
@@ -323,7 +326,7 @@ export const AdminBackoffice: React.FC = () => {
             <CardTitle className="text-sm font-medium text-slate-600">
               Total de Transações
             </CardTitle>
-            <CreditCard className="w-4 h-4 text-indigo-600" />
+            <CreditCard className="w-4 h-4 text-brand-petrol" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-900">
@@ -336,7 +339,7 @@ export const AdminBackoffice: React.FC = () => {
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-slate-600">Conversas WhatsApp</CardTitle>
-            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <MessageSquare className="w-4 h-4 text-brand-terracotta" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-900">
@@ -351,7 +354,7 @@ export const AdminBackoffice: React.FC = () => {
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-indigo-600" />
+            <CreditCard className="w-5 h-5 text-brand-petrol" />
             Assinaturas & Billing
           </CardTitle>
           <CardDescription className="text-sm text-slate-500">
@@ -365,8 +368,8 @@ export const AdminBackoffice: React.FC = () => {
       </Card>
 
       {/* Card Principal: Custo Operacional Mensal Acumulado por Cliente (Item 9) */}
-      <Card className="border-indigo-100 bg-white shadow-sm overflow-hidden">
-        <CardHeader className="p-4 sm:p-6 bg-gradient-to-r from-slate-900 to-indigo-950 text-white">
+      <Card className="border-brand-petrol/20 bg-white shadow-sm overflow-hidden">
+        <CardHeader className="p-4 sm:p-6 bg-gradient-to-r from-[#1E4A5A] to-brand-petrol text-white">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -431,13 +434,13 @@ export const AdminBackoffice: React.FC = () => {
 
             <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
               <span className="text-xs text-slate-500 block font-medium flex items-center gap-1">
-                <Bot className="w-3.5 h-3.5 text-indigo-500" />
+                <Bot className="w-3.5 h-3.5 text-brand-gold" />
                 Respostas de IA (R$ 0,02)
               </span>
               <div className="text-2xl font-bold text-slate-900 mt-0.5">
                 {costsData ? costsData.totals.total_ai_messages : 0}
               </div>
-              <span className="text-[11px] text-indigo-600 font-medium block mt-0.5">
+              <span className="text-[11px] text-brand-petrol font-medium block mt-0.5">
                 R${' '}
                 {costsData ? costsData.totals.cost_ai_brl.toFixed(4).replace('.', ',') : '0,0000'}
               </span>
@@ -445,13 +448,13 @@ export const AdminBackoffice: React.FC = () => {
 
             <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
               <span className="text-xs text-slate-500 block font-medium flex items-center gap-1">
-                <Mic className="w-3.5 h-3.5 text-purple-500" />
+                <Mic className="w-3.5 h-3.5 text-brand-terracotta" />
                 Áudios Transcritos (R$ 0,001)
               </span>
               <div className="text-2xl font-bold text-slate-900 mt-0.5">
                 {costsData ? costsData.totals.total_audio_tx : 0}
               </div>
-              <span className="text-[11px] text-purple-600 font-medium block mt-0.5">
+              <span className="text-[11px] text-brand-terracotta font-medium block mt-0.5">
                 R${' '}
                 {costsData
                   ? costsData.totals.cost_audio_brl.toFixed(4).replace('.', ',')
@@ -587,7 +590,7 @@ export const AdminBackoffice: React.FC = () => {
                             </span>
                           </div>
                           {c.tx_audio_count > 0 && (
-                            <div className="text-[11px] text-purple-600">
+                            <div className="text-[11px] text-brand-terracotta">
                               Áudio: R$ {c.cost_audio_brl.toFixed(4).replace('.', ',')}
                             </div>
                           )}
@@ -596,7 +599,7 @@ export const AdminBackoffice: React.FC = () => {
                           <div className="font-semibold text-slate-900 text-xs">
                             {c.ai_messages_count}
                           </div>
-                          <div className="text-[11px] text-indigo-600">
+                          <div className="text-[11px] text-brand-petrol">
                             R$ {c.cost_ai_brl.toFixed(4).replace('.', ',')}
                           </div>
                         </TableCell>

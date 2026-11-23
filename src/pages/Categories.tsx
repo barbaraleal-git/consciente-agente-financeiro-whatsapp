@@ -195,7 +195,10 @@ export const Categories: React.FC = () => {
             Gerencie as categorias de despesas, receitas e aportes financeiros
           </p>
         </div>
-        <Button onClick={handleOpenCreate} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+        <Button
+          onClick={handleOpenCreate}
+          className="bg-brand-petrol hover:bg-brand-petrol-dark text-white"
+        >
           <Plus className="w-4 h-4 mr-1.5" />
           Nova Categoria
         </Button>
@@ -252,7 +255,7 @@ export const Categories: React.FC = () => {
                     variant="ghost"
                     size="icon"
                     onClick={() => handleOpenEdit(cat)}
-                    className="h-8 w-8 text-slate-500 hover:text-indigo-600"
+                    className="h-8 w-8 text-slate-500 hover:text-brand-petrol"
                     title="Editar"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -307,7 +310,7 @@ export const Categories: React.FC = () => {
                     onClick={() => setType(t)}
                     className={`py-2 text-xs font-semibold rounded-lg capitalize border transition-all ${
                       type === t
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        ? 'bg-brand-petrol text-white border-brand-petrol shadow-sm'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
@@ -335,7 +338,7 @@ export const Categories: React.FC = () => {
                     onClick={() => setCatIconTab('geral')}
                     className={`px-2 py-0.5 rounded transition-all font-medium ${
                       catIconTab === 'geral'
-                        ? 'bg-white text-indigo-700 shadow-xs'
+                        ? 'bg-white text-brand-petrol shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -346,7 +349,7 @@ export const Categories: React.FC = () => {
                     onClick={() => setCatIconTab('emoji')}
                     className={`px-2 py-0.5 rounded transition-all font-medium ${
                       catIconTab === 'emoji'
-                        ? 'bg-white text-indigo-700 shadow-xs'
+                        ? 'bg-white text-brand-petrol shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -357,7 +360,7 @@ export const Categories: React.FC = () => {
                     onClick={() => setCatIconTab('bichinho')}
                     className={`px-2 py-0.5 rounded transition-all font-medium ${
                       catIconTab === 'bichinho'
-                        ? 'bg-white text-indigo-700 shadow-xs'
+                        ? 'bg-white text-brand-petrol shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -382,7 +385,7 @@ export const Categories: React.FC = () => {
                       title={opt.label}
                       className={`p-2 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${
                         isSelected
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-600/20 scale-105'
+                          ? 'border-brand-petrol bg-brand-petrol/10 text-brand-petrol ring-2 ring-brand-petrol/20 scale-105'
                           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                       }`}
                     >
@@ -409,7 +412,7 @@ export const Categories: React.FC = () => {
                     style={{ backgroundColor: hex }}
                     className={`w-7 h-7 rounded-full transition-transform ${
                       color === hex
-                        ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
+                        ? 'ring-2 ring-offset-2 ring-brand-petrol scale-110'
                         : 'hover:scale-105'
                     }`}
                   />
@@ -429,7 +432,7 @@ export const Categories: React.FC = () => {
               <Button
                 type="submit"
                 disabled={saving}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="bg-brand-petrol hover:bg-brand-petrol-dark text-white"
               >
                 {saving ? 'Salvando...' : 'Salvar Categoria'}
               </Button>

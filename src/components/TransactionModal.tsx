@@ -305,7 +305,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               }}
               className={`py-1.5 text-xs font-semibold rounded-md transition-all ${
                 type === 'receita'
-                  ? 'bg-emerald-600 text-white shadow-sm'
+                  ? 'bg-brand-petrol text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -320,7 +320,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               }}
               className={`py-1.5 text-xs font-semibold rounded-md transition-all ${
                 type === 'investimento'
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                  ? 'bg-brand-gold text-[#1E4A5A] shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -415,7 +415,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   {candidateBudgets.length > 1 ? (
                     <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                   ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-brand-petrol" />
                   )}
                   Caixinha do Gasto {candidateBudgets.length > 1 && '*'}
                 </Label>
@@ -487,7 +487,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                                 {renderCaixinhaIcon(bIcon, 'w-3 h-3 text-xs')}
                               </span>
                               <span className="font-medium text-slate-900">{bName}</span>
-                              <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 px-1 py-0.2 rounded ml-auto">
+                              <span className="text-[10px] text-brand-petrol font-semibold bg-brand-petrol/10 px-1 py-0.2 rounded ml-auto">
                                 Vinculada
                               </span>
                             </div>
@@ -563,10 +563,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               disabled={loading || (type === 'despesa' && candidateBudgets.length > 1 && !budgetId)}
               className={
                 type === 'despesa'
-                  ? 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-300'
+                  ? 'bg-brand-terracotta hover:brightness-95 text-white disabled:opacity-60'
                   : type === 'receita'
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    ? 'bg-brand-petrol hover:bg-brand-petrol-dark text-white'
+                    : 'bg-brand-gold hover:brightness-95 text-[#1E4A5A]'
               }
             >
               {loading ? (

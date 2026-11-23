@@ -79,7 +79,7 @@ const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; icon: R
     },
     trial: {
       label: 'Trial',
-      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      badgeClass: 'bg-brand-gold/20 text-brand-petrol-dark border-brand-gold',
       icon: <Sparkles className="w-3 h-3 mr-1" />,
     },
     carencia: {
@@ -539,7 +539,7 @@ export const BillingAdminSection: React.FC = () => {
             onClick={() => setAdminTab(key)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               adminTab === key
-                ? 'bg-indigo-600 text-white shadow-sm'
+                ? 'bg-brand-petrol text-white shadow-sm'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -554,7 +554,7 @@ export const BillingAdminSection: React.FC = () => {
         <div className="space-y-3">
           {subsLoading ? (
             <div className="flex items-center justify-center py-10 gap-2 text-sm text-slate-500">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+              <Loader2 className="w-5 h-5 animate-spin text-brand-petrol" />
               Carregando assinaturas...
             </div>
           ) : !subsData ? (
@@ -585,7 +585,7 @@ export const BillingAdminSection: React.FC = () => {
                 <Card className="border-slate-200">
                   <CardContent className="p-3">
                     <p className="text-[11px] font-medium text-slate-500">MRR aproximado</p>
-                    <p className="text-lg font-bold text-indigo-700">
+                    <p className="text-lg font-bold text-brand-petrol">
                       {formatCurrency(statusMetrics?.mrr_cents ?? 0)}
                     </p>
                   </CardContent>
@@ -604,7 +604,7 @@ export const BillingAdminSection: React.FC = () => {
                 <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Ativas: {statusMetrics?.active ?? 0}
                 </Badge>
-                <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <Badge className="bg-brand-gold/20 text-brand-petrol-dark border border-brand-gold">
                   Trial: {statusMetrics?.trial ?? 0}
                 </Badge>
                 <Badge className="bg-amber-50 text-amber-700 border border-amber-200">
@@ -722,7 +722,7 @@ export const BillingAdminSection: React.FC = () => {
         <div className="space-y-3">
           {plansLoading ? (
             <div className="flex items-center justify-center py-10 gap-2 text-sm text-slate-500">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+              <Loader2 className="w-5 h-5 animate-spin text-brand-petrol" />
               Carregando planos...
             </div>
           ) : (
@@ -973,7 +973,7 @@ export const BillingAdminSection: React.FC = () => {
                                         ? 'Defina a vigência e ative para publicar aos clientes'
                                         : undefined
                                   }
-                                  className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                                  className="h-8 text-xs bg-brand-petrol hover:bg-brand-petrol-dark text-white"
                                 >
                                   {savingPlanId === p.id ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
@@ -1006,7 +1006,7 @@ export const BillingAdminSection: React.FC = () => {
                   </DialogHeader>
                   {historyLoading ? (
                     <div className="flex items-center justify-center py-8 gap-2 text-sm text-slate-500">
-                      <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                      <Loader2 className="w-5 h-5 animate-spin text-brand-petrol" />
                       Carregando histórico...
                     </div>
                   ) : historyRows.length === 0 ? (
@@ -1095,7 +1095,7 @@ export const BillingAdminSection: React.FC = () => {
 
           {stripeLoading ? (
             <div className="flex items-center justify-center py-10 gap-2 text-sm text-slate-500">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+              <Loader2 className="w-5 h-5 animate-spin text-brand-petrol" />
               Carregando dados da Stripe...
             </div>
           ) : (
@@ -1109,7 +1109,7 @@ export const BillingAdminSection: React.FC = () => {
                     </span>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Cadastre esta URL no seu painel da Stripe (
-                      <code className="text-indigo-600">Developers &gt; Webhooks</code>) escutando
+                      <code className="text-brand-petrol">Developers &gt; Webhooks</code>) escutando
                       os eventos:
                       <span className="font-mono text-[11px] text-slate-700 block mt-1">
                         checkout.session.completed, invoice.payment_succeeded,
@@ -1285,7 +1285,7 @@ export const BillingAdminSection: React.FC = () => {
                 <Button
                   onClick={handleSaveStripeConfig}
                   disabled={savingStripe}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm w-full sm:w-auto"
+                  className="bg-brand-petrol hover:bg-brand-petrol-dark text-white text-xs sm:text-sm w-full sm:w-auto"
                 >
                   {savingStripe ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
@@ -1426,7 +1426,7 @@ export const BillingAdminSection: React.FC = () => {
                 <Button
                   onClick={handleSaveLegal}
                   disabled={savingLegal}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm"
+                  className="bg-brand-petrol hover:bg-brand-petrol-dark text-white text-xs sm:text-sm"
                 >
                   {savingLegal ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-1.5" />

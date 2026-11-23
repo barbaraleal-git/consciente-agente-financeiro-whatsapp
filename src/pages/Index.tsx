@@ -10,7 +10,7 @@ export const Index: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-brand-petrol animate-spin" />
       </div>
     )
   }

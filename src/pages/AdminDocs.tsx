@@ -22,12 +22,12 @@ export const AdminDocs: React.FC = () => {
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-        <ShieldAlert className="w-16 h-16 text-rose-500 mb-4" />
+        <ShieldAlert className="w-16 h-16 text-brand-terracotta mb-4" />
         <h1 className="text-2xl font-bold text-slate-800">Acesso Restrito</h1>
         <p className="text-slate-600 max-w-md mt-2">
           Esta documentação técnica é restrita a administradores do Consciente.
         </p>
-        <Button asChild className="mt-4 bg-indigo-600 hover:bg-indigo-700">
+        <Button asChild className="mt-4 bg-brand-petrol hover:bg-brand-petrol-dark">
           <Link to="/">Voltar ao Início</Link>
         </Button>
       </div>
@@ -52,7 +52,10 @@ export const AdminDocs: React.FC = () => {
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
               Documentação do Sistema
             </h1>
-            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">
+            <Badge
+              variant="outline"
+              className="bg-brand-petrol/10 text-brand-petrol border-brand-petrol/30"
+            >
               Admin
             </Badge>
           </div>
@@ -72,21 +75,21 @@ export const AdminDocs: React.FC = () => {
         <TabsList className="grid grid-cols-3 max-w-lg bg-slate-200/80 p-1">
           <TabsTrigger
             value="backlog"
-            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700"
+            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-brand-petrol"
           >
             <ListTodo className="w-4 h-4" />
             Backlog / Pendências
           </TabsTrigger>
           <TabsTrigger
             value="arquitetura"
-            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700"
+            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-brand-petrol"
           >
             <FileText className="w-4 h-4" />
             Arquitetura Técnica
           </TabsTrigger>
           <TabsTrigger
             value="testes"
-            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700"
+            className="flex items-center gap-2 text-xs sm:text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-brand-petrol"
           >
             <CheckSquare className="w-4 h-4" />
             Testes Regressivos
@@ -97,7 +100,7 @@ export const AdminDocs: React.FC = () => {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader className="bg-slate-50/60 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
-                <ListTodo className="w-5 h-5 text-indigo-600" />
+                <ListTodo className="w-5 h-5 text-brand-petrol" />
                 <CardTitle className="text-lg font-bold text-slate-900">
                   BACKLOG.md — Backlog / Pendências
                 </CardTitle>
@@ -117,7 +120,7 @@ export const AdminDocs: React.FC = () => {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader className="bg-slate-50/60 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-600" />
+                <BookOpen className="w-5 h-5 text-brand-petrol" />
                 <CardTitle className="text-lg font-bold text-slate-900">ARQUITETURA.md</CardTitle>
               </div>
               <CardDescription className="text-xs text-slate-500">
@@ -135,7 +138,7 @@ export const AdminDocs: React.FC = () => {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader className="bg-slate-50/60 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-emerald-600" />
+                <CheckSquare className="w-5 h-5 text-brand-petrol" />
                 <CardTitle className="text-lg font-bold text-slate-900">
                   TESTES_REGRESSIVOS.md
                 </CardTitle>

@@ -370,7 +370,7 @@ export const Budgets: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <PiggyBank className="w-6 h-6 text-indigo-600" />
+            <PiggyBank className="w-6 h-6 text-brand-petrol" />
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Caixinhas & Metas</h1>
           </div>
           <p className="text-sm text-slate-500">
@@ -387,7 +387,7 @@ export const Budgets: React.FC = () => {
           />
           <Button
             onClick={handleOpenCreate}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="bg-brand-petrol hover:bg-brand-petrol-dark text-white"
           >
             <Plus className="w-4 h-4 mr-1.5" />
             Nova Caixinha
@@ -442,7 +442,7 @@ export const Budgets: React.FC = () => {
       <Card className="border-slate-200">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-indigo-600" />
+            <BarChart2 className="w-4 h-4 text-brand-petrol" />
             Comparativo Teto vs. Realizado ({formatMonthName(selectedMonth)})
           </CardTitle>
           <CardDescription className="text-xs text-slate-500">
@@ -456,7 +456,7 @@ export const Budgets: React.FC = () => {
               Nenhuma caixinha cadastrada para este mês.{' '}
               <button
                 onClick={handleOpenCreate}
-                className="text-indigo-600 hover:underline font-medium"
+                className="text-brand-petrol hover:underline font-medium"
               >
                 Clique aqui para definir um teto.
               </button>
@@ -493,10 +493,10 @@ export const Budgets: React.FC = () => {
                         <span
                           className={`font-bold tabular-nums text-xs px-2 py-0.5 rounded-full ${
                             item.percentage >= 90
-                              ? 'bg-red-100 text-red-700'
+                              ? 'bg-brand-terracotta/15 text-brand-terracotta'
                               : item.percentage >= 70
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-emerald-100 text-emerald-700'
+                                ? 'bg-brand-gold/20 text-[#B8892B]'
+                                : 'bg-brand-petrol/10 text-brand-petrol'
                           }`}
                         >
                           {item.percentage}%
@@ -509,10 +509,10 @@ export const Budgets: React.FC = () => {
                       value={Math.min(item.percentage, 100)}
                       className={`h-2.5 ${
                         item.percentage >= 90
-                          ? '[&>div]:bg-red-500'
+                          ? '[&>div]:bg-brand-terracotta'
                           : item.percentage >= 70
-                            ? '[&>div]:bg-amber-500'
-                            : '[&>div]:bg-emerald-500'
+                            ? '[&>div]:bg-brand-gold'
+                            : '[&>div]:bg-brand-petrol'
                       }`}
                     />
 
@@ -526,7 +526,7 @@ export const Budgets: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleOpenEdit(item.budget)}
-                          className="text-indigo-600 hover:underline"
+                          className="text-brand-petrol hover:underline"
                         >
                           Editar
                         </button>
@@ -570,7 +570,7 @@ export const Budgets: React.FC = () => {
                                       {tx.description}
                                     </span>
                                     {tx.budget === item.budget.id && (
-                                      <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded shrink-0">
+                                      <span className="text-[9px] font-semibold text-brand-petrol bg-brand-petrol/10 px-1 py-0.2 rounded shrink-0">
                                         Fixada
                                       </span>
                                     )}
@@ -616,11 +616,11 @@ export const Budgets: React.FC = () => {
               onClick={() => setModalTab('geral')}
               className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
                 modalTab === 'geral'
-                  ? 'bg-white text-indigo-700 shadow-xs'
+                  ? 'bg-white text-brand-petrol shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <Sparkles className="w-3.5 h-3.5 text-brand-petrol" />
               Teto e Aparência
             </button>
             <button
@@ -628,14 +628,14 @@ export const Budgets: React.FC = () => {
               onClick={() => setModalTab('categorias')}
               className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
                 modalTab === 'categorias'
-                  ? 'bg-white text-indigo-700 shadow-xs'
+                  ? 'bg-white text-brand-petrol shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-pink-500" />
+              <Layers className="w-3.5 h-3.5 text-brand-terracotta" />
               Categorias Vinculadas
               {selectedLinkedCatNames.length > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 bg-indigo-100 text-indigo-700 rounded-full text-[10px]">
+                <span className="ml-1 px-1.5 py-0.2 bg-brand-gold/20 text-[#B8892B] rounded-full text-[10px]">
                   {selectedLinkedCatNames.length}
                 </span>
               )}
@@ -685,7 +685,7 @@ export const Budgets: React.FC = () => {
                           onClick={() => setIconTab('geral')}
                           className={`px-2 py-0.5 rounded transition-all font-medium ${
                             iconTab === 'geral'
-                              ? 'bg-white text-indigo-700 shadow-xs'
+                              ? 'bg-white text-brand-petrol shadow-xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
@@ -696,7 +696,7 @@ export const Budgets: React.FC = () => {
                           onClick={() => setIconTab('emoji')}
                           className={`px-2 py-0.5 rounded transition-all font-medium ${
                             iconTab === 'emoji'
-                              ? 'bg-white text-indigo-700 shadow-xs'
+                              ? 'bg-white text-brand-petrol shadow-xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
@@ -707,7 +707,7 @@ export const Budgets: React.FC = () => {
                           onClick={() => setIconTab('bichinho')}
                           className={`px-2 py-0.5 rounded transition-all font-medium ${
                             iconTab === 'bichinho'
-                              ? 'bg-white text-indigo-700 shadow-xs'
+                              ? 'bg-white text-brand-petrol shadow-xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
@@ -732,7 +732,7 @@ export const Budgets: React.FC = () => {
                             title={opt.label}
                             className={`p-1.5 rounded-lg flex items-center justify-center text-base transition-all ${
                               isSelected
-                                ? 'bg-indigo-600 text-white ring-2 ring-indigo-600/30 scale-105'
+                                ? 'bg-brand-petrol text-white ring-2 ring-brand-petrol/30 scale-105'
                                 : 'text-slate-700 hover:bg-slate-100'
                             }`}
                           >
@@ -759,7 +759,7 @@ export const Budgets: React.FC = () => {
                           style={{ backgroundColor: hex }}
                           className={`w-6 h-6 rounded-full transition-transform ${
                             customColor === hex
-                              ? 'ring-2 ring-offset-2 ring-indigo-600 scale-110'
+                              ? 'ring-2 ring-offset-2 ring-brand-petrol scale-110'
                               : 'hover:scale-105'
                           }`}
                         />
@@ -805,16 +805,16 @@ export const Budgets: React.FC = () => {
             ) : (
               /* Aba: Categorias Vinculadas */
               <div className="space-y-3">
-                <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-900 space-y-1">
+                <div className="p-3 bg-brand-cream/70 border border-brand-gold/30 rounded-xl text-xs text-[#1E4A5A] space-y-1">
                   <p className="font-semibold flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <Sparkles className="w-3.5 h-3.5 text-brand-petrol" />
                     Parametrização personalizada de gastos
                   </p>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
                     Marque quais categorias alimentam esta caixinha. Transações ativas de uma
                     categoria vinculada somam automaticamente no consumo desta caixinha.
                   </p>
-                  <p className="text-[11px] text-indigo-700 font-medium pt-0.5">
+                  <p className="text-[11px] text-brand-petrol font-medium pt-0.5">
                     💡 <strong>Flexibilidade total:</strong> uma mesma categoria (ex.:{' '}
                     <em>Alimentação Essencial</em>) pode ser vinculada a mais de uma caixinha (ex.:{' '}
                     <em>Alimentação VA</em> e <em>Alimentação VR</em>), somando em ambas conforme
@@ -840,7 +840,7 @@ export const Budgets: React.FC = () => {
                             key={cat.name}
                             className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
                               isChecked
-                                ? 'bg-indigo-50/60 border-indigo-200 text-indigo-950 font-medium'
+                                ? 'bg-brand-cream/70 border-brand-gold/40 text-[#1E4A5A] font-medium'
                                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                             }`}
                           >
@@ -849,7 +849,7 @@ export const Budgets: React.FC = () => {
                                 type="checkbox"
                                 checked={isChecked}
                                 onChange={() => handleToggleLinkedCategory(cat.name)}
-                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                className="w-4 h-4 rounded text-brand-petrol focus:ring-brand-petrol border-slate-300"
                               />
                               <div className="flex items-center gap-1.5">
                                 {cat.icon && (
@@ -865,7 +865,7 @@ export const Budgets: React.FC = () => {
                             </div>
 
                             {isChecked && (
-                              <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-700 font-semibold rounded">
+                              <span className="text-[10px] px-1.5 py-0.5 bg-brand-petrol/10 text-brand-petrol font-semibold rounded">
                                 Vinculada
                               </span>
                             )}
@@ -890,7 +890,7 @@ export const Budgets: React.FC = () => {
               <Button
                 type="submit"
                 disabled={saving}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="bg-brand-petrol hover:bg-brand-petrol-dark text-white"
               >
                 {saving ? 'Salvando...' : 'Salvar Caixinha'}
               </Button>

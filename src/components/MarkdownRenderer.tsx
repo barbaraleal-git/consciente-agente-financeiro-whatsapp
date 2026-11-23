@@ -161,7 +161,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
       elements.push(
         <blockquote
           key={`quote-${i}`}
-          className="my-3 pl-4 border-l-4 border-indigo-500 bg-indigo-50/50 p-2.5 rounded-r-lg text-sm text-slate-700 italic"
+          className="my-3 pl-4 border-l-4 border-brand-petrol bg-brand-petrol/5 p-2.5 rounded-r-lg text-sm text-slate-700 italic"
         >
           {quoteLines.map((ql, qidx) => (
             <p key={qidx}>{renderInline(ql)}</p>
@@ -265,7 +265,7 @@ function renderInline(text: string): React.ReactNode {
       parts.push(
         <code
           key={`code-${keyIdx++}`}
-          className="px-1.5 py-0.5 rounded-md bg-slate-100 text-indigo-700 font-mono text-[11px] border border-slate-200"
+          className="px-1.5 py-0.5 rounded-md bg-slate-100 text-brand-petrol font-mono text-[11px] border border-slate-200"
         >
           {first.match[2]}
         </code>,
@@ -287,7 +287,7 @@ function renderInline(text: string): React.ReactNode {
           href={first.match[3]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-indigo-600 hover:text-indigo-800 underline font-medium"
+          className="text-brand-petrol hover:text-brand-petrol-dark underline font-medium"
         >
           {first.match[2]}
         </a>,

@@ -15,10 +15,10 @@ import {
   Settings,
   LogOut,
   Plus,
-  Wallet,
   ShieldCheck,
   BookOpen,
 } from 'lucide-react'
+import { BrandMark } from '@/components/brand/BrandLogo'
 
 const baseNavItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -73,14 +73,12 @@ export const Layout: React.FC = () => {
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-100 border-r border-slate-800 shrink-0 select-none">
         {/* Brand */}
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30 shrink-0">
-            <Wallet className="w-5 h-5" />
-          </div>
+          <BrandMark className="w-10 h-10 rounded-xl" title="Logo Consciente" />
           <div className="min-w-0">
             <h1 className="font-bold text-base text-white tracking-tight leading-tight truncate">
               Consciente
             </h1>
-            <p className="text-[11px] text-indigo-300 font-medium truncate">
+            <p className="text-[11px] text-brand-gold font-medium truncate">
               Seu parceiro nas finanças
             </p>
           </div>
@@ -97,15 +95,15 @@ export const Layout: React.FC = () => {
                 to={item.path}
                 className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
+                    ? 'bg-brand-petrol text-white shadow-sm shadow-brand-petrol/20'
                     : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
                 }`}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-md" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-gold rounded-r-md" />
                 )}
                 <Icon
-                  className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-white' : 'text-slate-400'}`}
+                  className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-brand-gold' : 'text-slate-400'}`}
                 />
                 <span>{item.label}</span>
               </NavLink>
@@ -117,8 +115,8 @@ export const Layout: React.FC = () => {
         <div className="p-4 border-t border-slate-800 bg-slate-950/40">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
-              <Avatar className="w-9 h-9 border border-indigo-500/30 bg-indigo-950 text-indigo-300">
-                <AvatarFallback className="text-xs font-semibold bg-indigo-600 text-white">
+              <Avatar className="w-9 h-9 border border-brand-gold/30 bg-brand-petrol-dark text-brand-gold">
+                <AvatarFallback className="text-xs font-semibold bg-brand-petrol text-white">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -147,9 +145,9 @@ export const Layout: React.FC = () => {
         {/* Top Header */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16 px-4 sm:px-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {/* Mobile icon */}
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white md:hidden shadow-sm">
-              <Wallet className="w-4 h-4" />
+            {/* Mobile logo icon */}
+            <div className="md:hidden shrink-0">
+              <BrandMark className="w-9 h-9 rounded-lg" title="Logo Consciente" />
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 leading-tight">
@@ -166,7 +164,7 @@ export const Layout: React.FC = () => {
 
             <Button
               onClick={() => setModalOpen(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-600/30 text-xs sm:text-sm h-9 px-3 sm:px-4 font-medium transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              className="bg-brand-petrol hover:bg-brand-petrol-dark text-white shadow-sm shadow-brand-petrol/30 text-xs sm:text-sm h-9 px-3 sm:px-4 font-medium transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <Plus className="w-4 h-4 mr-1 sm:mr-1.5" />
               Novo Lançamento
@@ -186,7 +184,7 @@ export const Layout: React.FC = () => {
           to="/"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
-              isActive ? 'text-indigo-400 font-semibold' : 'text-slate-400'
+              isActive ? 'text-brand-gold font-semibold' : 'text-slate-400'
             }`
           }
         >
@@ -197,7 +195,7 @@ export const Layout: React.FC = () => {
           to="/transactions"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
-              isActive ? 'text-indigo-400 font-semibold' : 'text-slate-400'
+              isActive ? 'text-brand-gold font-semibold' : 'text-slate-400'
             }`
           }
         >
@@ -208,7 +206,7 @@ export const Layout: React.FC = () => {
           to="/assistant"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
-              isActive ? 'text-indigo-400 font-semibold' : 'text-slate-400'
+              isActive ? 'text-brand-gold font-semibold' : 'text-slate-400'
             }`
           }
         >
@@ -219,7 +217,7 @@ export const Layout: React.FC = () => {
           to="/reports"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
-              isActive ? 'text-indigo-400 font-semibold' : 'text-slate-400'
+              isActive ? 'text-brand-gold font-semibold' : 'text-slate-400'
             }`
           }
         >
@@ -230,7 +228,7 @@ export const Layout: React.FC = () => {
           to="/settings"
           className={({ isActive }) =>
             `flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-medium transition-colors ${
-              isActive ? 'text-indigo-400 font-semibold' : 'text-slate-400'
+              isActive ? 'text-brand-gold font-semibold' : 'text-slate-400'
             }`
           }
         >

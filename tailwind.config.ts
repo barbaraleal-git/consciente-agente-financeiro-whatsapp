@@ -31,6 +31,14 @@ export default {
         display: ['SF Pro Display', 'Inter var', 'system-ui', 'sans-serif'],
       },
       colors: {
+        // Paleta oficial Consciente (v0.0.141)
+        brand: {
+          petrol: '#2A5F6E',
+          'petrol-dark': '#1E4A5A',
+          gold: '#F0C24B',
+          terracotta: '#D96B47',
+          cream: '#F8F3E3',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

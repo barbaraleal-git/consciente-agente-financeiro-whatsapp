@@ -10,57 +10,71 @@
 @layer base {
   :root {
     /* Change the colors to match the design system */
+    /* Paleta oficial Consciente (v0.0.141):
+       petróleo #2A5F6E, azul-escuro #1E4A5A, dourado #F0C24B,
+       terracota #D96B47, creme #F8F3E3 */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 197 32% 24%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 197 32% 24%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 197 32% 24%;
 
-    --primary: 222.2 84% 4.9%;
+    --primary: 194 43% 30%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 98%;
-    --secondary-foreground: 222.2 84% 4.9%;
+    --secondary-foreground: 197 32% 24%;
 
     --muted: 210 40% 98%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
     --accent: 210 40% 98%;
-    --accent-foreground: 222.2 84% 4.9%;
+    --accent-foreground: 197 32% 24%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 13 66% 56%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 194 43% 30%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Cores de marca para uso em componentes (Tailwind: brand-*) */
+    --brand-petrol: 194 43% 30%;
+    --brand-petrol-dark: 199 50% 24%;
+    --brand-gold: 41 83% 62%;
+    --brand-terracotta: 14 67% 56%;
+    --brand-cream: 46 60% 93%;
 
-    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-background: 199 50% 24%;
 
-    --sidebar-primary: 222.2 84% 4.9%;
+    --sidebar-foreground: 210 40% 98%;
+
+    --sidebar-primary: 194 43% 30%;
 
     --sidebar-primary-foreground: 0 0% 100%;
 
-    --sidebar-accent: 210 40% 98%;
+    --sidebar-accent: 199 50% 31%;
 
-    --sidebar-accent-foreground: 222.2 84% 4.9%;
+    --sidebar-accent-foreground: 210 40% 98%;
 
-    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-border: 199 38% 33%;
 
-    --sidebar-ring: 222.2 84% 4.9%;
+    --sidebar-ring: 41 83% 62%;
 
-    --chart-1: 34 100% 44%;
-    --chart-2: 189 100% 38%;
-    --chart-3: 209 100% 32%;
-    --chart-4: 42 100% 50%;
-    --chart-5: 33 100% 50%;
+    --chart-1: 194 43% 30%;
+    --chart-2: 41 83% 62%;
+    --chart-3: 14 67% 56%;
+    --chart-4: 199 50% 24%;
+    --chart-5: 46 60% 62%;
+  }
+
+  .brand-cream-bg {
+    background-color: #f8f3e3;
   }
 
   .dark {

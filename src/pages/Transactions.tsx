@@ -406,7 +406,7 @@ export const Transactions: React.FC = () => {
                                 {semCaixinha && (
                                   <Badge
                                     variant="outline"
-                                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-semibold"
+                                    className="text-[10px] bg-brand-terracotta/10 text-brand-terracotta border-brand-terracotta/40 font-semibold"
                                     title="Despesa sem caixinha vinculada — defina uma caixinha para organizar"
                                   >
                                     sem caixinha
@@ -602,7 +602,7 @@ export const Transactions: React.FC = () => {
                             {semCaixinha && (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-semibold"
+                                className="text-[10px] bg-brand-terracotta/10 text-brand-terracotta border-brand-terracotta/40 font-semibold"
                                 title="Despesa sem caixinha vinculada — defina uma caixinha para organizar"
                               >
                                 sem caixinha

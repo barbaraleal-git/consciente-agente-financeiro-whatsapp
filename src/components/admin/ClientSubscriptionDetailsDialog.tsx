@@ -157,7 +157,7 @@ export const ClientSubscriptionDetailsDialog: React.FC<Props> = ({
 
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
-            <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+            <Loader2 className="w-5 h-5 animate-spin text-brand-petrol" />
             Carregando detalhes...
           </div>
         ) : !user ? (

@@ -95,18 +95,18 @@ export function CheckoutReturnBanner({
 
   if (returnState === 'success' && !confirmed) {
     return (
-      <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 flex items-start gap-3">
-        <Hourglass className="mt-0.5 h-5 w-5 shrink-0 animate-pulse text-sky-600" />
+      <div className="rounded-xl border border-brand-petrol/30 bg-brand-petrol/5 p-4 text-sm text-[#1E4A5A] flex items-start gap-3">
+        <Hourglass className="mt-0.5 h-5 w-5 shrink-0 animate-pulse text-brand-petrol" />
         <div className="flex-1">
           <p className="font-semibold">Pagamento recebido! Ativando sua assinatura…</p>
-          <p className="mt-1 text-sky-800">
+          <p className="mt-1 text-brand-petrol">
             Em instantes ela aparece aqui como ativa. Nada mais é preciso fazer — pode fechar e
             voltar depois.
           </p>
           <Button
             variant="outline"
             size="sm"
-            className="mt-3 border-sky-300 text-sky-800 hover:bg-sky-100"
+            className="mt-3 border-brand-petrol/40 text-brand-petrol hover:bg-brand-petrol/10"
             disabled={syncing}
             onClick={async () => {
               setSyncing(true)

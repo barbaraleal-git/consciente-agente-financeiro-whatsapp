@@ -33,6 +33,7 @@ export function getErrorMessage(error: unknown): string {
 
    Esta função JÁ SUMIU 10 VEZES do projeto em builds anteriores
    (MISSING_EXPORT) e precisa ser restaurada manualmente toda vez.
+   Última restauração: v0.0.146 (logo via bundler imports).
    Ela é usada por Settings.tsx, BillingAdminSection.tsx e
    ClientSubscriptionDetailsDialog.tsx com a assinatura abaixo.
 

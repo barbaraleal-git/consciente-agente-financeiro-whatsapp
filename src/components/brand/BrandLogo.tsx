@@ -81,6 +81,10 @@ const RealLogoImage: React.FC<{
    FALLBACK (rede de segurança): SVG aproximado, exibido APENAS se o import
    do asset falhar (URL vazia ou erro de carregamento). NÃO é o logo oficial
    e nunca aparece no funcionamento normal.
+
+   ⚠️ PROTOCOLO PERMANENTE: os src NUNCA mais devem apontar para /brand/
+   (pasta pública que falhou repetidamente — pasta vazia, cópia nunca
+   aconteceu, cache). Sempre imports do bundler a partir de src/assets/.
    -------------------------------------------------------------------------- */
 
 const FallbackMark: React.FC<{ className?: string; title?: string }> = ({ className, title }) => (

@@ -1123,7 +1123,7 @@ cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
         var fbText =
           'Oi, ' +
           fbFirstName +
-          '! 🌱 Tudo bem? Passando para lembrar que seu plano anual do Consciente (pagamento único via Pix) vence ' +
+          '! Tudo bem? Passando para lembrar que seu plano anual do Consciente (pagamento único via Pix) vence ' +
           (fbDaysAhead === 7 ? '7 dias' : '30 dias') +
           ', no dia ' +
           fbExpiryFormatted +

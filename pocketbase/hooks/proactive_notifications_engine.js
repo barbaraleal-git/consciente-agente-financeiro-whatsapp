@@ -644,7 +644,7 @@ function buildPixRenewalWhatsappText(firstName, daysAhead, expiryDateStr) {
   return (
     'Oi, ' +
     safeName +
-    '! 🌱 Tudo bem? Passando para lembrar que seu plano anual do Consciente (pagamento único via Pix) vence ' +
+    '! Tudo bem? Passando para lembrar que seu plano anual do Consciente (pagamento único via Pix) vence ' +
     timeLabel +
     ', no dia ' +
     expiryDateStr +

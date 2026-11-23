@@ -233,8 +233,58 @@ routerAdd('POST', '/backend/v1/proactive/test-email', (e) => {
   } catch (bErr) {
     body = {}
   }
+
+  // v0.0.152: parâmetro "type" para a rodada de branding (v0.0.150/0.0.151) —
+  //   'precharge'    (default): e-mail de pré-cobrança recorrente (comportamento atual)
+  //   'pix_renewal': e-mail de renovação Pix anual do engine (sendPixRenewalEmail),
+  //                  forçado para o endereço informado, sem tocar em dedupe/crons
+  //   'system':      e-mail de sistema do módulo mail_branding (redefinição de
+  //                  senha) para o próprio usuário admin, gerando token REAL via
+  //                  $mails.sendRecordPasswordReset (cai no onMailerRecordPasswordResetSend)
+  var emailType = body.type ? String(body.type) : 'precharge'
   var to = body.to || 'barbara.ferreira.leal@gmail.com'
   var daysAhead = body.days_ahead === 1 ? 1 : 3
+
+  if (emailType === 'pix_renewal') {
+    if (typeof localEngine.sendPixRenewalEmail !== 'function') {
+      return e.json(500, { error: 'sendPixRenewalEmail indisponível na engine proativa' })
+    }
+    var pixRes = localEngine.sendPixRenewalEmail(
+      to,
+      'Administração (teste)',
+      30,
+      '05/12/2026',
+      21490,
+    )
+    return e.json(pixRes && pixRes.success ? 200 : 500, pixRes)
+  }
+
+  if (emailType === 'system') {
+    var adminRec = null
+    var adminErr = ''
+    try {
+      adminRec = $app.findAuthRecordByEmail('_pb_users_auth_', 'barbara.ferreira.leal@gmail.com')
+    } catch (recErr) {
+      adminErr = String(recErr)
+    }
+    if (!adminRec) {
+      return e.json(500, {
+        error: 'Usuário admin barbara.ferreira.leal@gmail.com não encontrado: ' + adminErr,
+      })
+    }
+    var sysRes = { success: false, error: '' }
+    try {
+      $mails.sendRecordPasswordReset($app, adminRec)
+      sysRes = {
+        success: true,
+        to: 'barbara.ferreira.leal@gmail.com',
+        subject: 'Redefina sua senha do Consciente',
+      }
+    } catch (sysErr) {
+      sysRes = { success: false, error: String(sysErr) }
+    }
+    return e.json(sysRes.success ? 200 : 500, sysRes)
+  }
 
   var emailRes = localEngine.sendPrechargeEmail(
     to,

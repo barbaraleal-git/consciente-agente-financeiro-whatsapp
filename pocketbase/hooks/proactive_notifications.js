@@ -260,30 +260,46 @@ routerAdd('POST', '/backend/v1/proactive/test-email', (e) => {
   }
 
   if (emailType === 'system') {
-    var adminRec = null
-    var adminErr = ''
-    try {
-      adminRec = $app.findAuthRecordByEmail('_pb_users_auth_', 'barbara.ferreira.leal@gmail.com')
-    } catch (recErr) {
-      adminErr = String(recErr)
-    }
-    if (!adminRec) {
+    var OWNER_EMAIL = 'barbara.ferreira.leal@gmail.com'
+    var BACKEND_URL = $os.getenv('PB_INSTANCE_URL') || ''
+    var ADMIN_TOKEN = $os.getenv('PB_SUPERUSER_TOKEN') || ''
+    if (!BACKEND_URL) {
       return e.json(500, {
-        error: 'Usuário admin barbara.ferreira.leal@gmail.com não encontrado: ' + adminErr,
+        error: 'PB_INSTANCE_URL ausente — não é possível disparar o e-mail de sistema',
       })
     }
-    var sysRes = { success: false, error: '' }
+
+    var sysCall = $http.send({
+      url: BACKEND_URL.replace(/\/+$/, '') + '/api/collections/users/request-password-reset',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: ADMIN_TOKEN,
+      },
+      body: JSON.stringify({ email: OWNER_EMAIL }),
+      timeout: 30,
+    })
+    var sysOk = sysCall.statusCode >= 200 && sysCall.statusCode < 300
+    var sysBodyStr = sysCall.raw || ''
+    var sysData = null
     try {
-      $mails.sendRecordPasswordReset($app, adminRec)
-      sysRes = {
-        success: true,
-        to: 'barbara.ferreira.leal@gmail.com',
-        subject: 'Redefina sua senha do Consciente',
-      }
-    } catch (sysErr) {
-      sysRes = { success: false, error: String(sysErr) }
+      sysData = sysCall.json || JSON.parse(sysBodyStr)
+    } catch (jErr) {
+      sysData = null
     }
-    return e.json(sysRes.success ? 200 : 500, sysRes)
+    console.log(
+      '[proactive:test-email] system (request-password-reset) -> status=' +
+        sysCall.statusCode +
+        ' body=' +
+        sysBodyStr.slice(0, 300),
+    )
+    return e.json(sysOk ? 200 : 502, {
+      success: sysOk,
+      to: OWNER_EMAIL,
+      transport: 'PocketBase request-password-reset (onMailerRecordPasswordResetSend)',
+      statusCode: sysCall.statusCode,
+      body: sysData,
+    })
   }
 
   var emailRes = localEngine.sendPrechargeEmail(

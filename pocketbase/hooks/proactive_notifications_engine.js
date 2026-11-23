@@ -430,21 +430,22 @@ function buildPrechargeEmailHtml(clientName, daysAhead, chargeDateStr, amountCen
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Aviso da sua próxima mensalidade Consciente</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
-    .card { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-    .brand { color: #0f766e; font-size: 20px; font-weight: 700; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-    .title { font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px; }
-    .p { font-size: 15px; line-height: 1.6; color: #334155; margin-bottom: 16px; }
-    .info-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; }
-    .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed #cbd5e1; }
-    .info-row:last-child { border-bottom: none; font-weight: 600; color: #0f766e; }
-    .btn { display: inline-block; background-color: #0f766e; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin-top: 12px; }
-    .footer { font-size: 12px; color: #64748b; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F3E3; color: #1E4A5A; margin: 0; padding: 24px; }
+    .card { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; border: 1px solid #E7DFC9; box-shadow: 0 6px 18px rgba(30,74,90,0.10); }
+    .brand { font-size: 20px; font-weight: 700; margin-bottom: 24px; text-align: center; }
+    .title { font-size: 18px; font-weight: 600; color: #1E4A5A; margin-bottom: 16px; }
+    .p { font-size: 15px; line-height: 1.6; color: #33475A; margin-bottom: 16px; }
+    .info-box { background: #F8F3E3; border: 1px solid #E7DFC9; border-radius: 8px; padding: 16px; margin: 20px 0; }
+    .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed #D8CDB2; }
+    .info-row:last-child { border-bottom: none; font-weight: 600; color: #2A5F6E; }
+    .btn { display: inline-block; background-color: #2A5F6E; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin-top: 12px; }
+    .footer { font-size: 12px; color: #8A94A0; margin-top: 32px; border-top: 1px solid #E7DFC9; padding-top: 16px; text-align: center; }
+    .tagline { font-size: 12px; color: #1E4A5A; font-weight: 600; margin-top: 8px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="brand">🌱 Consciente — Finanças Sem Complicação</div>
+    <div class="brand"><img src="https://agente-financeiro-whatsapp-37fd3.goskip.app/brand/Logo_Oficial_Consciente_com_Nome_e_Slogan.jpg" alt="Consciente" width="180" style="display: block; width: 180px; max-width: 100%; height: auto; border: 0; margin: 0 auto;" /></div>
     <div class="title">${planLabel === 'Plano Anual Recorrente' ? 'Sua próxima anuidade vence' : 'Sua próxima mensalidade vence'} ${timeLabel}</div>
     <p class="p">Olá, <strong>${safeName}</strong>!</p>
     <p class="p">Estamos passando com transparência para avisar que a renovação da sua assinatura do Consciente será processada <strong>${timeLabel}</strong>, no dia <strong>${chargeDateStr}</strong>.</p>
@@ -465,6 +466,7 @@ function buildPrechargeEmailHtml(clientName, daysAhead, chargeDateStr, amountCen
     <p class="p" style="font-size: 13px; color: #64748b;">Dúvidas? Responda a este e-mail ou mande uma mensagem para o nosso suporte oficial.</p>
 
     <div class="footer">
+      <p class="tagline" style="margin: 0 0 4px 0;">Seu parceiro nas finanças</p>
       Consciente • BFL Soluções em Tecnologia LTDA<br />
       Você recebeu este aviso transparente porque possui uma assinatura ativa no Consciente.
     </div>
@@ -550,21 +552,22 @@ function buildPixRenewalEmailHtml(clientName, daysAhead, expiryDateStr, amountCe
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Renovação do seu plano anual Consciente</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
-    .card { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-    .brand { color: #0f766e; font-size: 20px; font-weight: 700; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-    .title { font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px; }
-    .p { font-size: 15px; line-height: 1.6; color: #334155; margin-bottom: 16px; }
-    .info-box { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px; margin: 20px 0; }
-    .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed #cbd5e1; }
-    .info-row:last-child { border-bottom: none; font-weight: 600; color: #c2410c; }
-    .btn { display: inline-block; background-color: #0f766e; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin-top: 12px; }
-    .footer { font-size: 12px; color: #64748b; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F3E3; color: #1E4A5A; margin: 0; padding: 24px; }
+    .card { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; border: 1px solid #E7DFC9; box-shadow: 0 6px 18px rgba(30,74,90,0.10); }
+    .brand { font-size: 20px; font-weight: 700; margin-bottom: 24px; text-align: center; }
+    .title { font-size: 18px; font-weight: 600; color: #1E4A5A; margin-bottom: 16px; }
+    .p { font-size: 15px; line-height: 1.6; color: #33475A; margin-bottom: 16px; }
+    .info-box { background: #FDF1EA; border: 1px solid #F2C9B6; border-radius: 8px; padding: 16px; margin: 20px 0; }
+    .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed #D8CDB2; }
+    .info-row:last-child { border-bottom: none; font-weight: 600; color: #D96B47; }
+    .btn { display: inline-block; background-color: #2A5F6E; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin-top: 12px; }
+    .footer { font-size: 12px; color: #8A94A0; margin-top: 32px; border-top: 1px solid #E7DFC9; padding-top: 16px; text-align: center; }
+    .tagline { font-size: 12px; color: #1E4A5A; font-weight: 600; margin-top: 8px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="brand">🌱 Consciente — Finanças Sem Complicação</div>
+    <div class="brand"><img src="https://agente-financeiro-whatsapp-37fd3.goskip.app/brand/Logo_Oficial_Consciente_com_Nome_e_Slogan.jpg" alt="Consciente" width="180" style="display: block; width: 180px; max-width: 100%; height: auto; border: 0; margin: 0 auto;" /></div>
     <div class="title">Seu plano anual vence ${timeLabel}</div>
     <p class="p">Olá, <strong>${safeName}</strong>!</p>
     <p class="p">Você assinou o Consciente com pagamento único via Pix. Seu acesso atual vence <strong>${timeLabel}</strong>, no dia <strong>${expiryDateStr}</strong>.</p>
@@ -584,6 +587,7 @@ function buildPixRenewalEmailHtml(clientName, daysAhead, expiryDateStr, amountCe
     <p class="p" style="font-size: 13px; color: #64748b;">Dúvidas? Responda a este e-mail ou mande uma mensagem para o nosso suporte oficial.</p>
 
     <div class="footer">
+      <p class="tagline" style="margin: 0 0 4px 0;">Seu parceiro nas finanças</p>
       Consciente • BFL Soluções em Tecnologia LTDA<br />
       Você recebeu este aviso porque seu plano anual à vista está próximo do vencimento.
     </div>

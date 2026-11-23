@@ -28,50 +28,39 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-/* ==========================================================================
-   NOTA ESTRUTURAL PERMANENTE — NÃO REMOVER getBackendErrorMessage.
-
-   Esta função JÁ SUMIU 10 VEZES do projeto em builds anteriores
-   (MISSING_EXPORT) e precisa ser restaurada manualmente toda vez.
-   Última restauração: v0.0.146.
-   Ela é usada por Settings.tsx, BillingAdminSection.tsx e
-   ClientSubscriptionDetailsDialog.tsx com a assinatura abaixo.
-
-   REGRA: qualquer edição deste arquivo DEVE preservar getBackendErrorMessage.
-   Qualquer QA deste projeto deve começar verificando que ela existe aqui.
-   ========================================================================== */
+// ---------------------------------------------------------------------------
+// NOTA ESTRUTURAL PERMANENTE (não remover em nenhuma edição deste arquivo):
+// getBackendErrorMessage abaixo é usada por Settings.tsx,
+// BillingAdminSection.tsx e ClientSubscriptionDetailsDialog.tsx e JÁ FOI
+// PERDIDA repetidas vezes (v0.0.119/0.0.120/0.0.122 e depois novamente em
+// v0.0.147) por builds que reescrevem este arquivo. Qualquer alteração aqui
+// DEVE preservar esta exportação intacta, com esta assinatura exata.
+// ---------------------------------------------------------------------------
 
 /**
- * Extrai a mensagem de erro REAL do corpo de uma ClientResponseError,
- * removendo prefixos de GoError quando presentes e bloqueando mensagens
- * genéricas ('Something went wrong' etc.) em favor do fallback.
+ * Extrai a mensagem de erro real devolvida pelo backend PocketBase.
+ * - extrai `response.message` do corpo da resposta;
+ * - remove o prefixo "GoError: " quando presente;
+ * - bloqueia a mensagem genérica "Something went wrong" (devolve fallback).
  */
 export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const safeFallback = fallback || 'Ocorreu um erro inesperado. Tente novamente.'
+  const fb = fallback || 'Ocorreu um erro inesperado. Tente novamente.'
   if (!(error instanceof ClientResponseError)) {
-    return error instanceof Error && error.message ? error.message : safeFallback
-  }
-
-  // 1) Mensagem de topo do corpo da resposta, se existir e não for genérica.
-  const topMsg = (error.response as { message?: string } | undefined)?.message
-  // 2) field errors agregados.
-  const fieldMsgs = Object.values(extractFieldErrors(error))
-  const joined = fieldMsgs.length > 0 ? fieldMsgs.join(' ') : ''
-  // 3) mensagens embutidas em text/data do response.
-  const rawText =
-    typeof (error.response as { text?: string } | undefined)?.text === 'string'
-      ? (error.response as { text?: string }).text!
-      : ''
-
-  const candidates = [topMsg, joined, rawText, error.message]
-  const genericRe =
-    /^(something went wrong|an unexpected error occurred|failed to fetch|network error|request failed)$/i
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim() && !genericRe.test(candidate.trim())) {
-      // Remove prefixos de GoError ("GoError: ..."), quando presentes.
-      return candidate.trim().replace(/^GoError:\s*/i, '')
+    if (error instanceof Error) {
+      const raw = error.message || ''
+      const cleaned = raw.replace(/^GoError:\s*/i, '').trim()
+      return cleaned && cleaned.toLowerCase() !== 'something went wrong' ? cleaned : fb
     }
+    return fb
   }
-  return safeFallback
+  const fieldMsgs = Object.values(extractFieldErrors(error))
+  if (fieldMsgs.length > 0) return fieldMsgs.join(' ')
+
+  const raw = error.response?.message || error.message || ''
+  const cleaned = String(raw)
+    .replace(/^GoError:\s*/i, '')
+    .trim()
+  if (!cleaned) return fb
+  if (cleaned.toLowerCase() === 'something went wrong') return fb
+  return cleaned
 }

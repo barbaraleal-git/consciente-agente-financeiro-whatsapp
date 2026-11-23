@@ -1,12 +1,17 @@
-Logo oficial da dona — os DOIS arquivos .jpg oficiais devem ser colocados aqui, com os nomes exatos abaixo (sem renomear, sem converter, sem comprimir):
+Logo oficial da marca Consciente — arquivos REAIS enviados pela dona (2026-11-23).
 
-  1. Logo_Oficial_Consciente-c56d4.jpg
-     → logo SEM nome (balão+sol). Usado na sidebar, no header mobile e no favicon.
+Os dois arquivos .jpg oficiais estão nesta pasta, servidos como assets estáticos:
 
-  2. Logo_Oficial_Consciente_com_Nome_e_Slogan-929ed.jpg
-     → logo COM nome "Consciente" + tagline "Seu Parceiro nas Finanças". Usado na tela de login.
+  1. Logo_Oficial_Consciente.jpg
+     → logo SEM nome (balão de fala petróleo + sol dourado + raios terracota).
+       Usado na sidebar, no header mobile e como favicon (index.html).
 
-Enquanto os arquivos não estiverem presentes, o app exibe um fallback SVG temporário
-(que NÃO é o logo oficial — é o redesenho da rodada anterior) para nada quebrar.
-Assim que os dois .jpg forem soltos nesta pasta, o logo real aparece automaticamente
-(sem mudança de código e sem novo deploy de lógica — basta rebuild/refresh).
+  2. Logo_Oficial_Consciente_com_Nome_e_Slogan.jpg
+     → logo COM nome "Consciente" + tagline "Seu Parceiro nas Finanças".
+       Usado na tela de login.
+
+Os caminhos são referenciados por src/components/brand/BrandLogo.tsx (constante
+LOGO_FILES) e por index.html. O fallback SVG em BrandLogo.tsx permanece apenas
+como rede de segurança para erro de carregamento — o src principal é sempre o
+arquivo real desta pasta. Nunca redesenhar o logo; se a dona enviar arquivos
+novos, substituí-los aqui mantendo os mesmos nomes.

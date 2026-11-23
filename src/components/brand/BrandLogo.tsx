@@ -31,9 +31,9 @@ export const BRAND = {
 /** Caminhos (rota pública) dos arquivos de logo REAIS da dona. */
 export const LOGO_FILES = {
   /** Sem nome — sidebar, header mobile e favicon. */
-  icon: '/brand/Logo_Oficial_Consciente-c56d4.jpg',
+  icon: '/brand/Logo_Oficial_Consciente.jpg',
   /** Com nome "Consciente" + tagline "Seu Parceiro nas Finanças" — login. */
-  full: '/brand/Logo_Oficial_Consciente_com_Nome_e_Slogan-929ed.jpg',
+  full: '/brand/Logo_Oficial_Consciente_com_Nome_e_Slogan.jpg',
 } as const
 
 interface BrandLogoProps {

@@ -2,14 +2,6 @@ import { ClientResponseError } from 'pocketbase'
 
 export type FieldErrors = Record<string, string>
 
-/* ==========================================================================
-   NOTA ESTRUTURAL PERMANENTE (não remover):
-   getBackendErrorMessage é exportada deste arquivo e é requisito estrutural
-   deste projeto. Ela some a cada build/deploy e precisa ser restaurada caso
-   não esteja presente. Se você está editando este arquivo, PRESERVE esta
-   função e esta nota.
-   ========================================================================== */
-
 export function extractFieldErrors(error: unknown): FieldErrors {
   if (!(error instanceof ClientResponseError)) return {}
   const data = error.response?.data
@@ -28,25 +20,32 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const fb = fallback || 'Algo deu errado. Tente novamente.'
-  if (!error) return fb
-  if (error instanceof ClientResponseError) {
-    const fieldMsgs = Object.values(extractFieldErrors(error))
-    if (fieldMsgs.length > 0) return fieldMsgs.join(' ')
-    const data = error.response as Record<string, unknown> | undefined
-    if (data && typeof data === 'object') {
-      const msg = data['message']
-      if (typeof msg === 'string' && msg.trim().length > 0) {
-        // Remove prefixos de erro do runtime Go (GoError), se presentes
-        return msg.replace(/^GoError\s*/i, '').trim() || fb
-      }
-    }
+// ⚠️ NOTA ESTRUTURAL PERMANENTE — NÃO REMOVER ESTA SEÇÃO ⚠️
+// getBackendErrorMessage JÁ FOI APAGADA acidentalmente 8+ vezes durante builds
+// (MISSING_EXPORT, v0.0.119/0.0.120/0.0.122 e novamente agora, 9ª vez —
+// restaurada em v0.0.142). Este módulo é o ponto único de tradução de erros
+// para o usuário. QUALQUER edição neste arquivo DEVE preservar a export
+// `getBackendErrorMessage` abaixo. Origem: memória do projeto + decisão da dona.
+
+export function getBackendErrorMessage(error: unknown, fallbackMessage?: string): string {
+  const fallback =
+    fallbackMessage && fallbackMessage.trim()
+      ? fallbackMessage.trim()
+      : 'Não foi possível concluir a operação. Tente novamente.'
+  if (!(error instanceof ClientResponseError)) {
+    return error instanceof Error ? error.message : fallback
   }
-  if (error instanceof Error && error.message && !/something went wrong/i.test(error.message)) {
-    return error.message
+  const fromBody = error.response?.data?.message
+  if (
+    typeof fromBody === 'string' &&
+    fromBody.trim() &&
+    fromBody.trim() !== 'Something went wrong'
+  ) {
+    return fromBody.replace(/^GoError:\s*/i, '').trim()
   }
-  return fb
+  const msgs = Object.values(extractFieldErrors(error))
+  if (msgs.length > 0) return msgs.join(' ')
+  return error.message || fallback
 }
 
 export function getErrorMessage(error: unknown): string {

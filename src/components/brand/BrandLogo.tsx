@@ -1,10 +1,23 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 /* ==========================================================================
-   Logo oficial da marca Consciente — SVG fiel ao asset anexado pela dona:
-   balão de fala azul-petróleo, sol amarelo-dourado central e raios terracota
-   no arco superior-direito. Cores da paleta oficial, sem variações.
+   Logo oficial da marca Consciente — ARQUIVOS REAIS enviados pela dona.
+
+   REGRA (decisão da dona): o logo exibido no app deve ser EXATAMENTE o
+   arquivo oficial, nunca um redesenho. Este componente renderiza <img>
+   apontando para os arquivos reais em public/brand/:
+
+     - Logo_Oficial_Consciente-c56d4.jpg                    (sem nome — sidebar, header mobile, favicon)
+     - Logo_Oficial_Consciente_com_Nome_e_Slogan-929ed.jpg  (com nome + tagline — login)
+
+   ⚠️ Os arquivos devem existir em public/brand/ com esses nomes exatos
+   (ver public/brand/LEIA-ME.txt). Enquanto não estiverem presentes, o
+   fallback SVG abaixo é exibido automaticamente (onError) para o app não
+   quebrar — o fallback é temporário e NÃO substitui o arquivo oficial.
+
+   Favicon (index.html): usa o arquivo real sem nome diretamente
+   (type="image/jpeg"), a partir do arquivo oficial — sem redesenho.
    ========================================================================== */
 
 export const BRAND = {
@@ -15,18 +28,57 @@ export const BRAND = {
   cream: '#F8F3E3',
 } as const
 
+/** Caminhos (rota pública) dos arquivos de logo REAIS da dona. */
+export const LOGO_FILES = {
+  /** Sem nome — sidebar, header mobile e favicon. */
+  icon: '/brand/Logo_Oficial_Consciente-c56d4.jpg',
+  /** Com nome "Consciente" + tagline "Seu Parceiro nas Finanças" — login. */
+  full: '/brand/Logo_Oficial_Consciente_com_Nome_e_Slogan-929ed.jpg',
+} as const
+
 interface BrandLogoProps {
   className?: string
-  /** 'icon' = só o balão+sol (sidebar, favicon, header); 'full' = com nome e tagline (login) */
+  /** 'icon' = logo sem nome (sidebar, header); 'full' = com nome e tagline (login) */
   variant?: 'icon' | 'full'
   title?: string
 }
 
-/** Balão de fala petróleo com sol dourado e raios terracota. */
-export const BrandMark: React.FC<{ className?: string; title?: string }> = ({
-  className,
-  title,
-}) => (
+/* --------------------------------------------------------------------------
+   <img> do arquivo real com fallback automático enquanto o arquivo não
+   estiver presente em public/brand/.
+   -------------------------------------------------------------------------- */
+
+const RealLogoImage: React.FC<{
+  src: string
+  alt: string
+  className?: string
+  fallback: React.ReactNode
+  onError?: () => void
+}> = ({ src, alt, className, fallback, onError }) => {
+  const [failed, setFailed] = useState(false)
+
+  if (failed) return <>{fallback}</>
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      draggable={false}
+      className={cn('object-contain select-none', className)}
+      onError={() => {
+        setFailed(true)
+        onError?.()
+      }}
+    />
+  )
+}
+
+/* --------------------------------------------------------------------------
+   FALLBACK (temporário): SVG aproximado da rodada anterior, exibido apenas
+   enquanto o arquivo real não existir em public/brand/. NÃO é o logo oficial.
+   -------------------------------------------------------------------------- */
+
+const FallbackMark: React.FC<{ className?: string; title?: string }> = ({ className, title }) => (
   <svg
     viewBox="0 0 200 200"
     xmlns="http://www.w3.org/2000/svg"
@@ -35,36 +87,20 @@ export const BrandMark: React.FC<{ className?: string; title?: string }> = ({
     className={cn('shrink-0', className)}
   >
     {title ? <title>{title}</title> : null}
-    {/* Balão de fala (círculo petróleo + cauda inferior-esquerda) */}
     <path d="M100 16a84 84 0 1 1-59.4 143.4L26 176l10-39A84 84 0 0 1 100 16Z" fill={BRAND.petrol} />
-    {/* Anel creme que separa o balão do sol */}
     <circle cx="100" cy="96" r="50" fill="none" stroke="#FDFBF5" strokeWidth="7" />
-    {/* Raios terracota (arco superior-direito), separados pelo anel creme */}
     <g fill={BRAND.terracotta}>
       <path d="M112 22.5A74 74 0 0 1 143.9 34l-20 26.9A42 42 0 0 0 108 54.5Z" />
       <path d="M152.1 40.7a74 74 0 0 1 24 23.5l-31.4 20.2a42 42 0 0 0-13.6-13.4Z" />
       <path d="M180.6 73.4A74 74 0 0 1 188.9 104l-37.7 1.2A42 42 0 0 0 146 83.4Z" />
     </g>
-    {/* Sol amarelo-dourado com respiro à direita */}
-    <path
-      d="M150 96a50 50 0 1 1-50-50 50 50 0 0 1 0 100Zm0-11a39 39 0 1 0 0-78 39 39 0 0 0 0 78Z"
-      fill="none"
-    />
     <circle cx="100" cy="96" r="39" fill={BRAND.gold} />
-    {/* Respiro dourado do sol (faixa à direita, entre os raios) */}
     <path d="M139 86h50v20h-50z" fill={BRAND.gold} />
-    {/* Fenda creme entre o respiro e a fala */}
     <rect x="136" y="108" width="54" height="7" fill="#FDFBF5" />
-    {/* Recorte da fenda do balão (curva creme inferior-direita) */}
-    <path d="M189 115a84 84 0 0 1-49 53l-8-35a50 50 0 0 0 18-18Z" fill="#FDFBF5" opacity="0" />
   </svg>
 )
 
-/** Logo completo: marca + nome "Consciente" + tagline (usado no login). */
-export const BrandLogoFull: React.FC<{ className?: string; title?: string }> = ({
-  className,
-  title,
-}) => (
+const FallbackFull: React.FC<{ className?: string; title?: string }> = ({ className, title }) => (
   <svg
     viewBox="0 0 320 220"
     xmlns="http://www.w3.org/2000/svg"
@@ -113,51 +149,79 @@ export const BrandLogoFull: React.FC<{ className?: string; title?: string }> = (
   </svg>
 )
 
-/** Ícone de favicon: marca isolada em fundo creme arredondado. */
-export const BrandFavicon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" className={cn('shrink-0', className)}>
-    <rect width="64" height="64" rx="14" fill={BRAND.cream} />
-    <g transform="translate(6,6) scale(0.26)">
-      <path
-        d="M100 16a84 84 0 1 1-59.4 143.4L26 176l10-39A84 84 0 0 1 100 16Z"
-        fill={BRAND.petrol}
-      />
-      <circle cx="100" cy="96" r="50" fill="none" stroke="#FDFBF5" strokeWidth="7" />
-      <g fill={BRAND.terracotta}>
-        <path d="M112 22.5A74 74 0 0 1 143.9 34l-20 26.9A42 42 0 0 0 108 54.5Z" />
-        <path d="M152.1 40.7a74 74 0 0 1 24 23.5l-31.4 20.2a42 42 0 0 0-13.6-13.4Z" />
-        <path d="M180.6 73.4A74 74 0 0 1 188.9 104l-37.7 1.2A42 42 0 0 0 146 83.4Z" />
-      </g>
-      <circle cx="100" cy="96" r="39" fill={BRAND.gold} />
-      <path d="M139 86h50v20h-50z" fill={BRAND.gold} />
-      <rect x="136" y="108" width="54" height="7" fill="#FDFBF5" />
-    </g>
-  </svg>
+/* --------------------------------------------------------------------------
+   Componentes públicos — API inalterada (Layout.tsx e Login.tsx não mudam).
+   -------------------------------------------------------------------------- */
+
+/** Logo SEM nome (arquivo real): sidebar e header mobile. */
+export const BrandMark: React.FC<{ className?: string; title?: string }> = ({
+  className,
+  title,
+}) => (
+  <RealLogoImage
+    src={LOGO_FILES.icon}
+    alt={title || 'Logo Consciente'}
+    className={className}
+    fallback={<FallbackMark className={className} title={title} />}
+  />
 )
 
-/** Logo completo com fundo creme, fiel ao asset da dona (tela de login). */
+/** Logo COM nome + tagline (arquivo real): tela de login. */
+export const BrandLogoFull: React.FC<{ className?: string; title?: string }> = ({
+  className,
+  title,
+}) => (
+  <RealLogoImage
+    src={LOGO_FILES.full}
+    alt={title || 'Consciente — Seu Parceiro nas Finanças'}
+    className={className}
+    fallback={<FallbackFull className={className} title={title} />}
+  />
+)
+
+/** Ícone de favicon: mantido por compatibilidade — o favicon real é o
+ * arquivo oficial referenciado direto no index.html (type image/jpeg). */
+export const BrandFavicon: React.FC<{ className?: string }> = ({ className }) => (
+  <RealLogoImage
+    src={LOGO_FILES.icon}
+    alt="Favicon Consciente"
+    className={className}
+    fallback={<FallbackMark className={className} />}
+  />
+)
+
+/** Logo completo sobre cartão creme (tela de login) — arquivo real da dona. */
 export const BrandLogoCard: React.FC<{ className?: string; title?: string }> = ({
   className,
   title,
 }) => (
   <div
-    className={cn('inline-flex flex-col items-center rounded-3xl px-8 py-6', className)}
+    className={cn('inline-flex flex-col items-center overflow-hidden rounded-3xl', className)}
     style={{ backgroundColor: BRAND.cream }}
   >
-    <BrandMark className="w-24 h-24" title={title} />
-    <h1
-      className="mt-3 text-3xl font-bold tracking-tight"
-      style={{ color: BRAND.petrolDark, fontFamily: "Georgia, 'Times New Roman', serif" }}
-    >
-      Consciente
-    </h1>
-    <p className="mt-1 text-sm font-medium" style={{ color: BRAND.petrolDark }}>
-      Seu Parceiro nas Finanças
-    </p>
+    <RealLogoImage
+      src={LOGO_FILES.full}
+      alt={title || 'Consciente — Seu Parceiro nas Finanças'}
+      className="w-full max-w-[280px]"
+      fallback={
+        <div className="flex flex-col items-center px-8 py-6">
+          <FallbackMark className="w-24 h-24" title={title} />
+          <h1
+            className="mt-3 text-3xl font-bold tracking-tight"
+            style={{ color: BRAND.petrolDark, fontFamily: "Georgia, 'Times New Roman', serif" }}
+          >
+            Consciente
+          </h1>
+          <p className="mt-1 text-sm font-medium" style={{ color: BRAND.petrolDark }}>
+            Seu Parceiro nas Finanças
+          </p>
+        </div>
+      }
+    />
   </div>
 )
 
-/** Componente principal: variante 'icon' (marca) ou 'full' (marca + texto). */
+/** Componente principal: variante 'icon' (sem nome) ou 'full' (com nome). */
 export const BrandLogo: React.FC<BrandLogoProps> = ({ variant = 'icon', ...rest }) =>
   variant === 'full' ? <BrandLogoFull {...rest} /> : <BrandMark {...rest} />
 

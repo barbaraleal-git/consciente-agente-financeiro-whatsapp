@@ -15,3 +15,12 @@ LOGO_FILES) e por index.html. O fallback SVG em BrandLogo.tsx permanece apenas
 como rede de segurança para erro de carregamento — o src principal é sempre o
 arquivo real desta pasta. Nunca redesenhar o logo; se a dona enviar arquivos
 novos, substituí-los aqui mantendo os mesmos nomes.
+
+ORIGEM DOS ARQUIVOS: os binários originais moram em src/assets/ (salvos
+automaticamente a partir dos anexos da dona, com nomes com sufixo hash:
+logooficialconsciente-7ccfd.jpg e
+logooficialconscientecomnomeeslogan-9e384.jpg). Foram copiados BYTE A BYTE
+para cá, apenas renomeados para os nomes estáveis acima — sem reprocessamento,
+redesenho ou otimização. A cópia é feita pelo script
+scripts/ensure-brand-logos.mjs (node scripts/ensure-brand-logos.mjs), que só
+escreve se a cópia for byte-idêntica ao original e falha alto se divergir.

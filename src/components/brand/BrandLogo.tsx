@@ -1,23 +1,27 @@
 import React, { useState } from 'react'
 import { cn } from '@/lib/utils'
 
+// ARQUIVOS REAIS (byte a byte) da dona, importados pelo bundler.
+// O Vite embute os arquivos no build com nome hasheado — sem depender de
+// public/brand/ (caminho público que falhou repetidamente nesta história).
+import logoIconUrl from '@/assets/logooficialconsciente-7ccfd.jpg'
+import logoFullUrl from '@/assets/logooficialconscientecomnomeeslogan-9e384.jpg'
+
 /* ==========================================================================
    Logo oficial da marca Consciente — ARQUIVOS REAIS enviados pela dona.
 
    REGRA (decisão da dona): o logo exibido no app deve ser EXATAMENTE o
    arquivo oficial, nunca um redesenho. Este componente renderiza <img>
-   apontando para os arquivos reais em public/brand/:
+   apontando para os IMPORTS do bundler acima (src/assets/), garantindo que
+   os bytes exatos dos arquivos originais cheguem ao build.
 
-     - Logo_Oficial_Consciente-c56d4.jpg                    (sem nome — sidebar, header mobile, favicon)
-     - Logo_Oficial_Consciente_com_Nome_e_Slogan-929ed.jpg  (com nome + tagline — login)
+   O fallback SVG abaixo existe APENAS como rede de segurança (onError):
+   só aparece se o próprio import do asset falhar. Nunca no funcionamento
+   normal.
 
-   ⚠️ Os arquivos devem existir em public/brand/ com esses nomes exatos
-   (ver public/brand/LEIA-ME.txt). Enquanto não estiverem presentes, o
-   fallback SVG abaixo é exibido automaticamente (onError) para o app não
-   quebrar — o fallback é temporário e NÃO substitui o arquivo oficial.
-
-   Favicon (index.html): usa o arquivo real sem nome diretamente
-   (type="image/jpeg"), a partir do arquivo oficial — sem redesenho.
+   Favicon (index.html): segue apontando para /brand/ (servindo no vivo);
+   os pontos críticos renderizados na UI (login, sidebar, header mobile)
+   usam os imports acima.
    ========================================================================== */
 
 export const BRAND = {
@@ -28,12 +32,12 @@ export const BRAND = {
   cream: '#F8F3E3',
 } as const
 
-/** Caminhos (rota pública) dos arquivos de logo REAIS da dona. */
+/** URLs dos arquivos de logo REAIS da dona (imports do bundler). */
 export const LOGO_FILES = {
   /** Sem nome — sidebar, header mobile e favicon. */
-  icon: '/brand/Logo_Oficial_Consciente.jpg',
+  icon: logoIconUrl,
   /** Com nome "Consciente" + tagline "Seu Parceiro nas Finanças" — login. */
-  full: '/brand/Logo_Oficial_Consciente_com_Nome_e_Slogan.jpg',
+  full: logoFullUrl,
 } as const
 
 interface BrandLogoProps {
@@ -44,8 +48,8 @@ interface BrandLogoProps {
 }
 
 /* --------------------------------------------------------------------------
-   <img> do arquivo real com fallback automático enquanto o arquivo não
-   estiver presente em public/brand/.
+   <img> do arquivo real (import do bundler) com fallback automático
+   apenas em caso de falha de carregamento (onError).
    -------------------------------------------------------------------------- */
 
 const RealLogoImage: React.FC<{
@@ -57,7 +61,7 @@ const RealLogoImage: React.FC<{
 }> = ({ src, alt, className, fallback, onError }) => {
   const [failed, setFailed] = useState(false)
 
-  if (failed) return <>{fallback}</>
+  if (!src || failed) return <>{fallback}</>
 
   return (
     <img
@@ -74,8 +78,9 @@ const RealLogoImage: React.FC<{
 }
 
 /* --------------------------------------------------------------------------
-   FALLBACK (temporário): SVG aproximado da rodada anterior, exibido apenas
-   enquanto o arquivo real não existir em public/brand/. NÃO é o logo oficial.
+   FALLBACK (rede de segurança): SVG aproximado, exibido APENAS se o import
+   do asset falhar (URL vazia ou erro de carregamento). NÃO é o logo oficial
+   e nunca aparece no funcionamento normal.
    -------------------------------------------------------------------------- */
 
 const FallbackMark: React.FC<{ className?: string; title?: string }> = ({ className, title }) => (

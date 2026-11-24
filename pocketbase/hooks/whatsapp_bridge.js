@@ -1,6 +1,18 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // ----------------------------------------------------
+// LINK ÚNICO DE ACESSO AO APP (v0.0.169) — PONTO CENTRAL DE CONFIGURAÇÃO.
+// Quando o domínio oficial consciente.net.br ativar, trocar o valor em TODAS
+// as declarações `const LOCAL_APP_ACCESS_LINK = ...` deste arquivo (busca
+// literal por LOCAL_APP_ACCESS_LINK) — é a ÚNICA string a mudar.
+// Serve para qualquer finalidade: acessar, logar, se cadastrar.
+// IMPORTANTE (JSVM/PocketBase): callbacks rodam em pool separado — a constante
+// é redeclarada no topo do corpo de CADA callback que a usa (padrão v0.0.163,
+// igual a __mailDelivery). Não referencie variável de top-level dentro de
+// callbacks (Hook scoping error).
+// ----------------------------------------------------
+
+// ----------------------------------------------------
 // 1. Webhook do WhatsApp (Meta Cloud API)
 // GET para verificação de webhook (Meta hub challenge)
 // ----------------------------------------------------
@@ -89,6 +101,8 @@ if (typeof globalThis.__reliabilityHelper === 'undefined') {
 // ----------------------------------------------------
 routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
   try {
+    // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
+    const LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
     // -----------------------------------------------------------------------------
     // MOTOR DETERMINÍSTICO DE RESUMO DAS CAIXINHAS (100% EMBUTIDO NO CORPO DO CALLBACK)
     // REGRA INVIOLÁVEL: O resumo de caixinhas no WhatsApp é 100% DETERMINÍSTICO da
@@ -598,7 +612,9 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         return (
           `📊 *Suas Caixinhas — Mês de ${monthName}*\n\n` +
           `Você ainda não tem caixinhas configuradas no Consciente.\n\n` +
-          `Acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas primeiras caixinhas e começar a acompanhar seus limites!`
+          `Acesse ` +
+          LOCAL_APP_ACCESS_LINK +
+          ` para definir suas primeiras caixinhas e começar a acompanhar seus limites!`
         )
       }
 
@@ -3186,15 +3202,22 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: ${msgSource}. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser '${msgSource}', o campo status deve ser 'active' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}' a menos que o cliente informe data diferente. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${textContent}`
 
             if (!isRegistered) {
-              promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
+              promptForAgent =
+                `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
 Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Explique brevemente que você ajuda no controle diário de custos e caixinhas.
-Se a mensagem for um gasto ou dúvida, convide a pessoa a criar conta ou entrar na conta existente fornecendo OBRIGATORIAMENTE os links oficiais:
-- Link de Cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register
-- Link de Login: https://agente-financeiro-whatsapp-37fd3.goskip.app/login
-Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!"]: ${textContent}`
+Se a mensagem for um gasto ou dúvida, convide a pessoa a acessar o app informando OBRIGATORIAMENTE este ÚNICO link oficial (serve para acessar, logar ou se cadastrar — nunca informe outros links ou variações):
+- Link de acesso ao Consciente: ` +
+                LOCAL_APP_ACCESS_LINK +
+                `
+Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Acesse ` +
+                LOCAL_APP_ACCESS_LINK +
+                ` e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!"]: ${textContent}`
             } else if (!hasCompletedOnboarding) {
               // Usuário cadastrado no banco mas que ainda não passou pelo onboarding de caixinhas
-              promptForAgent = `[ATENÇÃO: Usuário cadastrado (${matchedUser.getString('name') || matchedUser.getString('email')}), porém ainda sem caixinhas configuradas. Incentive-o amigavelmente a acessar https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas primeiras caixinhas ou registre o gasto em categoria padrão se ele insistir]: ${textContent}`
+              promptForAgent =
+                `[ATENÇÃO: Usuário cadastrado (${matchedUser.getString('name') || matchedUser.getString('email')}), porém ainda sem caixinhas configuradas. Incentive-o amigavelmente a acessar o app pelo ÚNICO link oficial ` +
+                LOCAL_APP_ACCESS_LINK +
+                ` para definir suas primeiras caixinhas (o mesmo link serve para acessar, logar ou se cadastrar) ou registre o gasto em categoria padrão se ele insistir]: ${textContent}`
             }
 
             let agentReply = ''
@@ -3657,10 +3680,14 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
                   'Tive uma instabilidade ao consultar seus dados na base agora. 🙏\nPor favor, tente perguntar novamente em alguns instantes — ou confira seus lançamentos e caixinhas direto no app, que sempre mostram o estado mais atual.'
               } else if (!isRegistered) {
                 agentReply =
-                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está reconhecido no app.\n\n• Se ainda não tem conta, cadastre-se em: https://agente-financeiro-whatsapp-37fd3.goskip.app/register\n• Se já tem conta, faça login em: https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!'
+                  'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está reconhecido no app. Acesse o Consciente em: ' +
+                  LOCAL_APP_ACCESS_LINK +
+                  ' — o mesmo link serve para acessar, logar ou criar sua conta. Se já tem conta, confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!'
               } else if (!hasCompletedOnboarding) {
                 agentReply =
-                  'Olá! Seu cadastro no Consciente foi localizado, mas suas caixinhas ainda precisam ser configuradas. Acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/onboarding para definir suas caixinhas de gastos!'
+                  'Olá! Seu cadastro no Consciente foi localizado, mas suas caixinhas ainda precisam ser configuradas. Acesse ' +
+                  LOCAL_APP_ACCESS_LINK +
+                  ' para definir suas caixinhas de gastos!'
               } else if (
                 reliabilityHelper &&
                 typeof reliabilityHelper.buildGracefulFallbackReply === 'function'
@@ -4105,6 +4132,9 @@ routerAdd(
   '/backend/v1/whatsapp/simulate',
   (e) => {
     try {
+      // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
+      const LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+
       const normalizeDigits = function (raw) {
         if (!raw) return ''
         let digits = String(raw).replace(/\D/g, '')
@@ -4417,12 +4447,16 @@ routerAdd(
 
       let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: whatsapp_text. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser 'whatsapp_text' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}'. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${message}`
       if (!isRegistered) {
-        promptForAgent = `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
+        promptForAgent =
+          `[ATENÇÃO: Mensagem recebida via WhatsApp de um número AINDA NÃO CADASTRADO ou NÃO VINCULADO no aplicativo (${phoneDigits}, nome: "${senderName || 'Visitante'}").
 Apresente-se cordialmente como o Consciente - Seu parceiro nas finanças. Explique brevemente que você ajuda no controle diário de custos e caixinhas.
-Se a mensagem for um gasto ou dúvida, convide a pessoa a criar conta ou entrar na conta existente fornecendo OBRIGATORIAMENTE os links oficiais:
-- Link de Cadastro: https://agente-financeiro-whatsapp-37fd3.goskip.app/register
-- Link de Login: https://agente-financeiro-whatsapp-37fd3.goskip.app/login
-Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Se você já tem uma conta no Consciente, acesse https://agente-financeiro-whatsapp-37fd3.goskip.app/login e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!"]: ${message}`
+Se a mensagem for um gasto ou dúvida, convide a pessoa a acessar o app informando OBRIGATORIAMENTE este ÚNICO link oficial (serve para acessar, logar ou se cadastrar — nunca informe outros links ou variações):
+- Link de acesso ao Consciente: ` +
+          LOCAL_APP_ACCESS_LINK +
+          `
+Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com carinho: "Acesse ` +
+          LOCAL_APP_ACCESS_LINK +
+          ` e confirme seu WhatsApp em Minha Conta > Perfil para sincronizar seus lançamentos na hora!"]: ${message}`
       }
 
       let agentReply = ''
@@ -4859,7 +4893,9 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             'Tive uma instabilidade ao consultar seus dados na base agora. 🙏\nPor favor, tente perguntar novamente em alguns instantes — ou confira seus lançamentos e caixinhas direto no app, que sempre mostram o estado mais atual.'
         } else if (!isRegistered) {
           agentReply =
-            'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Crie sua conta diretamente pelo link oficial https://agente-financeiro-whatsapp-37fd3.goskip.app/register para definir suas caixinhas e controlar seus custos diários em tempo real!'
+            'Olá! Eu sou o Consciente - Seu parceiro nas finanças no WhatsApp. 👋\n\nSeu número ainda não está vinculado a uma conta no app. Acesse o link oficial ' +
+            LOCAL_APP_ACCESS_LINK +
+            ' — ele serve para acessar, logar ou criar sua conta — e defina suas caixinhas para controlar seus custos diários em tempo real!'
         } else if (
           reliabilityHelperSim &&
           typeof reliabilityHelperSim.buildGracefulFallbackReply === 'function'

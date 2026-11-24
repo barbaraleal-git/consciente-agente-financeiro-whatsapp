@@ -20,39 +20,26 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-// NOTA ESTRUTURAL: getBackendErrorMessage já foi apagada deste arquivo 16 vezes
-// (ressurgência recorrente). NUNCA remover esta export: BillingAdminSection,
-// ClientSubscriptionDetailsDialog e Settings importam-na. Ela extrai a mensagem
-// real do corpo do erro, ignora o wrapper GoError e bloqueia o genérico
-// 'Something went wrong'. Ver memória do projeto.
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const genericBlocklist = ['something went wrong', 'failed to fetch', 'network error']
-  let message = ''
-
-  if (error instanceof ClientResponseError) {
-    const fieldMsgs = Object.values(extractFieldErrors(error))
-    if (fieldMsgs.length > 0) return fieldMsgs.join(' ')
-    message = error.response?.message || error.message || ''
-  } else if (error instanceof Error) {
-    message = error.message
-  }
-
-  if (!message) return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
-
-  // Tira wrappers de erro do Go/PocketBase ("GoError: ...")
-  message = message.replace(/^GoError:\s*/i, '').trim()
-
-  const lower = message.toLowerCase()
-  if (genericBlocklist.some((g) => lower.includes(g))) {
-    return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
-  }
-  return message
-}
-
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
     return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
   const msgs = Object.values(extractFieldErrors(error))
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
+}
+
+// NOTA ESTRUTURAL PERMANENTE (não remover):
+// getBackendErrorMessage é IMPORTADA por BillingAdminSection.tsx,
+// ClientSubscriptionDetailsDialog.tsx e Settings.tsx. Já desapareceu 17×
+// deste arquivo em versões anteriores (v0.0.118 a v0.0.165) e cada sumiço
+// quebrou o build. NÃO renomear, NÃO apagar, NÃO fundir com getErrorMessage.
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const msg = getErrorMessage(error)
+  const generic =
+    !msg || msg === 'An unexpected error occurred.' || /^Something went wrong\.?$/i.test(msg)
+  if (generic) {
+    return fallback || 'Erro no servidor. Tente novamente em instantes.'
+  }
+  // Remove prefixos de GoError quando o backend repassa o erro cru do Go.
+  return msg.replace(/^GoError:\s*/i, '').trim() || fallback || msg
 }

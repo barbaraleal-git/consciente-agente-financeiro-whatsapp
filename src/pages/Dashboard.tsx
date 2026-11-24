@@ -22,7 +22,11 @@ import {
   getSourceLabel,
 } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
-import { getBudgetSpent, getEffectiveCategory } from '@/lib/caixinhaMatcher'
+import {
+  getBudgetSpent,
+  getEffectiveCategory,
+  resolveTransactionBudget,
+} from '@/lib/caixinhaMatcher'
 import { MessageSquare, Mic, PenLine, FileSpreadsheet, Bot, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -164,21 +168,36 @@ export const Dashboard: React.FC = () => {
     }
   }, [activeTransactions, budgets, currentMonth])
 
-  // Category distribution for current month (utiliza caixinha/categoria efetiva)
+  // Distribuição por CATEGORIA no mês atual: caixinhas (ex.: "Alimentação - VA") são
+  // somadas na categoria à qual pertencem; despesas sem caixinha usam a própria categoria.
   const categoryExpenses = useMemo(() => {
     const map: Record<string, { name: string; color: string; amount: number }> = {}
 
     monthlyMetrics.thisMonthTxs
       .filter((t) => t.type === 'despesa')
       .forEach((t) => {
-        const eff = getEffectiveCategory(t, categories, budgets, userLinks)
-        const name = eff.name || 'Outros'
-        const color = eff.color || '#64748b'
+        const resolved = resolveTransactionBudget(t, budgets, categories, userLinks)
+        const catId = resolved?.category || (resolved ? '' : t.category)
+        const cat = catId ? categories.find((c) => c.id === catId) : undefined
 
-        if (!map[name]) {
-          map[name] = { name, color, amount: 0 }
+        let key: string
+        let name: string
+        let color: string
+        if (cat) {
+          key = `cat:${cat.id}`
+          name = cat.name
+          color = cat.color || '#64748b'
+        } else {
+          const eff = getEffectiveCategory(t, categories, budgets, userLinks)
+          name = eff.name || 'Outros'
+          color = eff.color || '#64748b'
+          key = `eff:${name}`
         }
-        map[name].amount += t.amount
+
+        if (!map[key]) {
+          map[key] = { name, color, amount: 0 }
+        }
+        map[key].amount += t.amount
       })
 
     const list = Object.values(map).sort((a, b) => b.amount - a.amount)
@@ -689,61 +708,67 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-3.5">
-                {budgets.slice(0, 4).map((b) => {
-                  const cat = b.category ? categories.find((c) => c.id === b.category) : undefined
-                  const displayName = b.name || cat?.name || 'Caixinha'
-                  const displayIcon = b.icon || cat?.icon || 'wallet'
-                  const displayColor = b.color || cat?.color || '#64748b'
+                <div className="space-y-3.5 max-h-96 overflow-y-auto pr-1">
+                  {budgets.map((b) => {
+                    const cat = b.category ? categories.find((c) => c.id === b.category) : undefined
+                    const displayName = b.name || cat?.name || 'Caixinha'
+                    const displayIcon = b.icon || cat?.icon || 'wallet'
+                    const displayColor = b.color || cat?.color || '#64748b'
 
-                  // Calculate spent in this caixinha com matching unificado e vínculos de categorias
-                  const spent = getBudgetSpent(
-                    b,
-                    monthlyMetrics.thisMonthTxs,
-                    categories,
-                    budgets,
-                    userLinks,
-                  )
+                    // Calculate spent in this caixinha com matching unificado e vínculos de categorias
+                    const spent = getBudgetSpent(
+                      b,
+                      monthlyMetrics.thisMonthTxs,
+                      categories,
+                      budgets,
+                      userLinks,
+                    )
 
-                  const pct = Math.min(Math.round((spent / (b.amount || 1)) * 100), 100)
-                  const isWarning = pct >= 80 && pct < 90
-                  const isExceeded = pct >= 90
+                    const pct = Math.min(Math.round((spent / (b.amount || 1)) * 100), 100)
+                    const isWarning = pct >= 80 && pct < 90
+                    const isExceeded = pct >= 90
 
-                  return (
-                    <div key={b.id} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span
-                            className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs shrink-0"
-                            style={{ backgroundColor: displayColor }}
-                          >
-                            {renderCaixinhaIcon(displayIcon, 'w-3 h-3 text-xs')}
+                    return (
+                      <div key={b.id} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className="w-5 h-5 rounded-md flex items-center justify-center text-white text-xs shrink-0"
+                              style={{ backgroundColor: displayColor }}
+                            >
+                              {renderCaixinhaIcon(displayIcon, 'w-3 h-3 text-xs')}
+                            </span>
+                            <span className="font-medium text-slate-800 truncate">
+                              {displayName}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
+                            {formatCurrency(spent)} / {formatCurrency(b.amount)}
                           </span>
-                          <span className="font-medium text-slate-800 truncate">{displayName}</span>
                         </div>
-                        <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
-                          {formatCurrency(spent)} / {formatCurrency(b.amount)}
-                        </span>
+                        <Progress
+                          value={pct}
+                          className={`h-2 ${
+                            isExceeded
+                              ? '[&>div]:bg-brand-terracotta'
+                              : isWarning
+                                ? '[&>div]:bg-brand-gold'
+                                : '[&>div]:bg-brand-petrol'
+                          }`}
+                        />
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>{pct}% utilizado</span>
+                          {isExceeded && (
+                            <span className="text-brand-terracotta font-semibold">Crítico</span>
+                          )}
+                          {isWarning && (
+                            <span className="text-[#B8892B] font-semibold">Atenção</span>
+                          )}
+                        </div>
                       </div>
-                      <Progress
-                        value={pct}
-                        className={`h-2 ${
-                          isExceeded
-                            ? '[&>div]:bg-brand-terracotta'
-                            : isWarning
-                              ? '[&>div]:bg-brand-gold'
-                              : '[&>div]:bg-brand-petrol'
-                        }`}
-                      />
-                      <div className="flex items-center justify-between text-[10px] text-slate-400">
-                        <span>{pct}% utilizado</span>
-                        {isExceeded && (
-                          <span className="text-brand-terracotta font-semibold">Crítico</span>
-                        )}
-                        {isWarning && <span className="text-[#B8892B] font-semibold">Atenção</span>}
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
 
                 <Button
                   asChild

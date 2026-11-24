@@ -1,13 +1,15 @@
+// =============================================================================
+// NOTA ESTRUTURAL PERMANENTE — NÃO REMOVER
+// `getBackendErrorMessage(error, fallback?)` é consumida por:
+//   - src/components/admin/BillingAdminSection.tsx
+//   - src/components/admin/ClientSubscriptionDetailsDialog.tsx
+//   - src/pages/Settings.tsx
+// Esta função já sumiu do arquivo 14 vezes em builds anteriores (MISSING_EXPORT
+// no QA). Se o build reclamar de export ausente, restaure-a AQUI, com esta nota.
+// =============================================================================
 import { ClientResponseError } from 'pocketbase'
 
 export type FieldErrors = Record<string, string>
-
-// ⚠️ NOTA ESTRUTURAL PERMANENTE (nunca remover): getBackendErrorMessage abaixo é
-// CONSUMIDA por src/components/admin/BillingAdminSection.tsx,
-// src/components/admin/ClientSubscriptionDetailsDialog.tsx e src/pages/Settings.tsx.
-// Esta é a 14ª ressurgência — qualquer edição deste arquivo DEVE manter esta
-// exportação: getBackendErrorMessage(error: unknown, fallback?: string): string.
-// Removê-la quebra o build com MISSING_EXPORT.
 
 export function extractFieldErrors(error: unknown): FieldErrors {
   if (!(error instanceof ClientResponseError)) return {}
@@ -27,44 +29,48 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const generic = ['Something went wrong', 'An unexpected error occurred']
-  const clean = (raw: string): string => {
-    let msg = String(raw).trim()
-    msg = msg
-      .replace(/^GoError:\s*/i, '')
-      .replace(/^Error:\s*/i, '')
-      .trim()
-    if (!msg || generic.some((g) => msg.toLowerCase() === g.toLowerCase())) {
-      return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
-    }
-    return msg
-  }
-
-  if (!(error instanceof ClientResponseError)) {
-    if (error instanceof Error && error.message) return clean(error.message)
-    return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
-  }
-
-  const response = error.response as { message?: unknown; error?: unknown } | undefined
-  if (response && typeof response === 'object') {
-    if (typeof response.message === 'string' && response.message.trim()) {
-      return clean(response.message)
-    }
-    if (typeof response.error === 'string' && response.error.trim()) {
-      return clean(response.error)
-    }
-  }
-  const fieldMsgs = Object.values(extractFieldErrors(error))
-  if (fieldMsgs.length > 0) return clean(fieldMsgs.join(' '))
-  if (error.message) return clean(error.message)
-  return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
-}
-
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
     return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
   const msgs = Object.values(extractFieldErrors(error))
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
+}
+
+const GENERIC_SDK_MESSAGES = [
+  'something went wrong',
+  'failed to fetch',
+  'an unexpected error occurred',
+  'networkerror',
+]
+
+function cleanMessage(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const text = raw.replace(/^(GoError|Error):\s*/i, '').trim()
+  if (!text) return null
+  if (GENERIC_SDK_MESSAGES.some((g) => text.toLowerCase().startsWith(g))) return null
+  return text
+}
+
+/**
+ * Extrai a mensagem real de um erro do backend para exibir ao usuário.
+ * Lê message/error/data do corpo da resposta, remove o prefixo "GoError:" da JSVM
+ * e bloqueia o genérico "Something went wrong" do SDK. Sem mensagem útil, usa o fallback em PT.
+ */
+export function getBackendErrorMessage(
+  error: unknown,
+  fallback = 'Não foi possível concluir a operação. Tente novamente.',
+): string {
+  if (error instanceof ClientResponseError) {
+    const data = error.response?.data as Record<string, unknown> | undefined
+    if (data && typeof data === 'object') {
+      const direct = cleanMessage(data.message) ?? cleanMessage(data.error)
+      if (direct) return direct
+      const fields = Object.values(extractFieldErrors(error)).map(cleanMessage).filter(Boolean)
+      if (fields.length > 0) return fields.join(' ')
+    }
+    return cleanMessage(error.message) ?? fallback
+  }
+  if (error instanceof Error) return cleanMessage(error.message) ?? fallback
+  return fallback
 }

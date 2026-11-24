@@ -703,9 +703,18 @@ cronAdd('proactive_precharge_email', '0 12 * * *', () => {
             html: fbHtmlBody,
           })
           $app.newMailClient().send(fbMsg)
+          console.log(
+            '[proactive][fallback] precharge ENVIADO -> to=' +
+              fbUserEmail +
+              ' subject="' +
+              fbSubject +
+              '"',
+          )
           fbEmailRes = { success: true, to: fbUserEmail, subject: fbSubject }
         } catch (fbMailErr) {
-          console.log('[proactive][fallback] Erro no envio de e-mail pré-cobrança: ' + fbMailErr)
+          console.log(
+            '[proactive][fallback] precharge FALHOU -> to=' + fbUserEmail + ' erro=' + fbMailErr,
+          )
           fbEmailRes = { success: false, error: String(fbMailErr) }
         }
       }
@@ -1074,10 +1083,20 @@ cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
               html: fbHtmlBody,
             })
             $app.newMailClient().send(fbMsg)
+            console.log(
+              '[proactive][fallback] pix_renewal ENVIADO -> to=' +
+                fbUserEmail +
+                ' subject="' +
+                fbSubject +
+                '"',
+            )
             fbEmailRes = { success: true, to: fbUserEmail, subject: fbSubject }
           } catch (fbMailErr) {
             console.log(
-              '[proactive][fallback] Erro no envio de e-mail (renovação Pix): ' + fbMailErr,
+              '[proactive][fallback] pix_renewal FALHOU -> to=' +
+                fbUserEmail +
+                ' erro=' +
+                fbMailErr,
             )
             fbEmailRes = { success: false, error: String(fbMailErr) }
           }

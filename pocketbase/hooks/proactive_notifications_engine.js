@@ -476,6 +476,26 @@ function buildPrechargeEmailHtml(clientName, daysAhead, chargeDateStr, amountCen
   `.trim()
 }
 
+// v0.0.157: snapshot das configurações SMTP atuais para prova em log (a porta
+// NUNCA é fixa em código: newMailClient() lê o settings de SMTP, reaplicado a
+// partir dos segredos SKIP_SMTP_* pela migração 0056 — 587/STARTTLS => tls:false).
+function smtpSettingsSnapshot() {
+  try {
+    const s = $app.settings()
+    const smtp = (s && s.smtp) || {}
+    return JSON.stringify({
+      enabled: smtp.enabled,
+      host: smtp.host,
+      port: smtp.port,
+      tls: smtp.tls,
+      username: smtp.username,
+      from: (s.meta && s.meta.senderAddress) || '',
+    })
+  } catch (_) {
+    return 'unavailable'
+  }
+}
+
 function sendPrechargeEmail(toEmail, clientName, daysAhead, chargeDateStr, amountCents, planName) {
   if (!toEmail || toEmail.indexOf('@') === -1) {
     return { success: false, error: 'E-mail de destinatário inválido' }
@@ -516,10 +536,25 @@ function sendPrechargeEmail(toEmail, clientName, daysAhead, chargeDateStr, amoun
     })
 
     $app.newMailClient().send(msg)
-    return { success: true, to: toEmail, subject: subject }
+    console.log(
+      '[proactive] precharge ENVIADO -> to=' +
+        toEmail +
+        ' subject="' +
+        subject +
+        '" smtp=' +
+        smtpSettingsSnapshot(),
+    )
+    return { success: true, to: toEmail, subject: subject, smtp: smtpSettingsSnapshot() }
   } catch (err) {
-    console.log('[proactive] Erro no $app.newMailClient().send:', err)
-    return { success: false, error: String(err) }
+    console.log(
+      '[proactive] precharge FALHOU -> to=' +
+        toEmail +
+        ' smtp=' +
+        smtpSettingsSnapshot() +
+        ' erro=' +
+        err,
+    )
+    return { success: false, error: String(err), smtp: smtpSettingsSnapshot() }
   }
 }
 
@@ -631,10 +666,25 @@ function sendPixRenewalEmail(toEmail, clientName, daysAhead, expiryDateStr, amou
     })
 
     $app.newMailClient().send(msg)
-    return { success: true, to: toEmail, subject: subject }
+    console.log(
+      '[proactive] pix_renewal ENVIADO -> to=' +
+        toEmail +
+        ' subject="' +
+        subject +
+        '" smtp=' +
+        smtpSettingsSnapshot(),
+    )
+    return { success: true, to: toEmail, subject: subject, smtp: smtpSettingsSnapshot() }
   } catch (err) {
-    console.log('[proactive] Erro no $app.newMailClient().send (renovação Pix):', err)
-    return { success: false, error: String(err) }
+    console.log(
+      '[proactive] pix_renewal FALHOU -> to=' +
+        toEmail +
+        ' smtp=' +
+        smtpSettingsSnapshot() +
+        ' erro=' +
+        err,
+    )
+    return { success: false, error: String(err), smtp: smtpSettingsSnapshot() }
   }
 }
 
@@ -1148,6 +1198,7 @@ if (typeof globalThis !== 'undefined') {
     runPrechargeEmailJob: runPrechargeEmailJob,
     runPixRenewalJob: runPixRenewalJob,
     sendPrechargeEmail: sendPrechargeEmail,
+    sendPixRenewalEmail: sendPixRenewalEmail,
     getBrtDateStr: getBrtDateStr,
     formatDateBrt: formatDateBrt,
     NIGHTLY_REMINDER_TEMPLATE: NIGHTLY_REMINDER_TEMPLATE,

@@ -726,6 +726,8 @@ export interface AdminClientDetail {
     type: string
     description: string
     category_name: string
+    budget_id?: string
+    budget_name?: string
     date: string
     created: string
     source?: string

@@ -1114,7 +1114,13 @@ export const AdminBackoffice: React.FC = () => {
                                     </Badge>
                                   )}
                                 </TableCell>
-                                <TableCell>{t.category_name}</TableCell>
+                                <TableCell>
+                                  {t.budget_name
+                                    ? t.budget_name
+                                    : t.budget_id
+                                      ? 'Caixinha removida'
+                                      : 'Sem caixinha'}
+                                </TableCell>
                                 <TableCell
                                   className={`text-right font-semibold tabular-nums ${
                                     isCancelled || isDeleted

@@ -234,8 +234,12 @@ routerAdd(
         } catch (_) {}
       }
 
-      // Mapeia gasto por categoria no mês de referência (somente lançamentos ativos)
+      // Mapeia gasto por categoria e por CAIXINHA no mês de referência (somente lançamentos ativos).
+      // Correção (bug do Rafael): o gasto da caixinha agora soma transações vinculadas
+      // diretamente pelo campo budget (ex.: lançamento criado pelo agente WhatsApp),
+      // além do agrupamento por categoria.
       const spentByCatMonth = {}
+      const spentByBudgetMonth = {}
       for (let i = 0; i < clientMonthTxForBudgets.length; i++) {
         const tx = clientMonthTxForBudgets[i]
         const st = tx.getString('status') || 'active'
@@ -246,6 +250,10 @@ routerAdd(
           const cId = tx.getString('category')
           if (cId) {
             spentByCatMonth[cId] = (spentByCatMonth[cId] || 0) + tx.getInt('amount')
+          }
+          const bId = tx.getString('budget')
+          if (bId) {
+            spentByBudgetMonth[bId] = (spentByBudgetMonth[bId] || 0) + tx.getInt('amount')
           }
         }
       }
@@ -268,7 +276,12 @@ routerAdd(
         const caixinhaIcon = bDirectIcon || cat.icon
         const caixinhaColor = bDirectColor || cat.color
         const limitCents = b.getInt('amount')
-        const spentCents = spentByCatMonth[catId] || 0
+        // Prioriza transações vinculadas diretamente à caixinha (campo budget);
+        // cai para o agregado por categoria quando não há vínculo direto.
+        const spentCents =
+          spentByBudgetMonth[b.id] !== undefined
+            ? spentByBudgetMonth[b.id]
+            : spentByCatMonth[catId] || 0
         caixinhas.push({
           id: b.id,
           name: caixinhaName,
@@ -325,12 +338,28 @@ routerAdd(
         const cat = catMap[catId]
         const txStatus = tx.getString('status') || 'active'
         const isRetroactive = tx.getBool('is_retroactive')
+        // Correção (bug do Rafael): a coluna Caixinha deve mostrar a caixinha
+        // vinculada pelo campo budget da transação, não a categoria. Fallback
+        // amigável quando a caixinha não existe mais ou o campo está vazio.
+        const txBudgetId = tx.getString('budget')
+        let budgetName = ''
+        if (txBudgetId) {
+          try {
+            const txBudget = $app.findRecordById('budgets', txBudgetId)
+            budgetName =
+              txBudget.getString('name') || catMap[txBudget.getString('category')]?.name || ''
+          } catch (_) {
+            budgetName = ''
+          }
+        }
         recentTransactions.push({
           id: tx.id,
           amount_cents: tx.getInt('amount'),
           type: tx.getString('type'),
           description: tx.getString('description'),
           category_name: cat ? cat.name : 'Outros',
+          budget_id: txBudgetId || '',
+          budget_name: budgetName,
           date: tx.getString('date'),
           created: tx.getString('created'),
           source: tx.getString('source') || 'manual',

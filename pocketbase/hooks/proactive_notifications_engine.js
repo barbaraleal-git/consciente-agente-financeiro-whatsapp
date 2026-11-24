@@ -43,8 +43,8 @@
   }
 
   function senderInfo() {
-    var addr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
-    var name = 'Consciente - Seu parceiro nas finanças'
+    var addr = 'noreply@mail.goskip.dev'
+    var name = 'Consciente'
     try {
       var s = $app.settings()
       if (s && s.meta) {
@@ -52,8 +52,11 @@
         if (s.meta.senderName) name = s.meta.senderName
       }
     } catch (_) {}
+    if (name !== 'Consciente') name = 'Consciente' // v0.0.164: display sempre a marca
     return { address: addr, name: name }
   }
+
+  var REPLY_TO = 'contato@consciente.net.br' // v0.0.164: respostas na caixa da dona
 
   function sendViaPlatform(to, subject, html, from) {
     var msg = new MailerMessage({
@@ -61,6 +64,7 @@
       to: [{ address: to }],
       subject: subject,
       html: html,
+      headers: { 'Reply-To': REPLY_TO },
     })
     $app.newMailClient().send(msg)
   }
@@ -86,6 +90,7 @@
         to: [to],
         subject: subject,
         html: html,
+        reply_to: REPLY_TO,
       }),
       timeout: 30,
     })
@@ -722,7 +727,7 @@ function sendPrechargeEmail(toEmail, clientName, daysAhead, chargeDateStr, amoun
   }
 
   // Fallback inalterado (cliente nativo do PocketBase)
-  let senderAddr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
+  let senderAddr = 'noreply@mail.goskip.dev'
   let senderName = 'Consciente'
   try {
     const s = $app.settings()
@@ -731,6 +736,7 @@ function sendPrechargeEmail(toEmail, clientName, daysAhead, chargeDateStr, amoun
       if (s.meta.senderName) senderName = s.meta.senderName
     }
   } catch (_) {}
+  if (senderName !== 'Consciente') senderName = 'Consciente' // v0.0.164
 
   try {
     const msg = new MailerMessage({
@@ -741,6 +747,7 @@ function sendPrechargeEmail(toEmail, clientName, daysAhead, chargeDateStr, amoun
       to: [{ address: toEmail }],
       subject: subject,
       html: htmlBody,
+      headers: { 'Reply-To': 'contato@consciente.net.br' },
     })
 
     $app.newMailClient().send(msg)
@@ -868,7 +875,7 @@ function sendPixRenewalEmail(toEmail, clientName, daysAhead, expiryDateStr, amou
   }
 
   // Fallback inalterado (cliente nativo do PocketBase)
-  let senderAddr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
+  let senderAddr = 'noreply@mail.goskip.dev'
   let senderName = 'Consciente'
   try {
     const s = $app.settings()
@@ -877,6 +884,7 @@ function sendPixRenewalEmail(toEmail, clientName, daysAhead, expiryDateStr, amou
       if (s.meta.senderName) senderName = s.meta.senderName
     }
   } catch (_) {}
+  if (senderName !== 'Consciente') senderName = 'Consciente' // v0.0.164
 
   try {
     const msg = new MailerMessage({
@@ -887,6 +895,7 @@ function sendPixRenewalEmail(toEmail, clientName, daysAhead, expiryDateStr, amou
       to: [{ address: toEmail }],
       subject: subject,
       html: htmlBody,
+      headers: { 'Reply-To': 'contato@consciente.net.br' },
     })
 
     $app.newMailClient().send(msg)

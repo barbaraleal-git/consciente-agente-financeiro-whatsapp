@@ -42,7 +42,7 @@
 
   function senderInfo() {
     var addr = 'noreply@mail.goskip.dev'
-    var name = 'Consciente - Seu parceiro nas finanças'
+    var name = 'Consciente'
     try {
       var s = $app.settings()
       if (s && s.meta) {
@@ -50,8 +50,11 @@
         if (s.meta.senderName) name = s.meta.senderName
       }
     } catch (_) {}
+    if (name !== 'Consciente') name = 'Consciente' // v0.0.164: display sempre a marca
     return { address: addr, name: name }
   }
+
+  var REPLY_TO = 'contato@consciente.net.br' // v0.0.164: respostas na caixa da dona
 
   function sendViaPlatform(to, subject, html, from) {
     var msg = new MailerMessage({
@@ -59,6 +62,7 @@
       to: [{ address: to }],
       subject: subject,
       html: html,
+      headers: { 'Reply-To': REPLY_TO },
     })
     $app.newMailClient().send(msg)
   }
@@ -84,6 +88,7 @@
         to: [to],
         subject: subject,
         html: html,
+        reply_to: REPLY_TO,
       }),
       timeout: 30,
     })
@@ -358,8 +363,10 @@ onMailerRecordVerificationSend((e) => {
 
     if (e.message) {
       if (e.message.from) {
-        e.message.from.name = 'Consciente - Seu parceiro nas finanças'
+        e.message.from.name = 'Consciente'
       }
+      // v0.0.164: respostas do cliente vão para a caixa real da dona
+      e.message.headers = { 'Reply-To': 'contato@consciente.net.br' }
 
       e.message.subject = 'Confirme sua conta no Consciente'
 
@@ -398,8 +405,10 @@ onMailerRecordPasswordResetSend((e) => {
 
     if (e.message) {
       if (e.message.from) {
-        e.message.from.name = 'Consciente - Seu parceiro nas finanças'
+        e.message.from.name = 'Consciente'
       }
+      // v0.0.164: respostas do cliente vão para a caixa real da dona
+      e.message.headers = { 'Reply-To': 'contato@consciente.net.br' }
 
       e.message.subject = 'Redefina sua senha do Consciente'
 
@@ -439,8 +448,10 @@ onMailerRecordEmailChangeSend((e) => {
 
     if (e.message) {
       if (e.message.from) {
-        e.message.from.name = 'Consciente - Seu parceiro nas finanças'
+        e.message.from.name = 'Consciente'
       }
+      // v0.0.164: respostas do cliente vão para a caixa real da dona
+      e.message.headers = { 'Reply-To': 'contato@consciente.net.br' }
 
       e.message.subject = 'Confirme seu novo email no Consciente'
 

@@ -1,5 +1,41 @@
 import { ClientResponseError } from 'pocketbase'
 
+// ⚠️ NOTA ESTRUTURAL PERMANENTE (não remover):
+// getBackendErrorMessage(error, fallback?) é EXPORT OBRIGATÓRIO deste arquivo.
+// Consumidores: BillingAdminSection.tsx, ClientSubscriptionDetailsDialog.tsx,
+// Settings.tsx (e históricamente Dashboard/SubscriptionPlansTab). Esta função
+// JÁ SUMIU 14 VEZES do arquivo (MISSING_EXPORT recorrente a cada build —
+// v0.0.119/120/122/124/140/160/164). NUNCA removê-la nem renomeá-la.
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const generic = /Something went wrong/i
+  let raw = ''
+  if (error instanceof ClientResponseError) {
+    const r = error.response as Record<string, unknown> | undefined
+    if (r) {
+      if (typeof r.message === 'string' && r.message.trim()) raw = r.message
+      else if (typeof r.error === 'string' && r.error.trim()) raw = r.error
+      else if (r.data && typeof r.data === 'object') {
+        const d = r.data as Record<string, unknown>
+        if (typeof d.message === 'string' && d.message.trim()) raw = d.message
+        else if (typeof d.error === 'string' && d.error.trim()) raw = d.error
+      }
+    } else if (error.message) {
+      raw = error.message
+    }
+  } else if (error instanceof Error && error.message) {
+    raw = error.message
+  } else if (typeof error === 'string' && error.trim()) {
+    raw = error
+  }
+  if (!raw || generic.test(raw)) return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
+  // tira prefixos GoError/Error 400:/etc antes de devolver
+  const cleaned = raw
+    .replace(/^(GoError|Error)\s*\d*[:\s]*/i, '')
+    .replace(/\.$/, '')
+    .trim()
+  return cleaned || fallback || 'Ocorreu um erro inesperado. Tente novamente.'
+}
+
 export type FieldErrors = Record<string, string>
 
 export function extractFieldErrors(error: unknown): FieldErrors {
@@ -18,32 +54,6 @@ export function extractFieldErrors(error: unknown): FieldErrors {
     }
   }
   return errors
-}
-
-// NOTA ESTRUTURAL PERMANENTE (v0.0.119+): getBackendErrorMessage já desapareceu
-// 13 vezes durante builds (MISSING_EXPORT). NUNCA remover esta função — vários
-// componentes (BillingAdminSection, SubscriptionPlansTab, Settings, etc.) a
-// importam e o build quebra sem ela.
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  if (error instanceof ClientResponseError) {
-    const msgs = Object.values(extractFieldErrors(error))
-    if (msgs.length > 0) return msgs.join(' ')
-    const respMsg = (error.response as { message?: string } | undefined)?.message
-    if (typeof respMsg === 'string' && respMsg && respMsg !== 'Something went wrong.') {
-      return respMsg.replace(/^GoError:\s*/, '')
-    }
-    if (
-      typeof error.message === 'string' &&
-      error.message &&
-      error.message !== 'Something went wrong.' &&
-      !error.message.startsWith('ClientResponseError')
-    ) {
-      return error.message.replace(/^GoError:\s*/, '')
-    }
-  } else if (error instanceof Error && error.message) {
-    return error.message.replace(/^GoError:\s*/, '')
-  }
-  return fallback || 'Algo deu errado. Tente novamente.'
 }
 
 export function getErrorMessage(error: unknown): string {

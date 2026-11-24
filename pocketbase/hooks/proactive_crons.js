@@ -27,6 +27,200 @@
  * cronAdd não enxergam declarações de NENHUM outro arquivo (nem do próprio).
  */
 
+// =====================================================================
+// v0.0.162 — MÓDULO DE E-MAIL AUTOABASTECIDO (cópia inline idempotente
+// de mail_delivery.js). REGRA JSVM: globalThis NÃO preserva estado entre
+// hooks/crons (pool isolado por execução) — este arquivo reconstrói o
+// módulo __mailDelivery no PRÓPRIO topo (cada arquivo se autoabastece).
+// Se outro arquivo deste pool já publicou (com sendDualPath), NÃO
+// sobrescreve. Nenhum gatilho, dedupe, horário de cron ou rota alterados.
+// =====================================================================
+;(function ensureMailDelivery() {
+  var existingMd = null
+  try {
+    if (typeof globalThis !== 'undefined') existingMd = globalThis.__mailDelivery
+  } catch (mdExErr) {}
+  if (existingMd && typeof existingMd.sendDualPath === 'function') return
+
+  function getDeliveryMode() {
+    try {
+      var recs = $app.findRecordsByFilter('app_settings', "key = 'email'", '-created', 1, 0)
+      if (recs && recs.length > 0) {
+        var mode = recs[0].getString('email_delivery_mode')
+        if (mode === 'resend') return 'resend'
+      }
+    } catch (e) {
+      console.log('[mail_delivery] nota ao ler modo (usando platform): ' + e)
+    }
+    return 'platform'
+  }
+
+  function hasResendKey() {
+    try {
+      return !!($os.getenv('RESEND_API_KEY') || '').trim()
+    } catch (_) {
+      return false
+    }
+  }
+
+  function senderInfo() {
+    var addr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
+    var name = 'Consciente - Seu parceiro nas finanças'
+    try {
+      var s = $app.settings()
+      if (s && s.meta) {
+        if (s.meta.senderAddress) addr = s.meta.senderAddress
+        if (s.meta.senderName) name = s.meta.senderName
+      }
+    } catch (_) {}
+    return { address: addr, name: name }
+  }
+
+  function sendViaPlatform(to, subject, html, from) {
+    var msg = new MailerMessage({
+      from: { address: from.address, name: from.name },
+      to: [{ address: to }],
+      subject: subject,
+      html: html,
+    })
+    $app.newMailClient().send(msg)
+  }
+
+  function sendViaResend(to, subject, html, from) {
+    var apiKey = ''
+    try {
+      apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
+    } catch (_) {
+      apiKey = ''
+    }
+    if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY ausente' }
+
+    var resp = $http.send({
+      url: 'https://api.resend.com/emails',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + apiKey,
+      },
+      body: JSON.stringify({
+        from: from.name + ' <' + from.address + '>',
+        to: [to],
+        subject: subject,
+        html: html,
+      }),
+      timeout: 30,
+    })
+
+    var ok = resp.statusCode >= 200 && resp.statusCode < 300
+    if (!ok) {
+      var bodyPreview = ''
+      try {
+        bodyPreview = (resp.raw || JSON.stringify(resp.json) || '').slice(0, 300)
+      } catch (_) {
+        bodyPreview = ''
+      }
+      return { ok: false, reason: 'Resend HTTP ' + resp.statusCode + ': ' + bodyPreview }
+    }
+    return { ok: true, provider: 'resend', statusCode: resp.statusCode }
+  }
+
+  function sendDualPath(to, subject, html, kind) {
+    if (!to || String(to).indexOf('@') === -1) {
+      return { success: false, error: 'E-mail de destinatário inválido' }
+    }
+    var mode = getDeliveryMode()
+    var from = senderInfo()
+
+    if (mode === 'resend') {
+      if (!hasResendKey()) {
+        console.log(
+          '[mail_delivery] modo=resend sem RESEND_API_KEY — FALLBACK para platform | kind=' +
+            kind +
+            ' to=' +
+            to,
+        )
+        sendViaPlatform(to, subject, html, from)
+        return {
+          success: true,
+          path: 'platform (fallback: resend sem chave)',
+          to: to,
+          subject: subject,
+        }
+      }
+      var rRes = sendViaResend(to, subject, html, from)
+      if (rRes.ok) {
+        console.log(
+          '[mail_delivery] ENVIADO via resend | kind=' +
+            kind +
+            ' to=' +
+            to +
+            ' subject="' +
+            subject +
+            '"',
+        )
+        return { success: true, path: 'resend', to: to, subject: subject }
+      }
+      console.log(
+        '[mail_delivery] FALHA no resend (' +
+          rRes.reason +
+          ') — FALLBACK para platform | kind=' +
+          kind +
+          ' to=' +
+          to,
+      )
+      try {
+        sendViaPlatform(to, subject, html, from)
+        return {
+          success: true,
+          path: 'platform (fallback: ' + rRes.reason.slice(0, 120) + ')',
+          to: to,
+          subject: subject,
+        }
+      } catch (fbErr) {
+        console.log(
+          '[mail_delivery] FALHOU também no platform | kind=' +
+            kind +
+            ' to=' +
+            to +
+            ' erro=' +
+            fbErr,
+        )
+        return { success: false, error: 'resend: ' + rRes.reason + ' | platform: ' + String(fbErr) }
+      }
+    }
+
+    try {
+      sendViaPlatform(to, subject, html, from)
+      console.log(
+        '[mail_delivery] ENVIADO via platform | kind=' +
+          kind +
+          ' to=' +
+          to +
+          ' subject="' +
+          subject +
+          '"',
+      )
+      return { success: true, path: 'platform', to: to, subject: subject }
+    } catch (pErr) {
+      console.log(
+        '[mail_delivery] FALHOU no platform | kind=' + kind + ' to=' + to + ' erro=' + pErr,
+      )
+      return { success: false, error: String(pErr) }
+    }
+  }
+
+  if (typeof globalThis !== 'undefined') {
+    globalThis.__mailDelivery = {
+      getDeliveryMode: getDeliveryMode,
+      hasResendKey: hasResendKey,
+      senderInfo: senderInfo,
+      sendViaPlatform: sendViaPlatform,
+      sendViaResend: sendViaResend,
+      sendDualPath: sendDualPath,
+    }
+  }
+})()
+
 cronAdd('proactive_nightly_reminder', '30 23 * * *', () => {
   console.log('[cron:proactive_nightly_reminder] Disparo automático iniciado.')
 

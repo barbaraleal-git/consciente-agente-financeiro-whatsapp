@@ -1,86 +1,55 @@
-// ⚠️ NOTA ESTRUTURAL PERMANENTE — LEIA ANTES DE EDITAR ESTE ARQUIVO ⚠️
-//
-// `getBackendErrorMessage` JÁ SUMIU DESTE ARQUIVO 13 VEZES (v0.0.105 → v0.0.159)
-// — sempre que o arquivo é tocado, a exportação some e o build quebra com
-// MISSING_EXPORT em BillingAdminSection.tsx / ClientSubscriptionDetailsDialog.tsx
-// / Settings.tsx. NÃO REMOVER NUNCA. Consumidores (todos importam daqui):
-//   - src/components/admin/BillingAdminSection.tsx (4 chamadas com fallback PT)
-//   - src/components/admin/ClientSubscriptionDetailsDialog.tsx
-//   - src/pages/Settings.tsx (toast da foto de perfil do WhatsApp)
-//
-// Comportamento esperado (nunca mudar a assinatura):
-//   getBackendErrorMessage(error: unknown, fallback?: string): string
-//   - extrai a mensagem REAL do corpo (message / error / data),
-//   - remove prefixos da JSVM ("GoError: ...", "Error: ..."),
-//   - bloqueia o genérico "Something went wrong" do SDK,
-//   - devolve `fallback` (PT) quando nada útil for extraído.
+import { ClientResponseError } from 'pocketbase'
 
-export interface FieldErrors {
-  [field: string]: { message?: string; code?: string }
-}
+export type FieldErrors = Record<string, string>
 
 export function extractFieldErrors(error: unknown): FieldErrors {
-  const out: FieldErrors = {}
-  if (error && typeof error === 'object') {
-    const anyErr = error as { response?: { data?: Record<string, unknown> } }
-    const data = anyErr?.response?.data
-    if (data && typeof data === 'object') {
-      for (const [field, value] of Object.entries(data)) {
-        if (value && typeof value === 'object') {
-          const v = value as { message?: string; code?: string }
-          out[field] = { message: v.message, code: v.code }
-        }
-      }
+  if (!(error instanceof ClientResponseError)) return {}
+  const data = error.response?.data
+  if (!data || typeof data !== 'object') return {}
+  const errors: FieldErrors = {}
+  for (const [field, detail] of Object.entries(data)) {
+    if (
+      detail &&
+      typeof detail === 'object' &&
+      'message' in detail &&
+      typeof (detail as { message: unknown }).message === 'string'
+    ) {
+      errors[field] = (detail as { message: string }).message
     }
   }
-  return out
+  return errors
 }
 
-/**
- * Extrai a mensagem real de erro do backend (pt-BR) a partir de uma exceção do
- * SDK PocketBase ou de qualquer objeto com message/error/data. Remove prefixos
- * da JSVM ("GoError: ..."), bloqueia o genérico "Something went wrong" do SDK e
- * devolve o fallback em português quando nada útil é extraído.
- *
- * ⚠️ 13ª ressurgência — NUNCA remover (ver nota no topo do arquivo).
- */
+// NOTA ESTRUTURAL PERMANENTE (v0.0.119+): getBackendErrorMessage já desapareceu
+// 13 vezes durante builds (MISSING_EXPORT). NUNCA remover esta função — vários
+// componentes (BillingAdminSection, SubscriptionPlansTab, Settings, etc.) a
+// importam e o build quebra sem ela.
 export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const DEFAULT_FALLBACK = 'Ocorreu um erro inesperado. Tente novamente.'
-  const GENERIC_PATTERNS = ['something went wrong']
-
-  let raw = ''
-
-  if (error && typeof error === 'object') {
-    const anyErr = error as {
-      message?: unknown
-      response?: { message?: unknown; error?: unknown; data?: unknown }
+  if (error instanceof ClientResponseError) {
+    const msgs = Object.values(extractFieldErrors(error))
+    if (msgs.length > 0) return msgs.join(' ')
+    const respMsg = (error.response as { message?: string } | undefined)?.message
+    if (typeof respMsg === 'string' && respMsg && respMsg !== 'Something went wrong.') {
+      return respMsg.replace(/^GoError:\s*/, '')
     }
-    const candidates: unknown[] = [
-      anyErr?.response?.message,
-      anyErr?.response?.error,
-      anyErr?.response?.data,
-      anyErr?.message,
-    ]
-    for (const c of candidates) {
-      if (typeof c === 'string' && c.trim()) {
-        raw = c.trim()
-        break
-      }
+    if (
+      typeof error.message === 'string' &&
+      error.message &&
+      error.message !== 'Something went wrong.' &&
+      !error.message.startsWith('ClientResponseError')
+    ) {
+      return error.message.replace(/^GoError:\s*/, '')
     }
-  } else if (typeof error === 'string' && error.trim()) {
-    raw = error.trim()
+  } else if (error instanceof Error && error.message) {
+    return error.message.replace(/^GoError:\s*/, '')
   }
+  return fallback || 'Algo deu errado. Tente novamente.'
+}
 
-  if (!raw) return fallback || DEFAULT_FALLBACK
-
-  let msg = raw
-  msg = msg.replace(/^GoError:\s*/i, '')
-  msg = msg.replace(/^Error:\s*/i, '')
-
-  const lower = msg.toLowerCase()
-  if (GENERIC_PATTERNS.some((p) => lower.includes(p))) {
-    return fallback || DEFAULT_FALLBACK
+export function getErrorMessage(error: unknown): string {
+  if (!(error instanceof ClientResponseError)) {
+    return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
-
-  return msg || fallback || DEFAULT_FALLBACK
+  const msgs = Object.values(extractFieldErrors(error))
+  return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }

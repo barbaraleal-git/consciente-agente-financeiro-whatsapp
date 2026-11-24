@@ -167,33 +167,37 @@ export const Dashboard: React.FC = () => {
   // Distribuição por CATEGORIA no mês atual: agrupa pelo CAMPO category da transação
   // (a categoria real), NUNCA pela caixinha. Caixinhas da mesma categoria (ex.:
   // "Alimentação - VA" e "Alimentação - VR") somam dentro do item "Alimentação".
-  // Lançamento cuja categoria foi apagada cai em "Outros" (nada some).
+  // A resolução usa a lista de categorias do usuário E, como fallback, o expand
+  // 'category' que o PocketBase já devolve junto da transação — assim TODA
+  // categoria com lançamento no mês aparece listada, mesmo que a lista carregada
+  // esteja incompleta num instante (race de realtime). O bucket "Outros" só é
+  // usado quando a categoria foi realmente APAGADA da coleção (ID inexistente).
   const categoryExpenses = useMemo(() => {
     const map: Record<string, { name: string; color: string; amount: number }> = {}
 
     monthlyMetrics.thisMonthTxs
       .filter((t) => t.type === 'despesa')
       .forEach((t) => {
-        const cat = t.category ? categories.find((c) => c.id === t.category) : undefined
+        const cat = t.category
+          ? (categories.find((c) => c.id === t.category) ?? t.expand?.category)
+          : undefined
 
-        let key: string
-        let name: string
-        let color: string
         if (cat) {
-          key = `cat:${cat.id}`
-          name = cat.name
-          color = cat.color || '#64748b'
+          const key = `cat:${cat.id}`
+          if (!map[key]) {
+            map[key] = { name: cat.name, color: cat.color || '#64748b', amount: 0 }
+          }
+          map[key].amount += t.amount
         } else {
-          // Categoria apagada/sem vínculo: agrupa em "Outros" para nada sumir
-          key = 'outros'
-          name = 'Outros'
-          color = '#64748b'
+          // Categoria apagada (ID que não existe mais na coleção): agrupa em
+          // "Outros" para nada sumir. Chave distinta de qualquer cat: para não
+          // se fundir com uma categoria real do usuário chamada "Outros".
+          const key = 'outros-orfaos'
+          if (!map[key]) {
+            map[key] = { name: 'Outros', color: '#64748b', amount: 0 }
+          }
+          map[key].amount += t.amount
         }
-
-        if (!map[key]) {
-          map[key] = { name, color, amount: 0 }
-        }
-        map[key].amount += t.amount
       })
 
     const list = Object.values(map).sort((a, b) => b.amount - a.amount)

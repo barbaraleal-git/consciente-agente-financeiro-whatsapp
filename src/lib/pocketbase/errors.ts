@@ -1,13 +1,10 @@
-// =============================================================================
-// NOTA ESTRUTURAL PERMANENTE — NÃO REMOVER
-// `getBackendErrorMessage(error, fallback?)` é consumida por:
-//   - src/components/admin/BillingAdminSection.tsx
-//   - src/components/admin/ClientSubscriptionDetailsDialog.tsx
-//   - src/pages/Settings.tsx
-// Esta função já sumiu do arquivo 14 vezes em builds anteriores (MISSING_EXPORT
-// no QA). Se o build reclamar de export ausente, restaure-a AQUI, com esta nota.
-// =============================================================================
 import { ClientResponseError } from 'pocketbase'
+
+// ⚠️ NOTA ESTRUTURAL PERMANENTE — NÃO REMOVER NADA DESTE ARQUIVO.
+// getBackendErrorMessage JÁ FOI APAGADA 15 VEZES por rodadas anteriores e o build
+// quebrou com MISSING_EXPORT TODA VEZ (BillingAdminSection, ClientSubscriptionDetailsDialog
+// e Settings importam esta função). Se este arquivo for tocado, CONFERIR ANTES DO QA que
+// getBackendErrorMessage segue aqui, exportada, com aridade (error, fallback?).
 
 export type FieldErrors = Record<string, string>
 
@@ -37,40 +34,30 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-const GENERIC_SDK_MESSAGES = [
-  'something went wrong',
-  'failed to fetch',
-  'an unexpected error occurred',
-  'networkerror',
-]
+// Extrai a mensagem real do corpo da resposta do backend (message/error/data),
+// remove prefixos da JSVM ("GoError: ...", "Error: ...") e bloqueia as frases
+// genéricas em inglês do SDK — o fallback em PT só é usado quando nada aproveitável
+// chega (ex.: falha de rede sem mensagem própria).
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const generic = ['Something went wrong', 'Failed to fetch', 'Network request failed']
 
-function cleanMessage(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null
-  const text = raw.replace(/^(GoError|Error):\s*/i, '').trim()
-  if (!text) return null
-  if (GENERIC_SDK_MESSAGES.some((g) => text.toLowerCase().startsWith(g))) return null
-  return text
-}
-
-/**
- * Extrai a mensagem real de um erro do backend para exibir ao usuário.
- * Lê message/error/data do corpo da resposta, remove o prefixo "GoError:" da JSVM
- * e bloqueia o genérico "Something went wrong" do SDK. Sem mensagem útil, usa o fallback em PT.
- */
-export function getBackendErrorMessage(
-  error: unknown,
-  fallback = 'Não foi possível concluir a operação. Tente novamente.',
-): string {
   if (error instanceof ClientResponseError) {
-    const data = error.response?.data as Record<string, unknown> | undefined
-    if (data && typeof data === 'object') {
-      const direct = cleanMessage(data.message) ?? cleanMessage(data.error)
-      if (direct) return direct
-      const fields = Object.values(extractFieldErrors(error)).map(cleanMessage).filter(Boolean)
-      if (fields.length > 0) return fields.join(' ')
+    const res = error.response as Record<string, unknown> | undefined
+    const candidates: unknown[] = [
+      res?.message,
+      res?.error,
+      (res?.data as Record<string, unknown> | undefined)?.message,
+      error.message,
+    ]
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) {
+        let msg = c.trim()
+        msg = msg.replace(/^GoError:\s*/i, '').replace(/^Error:\s*/i, '')
+        if (!generic.some((g) => msg.toLowerCase() === g.toLowerCase())) {
+          return msg
+        }
+      }
     }
-    return cleanMessage(error.message) ?? fallback
   }
-  if (error instanceof Error) return cleanMessage(error.message) ?? fallback
-  return fallback
+  return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
 }

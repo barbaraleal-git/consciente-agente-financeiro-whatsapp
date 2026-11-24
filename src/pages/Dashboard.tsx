@@ -22,11 +22,7 @@ import {
   getSourceLabel,
 } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
-import {
-  getBudgetSpent,
-  getEffectiveCategory,
-  resolveTransactionBudget,
-} from '@/lib/caixinhaMatcher'
+import { getBudgetSpent, getEffectiveCategory } from '@/lib/caixinhaMatcher'
 import { MessageSquare, Mic, PenLine, FileSpreadsheet, Bot, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -168,17 +164,17 @@ export const Dashboard: React.FC = () => {
     }
   }, [activeTransactions, budgets, currentMonth])
 
-  // Distribuição por CATEGORIA no mês atual: caixinhas (ex.: "Alimentação - VA") são
-  // somadas na categoria à qual pertencem; despesas sem caixinha usam a própria categoria.
+  // Distribuição por CATEGORIA no mês atual: agrupa pelo CAMPO category da transação
+  // (a categoria real), NUNCA pela caixinha. Caixinhas da mesma categoria (ex.:
+  // "Alimentação - VA" e "Alimentação - VR") somam dentro do item "Alimentação".
+  // Lançamento cuja categoria foi apagada cai em "Outros" (nada some).
   const categoryExpenses = useMemo(() => {
     const map: Record<string, { name: string; color: string; amount: number }> = {}
 
     monthlyMetrics.thisMonthTxs
       .filter((t) => t.type === 'despesa')
       .forEach((t) => {
-        const resolved = resolveTransactionBudget(t, budgets, categories, userLinks)
-        const catId = resolved?.category || (resolved ? '' : t.category)
-        const cat = catId ? categories.find((c) => c.id === catId) : undefined
+        const cat = t.category ? categories.find((c) => c.id === t.category) : undefined
 
         let key: string
         let name: string
@@ -188,10 +184,10 @@ export const Dashboard: React.FC = () => {
           name = cat.name
           color = cat.color || '#64748b'
         } else {
-          const eff = getEffectiveCategory(t, categories, budgets, userLinks)
-          name = eff.name || 'Outros'
-          color = eff.color || '#64748b'
-          key = `eff:${name}`
+          // Categoria apagada/sem vínculo: agrupa em "Outros" para nada sumir
+          key = 'outros'
+          name = 'Outros'
+          color = '#64748b'
         }
 
         if (!map[key]) {
@@ -207,7 +203,7 @@ export const Dashboard: React.FC = () => {
       ...item,
       percentage: Math.round((item.amount / total) * 100),
     }))
-  }, [monthlyMetrics, categories, budgets, userLinks])
+  }, [monthlyMetrics, categories])
 
   // Last 6 months evolution data (somente transações ativas)
   const evolutionData = useMemo(() => {

@@ -649,6 +649,205 @@ cronAdd('proactive_nightly_reminder', '30 23 * * *', () => {
 cronAdd('proactive_precharge_email', '0 12 * * *', () => {
   console.log('[cron:proactive_precharge_email] Disparo automático iniciado.')
 
+  // ---------------------------------------------------------------
+  // v0.0.163 — BUILDER INLINE __mailDelivery (idempotente): o
+  // globalThis NÃO preserva estado entre o LOAD do arquivo e a
+  // EXECUÇÃO do cron (pool isolado por execução). Se o módulo não
+  // existir/completo neste pool, reconstrói aqui DENTRO do callback.
+  // ---------------------------------------------------------------
+  var localMail = null
+  try {
+    if (
+      typeof globalThis !== 'undefined' &&
+      globalThis.__mailDelivery &&
+      typeof globalThis.__mailDelivery.sendDualPath === 'function'
+    ) {
+      localMail = globalThis.__mailDelivery
+    }
+  } catch (mdResolveErr) {
+    console.log(
+      '[cron:proactive_precharge_email][mail] lookup __mailDelivery falhou: ' + mdResolveErr,
+    )
+  }
+  if (!localMail) {
+    console.log(
+      '[cron:proactive_precharge_email][mail] __mailDelivery ausente no pool — construindo módulo inline (v0.0.163)',
+    )
+    var mdSenderInfo = function () {
+      var addr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
+      var name = 'Consciente - Seu parceiro nas finanças'
+      try {
+        var s = $app.settings()
+        if (s && s.meta) {
+          if (s.meta.senderAddress) addr = s.meta.senderAddress
+          if (s.meta.senderName) name = s.meta.senderName
+        }
+      } catch (_) {}
+      return { address: addr, name: name }
+    }
+    var mdGetMode = function () {
+      try {
+        var recs = $app.findRecordsByFilter('app_settings', "key = 'email'", '-created', 1, 0)
+        if (recs && recs.length > 0) {
+          var mode = recs[0].getString('email_delivery_mode')
+          if (mode === 'resend') return 'resend'
+        }
+      } catch (e) {
+        console.log('[mail_delivery] nota ao ler modo (usando platform): ' + e)
+      }
+      return 'platform'
+    }
+    var mdSendPlatform = function (to, subject, html, from) {
+      var msg = new MailerMessage({
+        from: { address: from.address, name: from.name },
+        to: [{ address: to }],
+        subject: subject,
+        html: html,
+      })
+      $app.newMailClient().send(msg)
+    }
+    var mdSendResend = function (to, subject, html, from) {
+      var apiKey = ''
+      try {
+        apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
+      } catch (_) {
+        apiKey = ''
+      }
+      if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY ausente' }
+      var resp = $http.send({
+        url: 'https://api.resend.com/emails',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify({
+          from: from.name + ' <' + from.address + '>',
+          to: [to],
+          subject: subject,
+          html: html,
+        }),
+        timeout: 30,
+      })
+      var ok = resp.statusCode >= 200 && resp.statusCode < 300
+      if (!ok) {
+        var bodyPreview = ''
+        try {
+          bodyPreview = (resp.raw || JSON.stringify(resp.json) || '').slice(0, 300)
+        } catch (_) {
+          bodyPreview = ''
+        }
+        return { ok: false, reason: 'Resend HTTP ' + resp.statusCode + ': ' + bodyPreview }
+      }
+      return { ok: true, provider: 'resend', statusCode: resp.statusCode }
+    }
+    var mdSendDual = function (to, subject, html, kind) {
+      if (!to || String(to).indexOf('@') === -1) {
+        return { success: false, error: 'E-mail de destinatário inválido' }
+      }
+      var from = mdSenderInfo()
+      var mode = mdGetMode()
+      if (mode === 'resend') {
+        var apiKey = ''
+        try {
+          apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
+        } catch (_) {
+          apiKey = ''
+        }
+        if (!apiKey) {
+          console.log(
+            '[mail_delivery] modo=resend sem RESEND_API_KEY — FALLBACK para platform | kind=' +
+              kind +
+              ' to=' +
+              to,
+          )
+          mdSendPlatform(to, subject, html, from)
+          return {
+            success: true,
+            path: 'platform (fallback: resend sem chave)',
+            to: to,
+            subject: subject,
+          }
+        }
+        var rRes = mdSendResend(to, subject, html, from)
+        if (rRes.ok) {
+          console.log(
+            '[mail_delivery] ENVIADO via resend | kind=' +
+              kind +
+              ' to=' +
+              to +
+              ' subject="' +
+              subject +
+              '"',
+          )
+          return { success: true, path: 'resend', to: to, subject: subject }
+        }
+        console.log(
+          '[mail_delivery] FALHA no resend (' +
+            rRes.reason +
+            ') — FALLBACK para platform | kind=' +
+            kind +
+            ' to=' +
+            to,
+        )
+        try {
+          mdSendPlatform(to, subject, html, from)
+          return {
+            success: true,
+            path: 'platform (fallback: ' + rRes.reason.slice(0, 120) + ')',
+            to: to,
+            subject: subject,
+          }
+        } catch (fbErr) {
+          console.log(
+            '[mail_delivery] FALHOU também no platform | kind=' +
+              kind +
+              ' to=' +
+              to +
+              ' erro=' +
+              fbErr,
+          )
+          return {
+            success: false,
+            error: 'resend: ' + rRes.reason + ' | platform: ' + String(fbErr),
+          }
+        }
+      }
+      try {
+        mdSendPlatform(to, subject, html, from)
+        console.log(
+          '[mail_delivery] ENVIADO via platform | kind=' +
+            kind +
+            ' to=' +
+            to +
+            ' subject="' +
+            subject +
+            '"',
+        )
+        return { success: true, path: 'platform', to: to, subject: subject }
+      } catch (pErr) {
+        console.log(
+          '[mail_delivery] FALHOU no platform | kind=' + kind + ' to=' + to + ' erro=' + pErr,
+        )
+        return { success: false, error: String(pErr) }
+      }
+    }
+    localMail = {
+      getDeliveryMode: mdGetMode,
+      senderInfo: mdSenderInfo,
+      sendDualPath: mdSendDual,
+      sendViaPlatform: mdSendPlatform,
+      sendViaResend: mdSendResend,
+    }
+    try {
+      if (typeof globalThis !== 'undefined') globalThis.__mailDelivery = localMail
+    } catch (mdPubErr) {
+      console.log(
+        '[mail_delivery] publicação no globalThis falhou (usando módulo local): ' + mdPubErr,
+      )
+    }
+  }
+
   var localEngine = null
   try {
     if (typeof globalThis !== 'undefined' && globalThis.__proactiveEngine) {
@@ -893,13 +1092,8 @@ cronAdd('proactive_precharge_email', '0 12 * * *', () => {
         // platform nativo | resend, com fallback automático. Mesmo HTML branded.
         var fbDualDone = false
         try {
-          if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
-            fbEmailRes = globalThis.__mailDelivery.sendDualPath(
-              fbUserEmail,
-              fbSubject,
-              fbHtmlBody,
-              'precharge',
-            )
+          if (localMail && typeof localMail.sendDualPath === 'function') {
+            fbEmailRes = localMail.sendDualPath(fbUserEmail, fbSubject, fbHtmlBody, 'precharge')
             fbDualDone = true
           }
         } catch (fbDualErr) {
@@ -1031,6 +1225,203 @@ cronAdd('proactive_precharge_email', '0 12 * * *', () => {
 
 cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
   console.log('[cron:proactive_pix_renewal] Disparo automático iniciado.')
+
+  // ---------------------------------------------------------------
+  // v0.0.163 — BUILDER INLINE __mailDelivery (idempotente): o
+  // globalThis NÃO preserva estado entre o LOAD do arquivo e a
+  // EXECUÇÃO do cron (pool isolado por execução). Se o módulo não
+  // existir/completo neste pool, reconstrói aqui DENTRO do callback.
+  // ---------------------------------------------------------------
+  var localMail = null
+  try {
+    if (
+      typeof globalThis !== 'undefined' &&
+      globalThis.__mailDelivery &&
+      typeof globalThis.__mailDelivery.sendDualPath === 'function'
+    ) {
+      localMail = globalThis.__mailDelivery
+    }
+  } catch (mdResolveErr) {
+    console.log('[cron:proactive_pix_renewal][mail] lookup __mailDelivery falhou: ' + mdResolveErr)
+  }
+  if (!localMail) {
+    console.log(
+      '[cron:proactive_pix_renewal][mail] __mailDelivery ausente no pool — construindo módulo inline (v0.0.163)',
+    )
+    var mdSenderInfo = function () {
+      var addr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
+      var name = 'Consciente - Seu parceiro nas finanças'
+      try {
+        var s = $app.settings()
+        if (s && s.meta) {
+          if (s.meta.senderAddress) addr = s.meta.senderAddress
+          if (s.meta.senderName) name = s.meta.senderName
+        }
+      } catch (_) {}
+      return { address: addr, name: name }
+    }
+    var mdGetMode = function () {
+      try {
+        var recs = $app.findRecordsByFilter('app_settings', "key = 'email'", '-created', 1, 0)
+        if (recs && recs.length > 0) {
+          var mode = recs[0].getString('email_delivery_mode')
+          if (mode === 'resend') return 'resend'
+        }
+      } catch (e) {
+        console.log('[mail_delivery] nota ao ler modo (usando platform): ' + e)
+      }
+      return 'platform'
+    }
+    var mdSendPlatform = function (to, subject, html, from) {
+      var msg = new MailerMessage({
+        from: { address: from.address, name: from.name },
+        to: [{ address: to }],
+        subject: subject,
+        html: html,
+      })
+      $app.newMailClient().send(msg)
+    }
+    var mdSendResend = function (to, subject, html, from) {
+      var apiKey = ''
+      try {
+        apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
+      } catch (_) {
+        apiKey = ''
+      }
+      if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY ausente' }
+      var resp = $http.send({
+        url: 'https://api.resend.com/emails',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify({
+          from: from.name + ' <' + from.address + '>',
+          to: [to],
+          subject: subject,
+          html: html,
+        }),
+        timeout: 30,
+      })
+      var ok = resp.statusCode >= 200 && resp.statusCode < 300
+      if (!ok) {
+        var bodyPreview = ''
+        try {
+          bodyPreview = (resp.raw || JSON.stringify(resp.json) || '').slice(0, 300)
+        } catch (_) {
+          bodyPreview = ''
+        }
+        return { ok: false, reason: 'Resend HTTP ' + resp.statusCode + ': ' + bodyPreview }
+      }
+      return { ok: true, provider: 'resend', statusCode: resp.statusCode }
+    }
+    var mdSendDual = function (to, subject, html, kind) {
+      if (!to || String(to).indexOf('@') === -1) {
+        return { success: false, error: 'E-mail de destinatário inválido' }
+      }
+      var from = mdSenderInfo()
+      var mode = mdGetMode()
+      if (mode === 'resend') {
+        var apiKey = ''
+        try {
+          apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
+        } catch (_) {
+          apiKey = ''
+        }
+        if (!apiKey) {
+          console.log(
+            '[mail_delivery] modo=resend sem RESEND_API_KEY — FALLBACK para platform | kind=' +
+              kind +
+              ' to=' +
+              to,
+          )
+          mdSendPlatform(to, subject, html, from)
+          return {
+            success: true,
+            path: 'platform (fallback: resend sem chave)',
+            to: to,
+            subject: subject,
+          }
+        }
+        var rRes = mdSendResend(to, subject, html, from)
+        if (rRes.ok) {
+          console.log(
+            '[mail_delivery] ENVIADO via resend | kind=' +
+              kind +
+              ' to=' +
+              to +
+              ' subject="' +
+              subject +
+              '"',
+          )
+          return { success: true, path: 'resend', to: to, subject: subject }
+        }
+        console.log(
+          '[mail_delivery] FALHA no resend (' +
+            rRes.reason +
+            ') — FALLBACK para platform | kind=' +
+            kind +
+            ' to=' +
+            to,
+        )
+        try {
+          mdSendPlatform(to, subject, html, from)
+          return {
+            success: true,
+            path: 'platform (fallback: ' + rRes.reason.slice(0, 120) + ')',
+            to: to,
+            subject: subject,
+          }
+        } catch (fbErr) {
+          console.log(
+            '[mail_delivery] FALHOU também no platform | kind=' +
+              kind +
+              ' to=' +
+              to +
+              ' erro=' +
+              fbErr,
+          )
+          return {
+            success: false,
+            error: 'resend: ' + rRes.reason + ' | platform: ' + String(fbErr),
+          }
+        }
+      }
+      try {
+        mdSendPlatform(to, subject, html, from)
+        console.log(
+          '[mail_delivery] ENVIADO via platform | kind=' +
+            kind +
+            ' to=' +
+            to +
+            ' subject="' +
+            subject +
+            '"',
+        )
+        return { success: true, path: 'platform', to: to, subject: subject }
+      } catch (pErr) {
+        console.log(
+          '[mail_delivery] FALHOU no platform | kind=' + kind + ' to=' + to + ' erro=' + pErr,
+        )
+        return { success: false, error: String(pErr) }
+      }
+    }
+    localMail = {
+      getDeliveryMode: mdGetMode,
+      senderInfo: mdSenderInfo,
+      sendDualPath: mdSendDual,
+      sendViaPlatform: mdSendPlatform,
+      sendViaResend: mdSendResend,
+    }
+    try {
+      if (typeof globalThis !== 'undefined') globalThis.__mailDelivery = localMail
+    } catch (mdPubErr) {
+      console.log(
+        '[mail_delivery] publicação no globalThis falhou (usando módulo local): ' + mdPubErr,
+      )
+    }
+  }
 
   var localEngine = null
   try {
@@ -1295,13 +1686,8 @@ cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
           // platform nativo | resend, com fallback automático. Mesmo HTML branded.
           var fbDualDone = false
           try {
-            if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
-              fbEmailRes = globalThis.__mailDelivery.sendDualPath(
-                fbUserEmail,
-                fbSubject,
-                fbHtmlBody,
-                'pix_renewal',
-              )
+            if (localMail && typeof localMail.sendDualPath === 'function') {
+              fbEmailRes = localMail.sendDualPath(fbUserEmail, fbSubject, fbHtmlBody, 'pix_renewal')
               fbDualDone = true
             }
           } catch (fbDualErr) {

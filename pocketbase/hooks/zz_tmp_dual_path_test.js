@@ -1,205 +1,25 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // ⚠️ HOOK EFÊMERO (padrão v0.0.153/159/160/161) — prova viva v0.0.162.
-// Cron */2: no PRIMEIRO tick, dispara para a dona admin os 2 e-mails de
-// cobrança branded (pré-cobrança recorrente 3 dias + renovação Pix anual
-// 30 dias) via __mailDelivery.sendDualPath, loga [zz] com o resultado e
-// auto-remove-se (cronRemove) APENAS se os 2 disparos concluíram.
+// Cron */2: dispara para a dona admin os 2 e-mails de cobrança branded
+// (pré-cobrança recorrente 3 dias + renovação Pix anual 30 dias) via
+// sendDualPath, loga [zz] com o resultado e auto-remove-se (cronRemove)
+// APENAS se os 2 disparos concluíram.
 //
-// REGRA JSVM (comprovada nos logs 06:08/06:20: "__mailDelivery indisponível"):
-// globalThis NÃO preserva estado entre hooks/crons (pool isolado por
-// execução) — o pool deste cron NÃO carrega mail_delivery.js. Este arquivo
-// reconstrói o módulo no PRÓPRIO topo (builder inline idempotente, cópia
-// fiel de mail_delivery.js): cada arquivo se autoabastece. Se outro arquivo
-// do pool já publicou (com sendDualPath), NÃO sobrescreve.
-
-;(function ensureMailDelivery() {
-  var existingMd = null
-  try {
-    if (typeof globalThis !== 'undefined') existingMd = globalThis.__mailDelivery
-  } catch (mdExErr) {}
-  if (existingMd && typeof existingMd.sendDualPath === 'function') return
-
-  function getDeliveryMode() {
-    try {
-      var recs = $app.findRecordsByFilter('app_settings', "key = 'email'", '-created', 1, 0)
-      if (recs && recs.length > 0) {
-        var mode = recs[0].getString('email_delivery_mode')
-        if (mode === 'resend') return 'resend'
-      }
-    } catch (e) {
-      console.log('[mail_delivery] nota ao ler modo (usando platform): ' + e)
-    }
-    return 'platform'
-  }
-
-  function hasResendKey() {
-    try {
-      return !!($os.getenv('RESEND_API_KEY') || '').trim()
-    } catch (_) {
-      return false
-    }
-  }
-
-  function senderInfo() {
-    var addr = 'noreply@mail.goskip.dev'
-    var name = 'Consciente - Seu parceiro nas finanças'
-    try {
-      var s = $app.settings()
-      if (s && s.meta) {
-        if (s.meta.senderAddress) addr = s.meta.senderAddress
-        if (s.meta.senderName) name = s.meta.senderName
-      }
-    } catch (_) {}
-    return { address: addr, name: name }
-  }
-
-  function sendViaPlatform(to, subject, html, from) {
-    var msg = new MailerMessage({
-      from: { address: from.address, name: from.name },
-      to: [{ address: to }],
-      subject: subject,
-      html: html,
-    })
-    $app.newMailClient().send(msg)
-  }
-
-  function sendViaResend(to, subject, html, from) {
-    var apiKey = ''
-    try {
-      apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
-    } catch (_) {
-      apiKey = ''
-    }
-    if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY ausente' }
-
-    var resp = $http.send({
-      url: 'https://api.resend.com/emails',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + apiKey,
-      },
-      body: JSON.stringify({
-        from: from.name + ' <' + from.address + '>',
-        to: [to],
-        subject: subject,
-        html: html,
-      }),
-      timeout: 30,
-    })
-
-    var ok = resp.statusCode >= 200 && resp.statusCode < 300
-    if (!ok) {
-      var bodyPreview = ''
-      try {
-        bodyPreview = (resp.raw || JSON.stringify(resp.json) || '').slice(0, 300)
-      } catch (_) {
-        bodyPreview = ''
-      }
-      return { ok: false, reason: 'Resend HTTP ' + resp.statusCode + ': ' + bodyPreview }
-    }
-    return { ok: true, provider: 'resend', statusCode: resp.statusCode }
-  }
-
-  function sendDualPath(to, subject, html, kind) {
-    if (!to || String(to).indexOf('@') === -1) {
-      return { success: false, error: 'E-mail de destinatário inválido' }
-    }
-    var mode = getDeliveryMode()
-    var from = senderInfo()
-
-    if (mode === 'resend') {
-      if (!hasResendKey()) {
-        console.log(
-          '[mail_delivery] modo=resend sem RESEND_API_KEY — FALLBACK para platform | kind=' +
-            kind +
-            ' to=' +
-            to,
-        )
-        sendViaPlatform(to, subject, html, from)
-        return {
-          success: true,
-          path: 'platform (fallback: resend sem chave)',
-          to: to,
-          subject: subject,
-        }
-      }
-      var rRes = sendViaResend(to, subject, html, from)
-      if (rRes.ok) {
-        console.log(
-          '[mail_delivery] ENVIADO via resend | kind=' +
-            kind +
-            ' to=' +
-            to +
-            ' subject="' +
-            subject +
-            '"',
-        )
-        return { success: true, path: 'resend', to: to, subject: subject }
-      }
-      console.log(
-        '[mail_delivery] FALHA no resend (' +
-          rRes.reason +
-          ') — FALLBACK para platform | kind=' +
-          kind +
-          ' to=' +
-          to,
-      )
-      try {
-        sendViaPlatform(to, subject, html, from)
-        return {
-          success: true,
-          path: 'platform (fallback: ' + rRes.reason.slice(0, 120) + ')',
-          to: to,
-          subject: subject,
-        }
-      } catch (fbErr) {
-        console.log(
-          '[mail_delivery] FALHOU também no platform | kind=' +
-            kind +
-            ' to=' +
-            to +
-            ' erro=' +
-            fbErr,
-        )
-        return { success: false, error: 'resend: ' + rRes.reason + ' | platform: ' + String(fbErr) }
-      }
-    }
-
-    try {
-      sendViaPlatform(to, subject, html, from)
-      console.log(
-        '[mail_delivery] ENVIADO via platform | kind=' +
-          kind +
-          ' to=' +
-          to +
-          ' subject="' +
-          subject +
-          '"',
-      )
-      return { success: true, path: 'platform', to: to, subject: subject }
-    } catch (pErr) {
-      console.log(
-        '[mail_delivery] FALHOU no platform | kind=' + kind + ' to=' + to + ' erro=' + pErr,
-      )
-      return { success: false, error: String(pErr) }
-    }
-  }
-
-  if (typeof globalThis !== 'undefined') {
-    globalThis.__mailDelivery = {
-      getDeliveryMode: getDeliveryMode,
-      hasResendKey: hasResendKey,
-      senderInfo: senderInfo,
-      sendViaPlatform: sendViaPlatform,
-      sendViaResend: sendViaResend,
-      sendDualPath: sendDualPath,
-    }
-  }
-})()
+// REGRA JSVM v0.0.163 (comprovada nos logs 06:24–06:28 da v0.0.162):
+// globalThis NÃO preserva estado entre o LOAD do arquivo e a EXECUÇÃO do
+// cron (pool isolado por execução) — o IIFE de topo publicava o módulo, mas
+// o pool do callback do cronAdd partia de globalThis VAZIO. Correção: o
+// builder completo do módulo foi movido PARA DENTRO do callback — se
+// globalThis.__mailDelivery não existir (ou estiver incompleto), o callback
+// reconstrói o módulo ali mesmo e só então usa. Nada no topo publica nada.
 
 cronAdd('zz_tmp_dual_path_test', '*/2 * * * *', () => {
+  // ---------------------------------------------------------------------
+  // BUILDER INLINE DO MÓDULO (v0.0.163) — cópia fiel de mail_delivery.js.
+  // Idempotente: se outro arquivo do pool já publicou um sendDualPath,
+  // usa o publicado; senão constrói e publica AGORA, dentro do callback.
+  // ---------------------------------------------------------------------
   var mail = null
   try {
     if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
@@ -208,12 +28,199 @@ cronAdd('zz_tmp_dual_path_test', '*/2 * * * *', () => {
   } catch (mErr) {
     console.log('[zz] lookup __mailDelivery falhou: ' + String(mErr))
   }
+
   if (!mail || typeof mail.sendDualPath !== 'function') {
-    console.log(
-      '[zz] __mailDelivery indisponível — tentando de novo no próximo tick (cron mantido)',
-    )
-    return
+    console.log('[zz] __mailDelivery ausente no pool — construindo módulo inline (v0.0.163)')
+
+    function getDeliveryMode() {
+      try {
+        var recs = $app.findRecordsByFilter('app_settings', "key = 'email'", '-created', 1, 0)
+        if (recs && recs.length > 0) {
+          var mode = recs[0].getString('email_delivery_mode')
+          if (mode === 'resend') return 'resend'
+        }
+      } catch (e) {
+        console.log('[mail_delivery] nota ao ler modo (usando platform): ' + e)
+      }
+      return 'platform'
+    }
+
+    function hasResendKey() {
+      try {
+        return !!($os.getenv('RESEND_API_KEY') || '').trim()
+      } catch (_) {
+        return false
+      }
+    }
+
+    function senderInfo() {
+      var addr = 'noreply@mail.goskip.dev'
+      var name = 'Consciente - Seu parceiro nas finanças'
+      try {
+        var s = $app.settings()
+        if (s && s.meta) {
+          if (s.meta.senderAddress) addr = s.meta.senderAddress
+          if (s.meta.senderName) name = s.meta.senderName
+        }
+      } catch (_) {}
+      return { address: addr, name: name }
+    }
+
+    function sendViaPlatform(to, subject, html, from) {
+      var msg = new MailerMessage({
+        from: { address: from.address, name: from.name },
+        to: [{ address: to }],
+        subject: subject,
+        html: html,
+      })
+      $app.newMailClient().send(msg)
+    }
+
+    function sendViaResend(to, subject, html, from) {
+      var apiKey = ''
+      try {
+        apiKey = ($os.getenv('RESEND_API_KEY') || '').trim()
+      } catch (_) {
+        apiKey = ''
+      }
+      if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY ausente' }
+
+      var resp = $http.send({
+        url: 'https://api.resend.com/emails',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify({
+          from: from.name + ' <' + from.address + '>',
+          to: [to],
+          subject: subject,
+          html: html,
+        }),
+        timeout: 30,
+      })
+
+      var ok = resp.statusCode >= 200 && resp.statusCode < 300
+      if (!ok) {
+        var bodyPreview = ''
+        try {
+          bodyPreview = (resp.raw || JSON.stringify(resp.json) || '').slice(0, 300)
+        } catch (_) {
+          bodyPreview = ''
+        }
+        return { ok: false, reason: 'Resend HTTP ' + resp.statusCode + ': ' + bodyPreview }
+      }
+      return { ok: true, provider: 'resend', statusCode: resp.statusCode }
+    }
+
+    function sendDualPath(to, subject, html, kind) {
+      if (!to || String(to).indexOf('@') === -1) {
+        return { success: false, error: 'E-mail de destinatário inválido' }
+      }
+      var mode = getDeliveryMode()
+      var from = senderInfo()
+
+      if (mode === 'resend') {
+        if (!hasResendKey()) {
+          console.log(
+            '[mail_delivery] modo=resend sem RESEND_API_KEY — FALLBACK para platform | kind=' +
+              kind +
+              ' to=' +
+              to,
+          )
+          sendViaPlatform(to, subject, html, from)
+          return {
+            success: true,
+            path: 'platform (fallback: resend sem chave)',
+            to: to,
+            subject: subject,
+          }
+        }
+        var rRes = sendViaResend(to, subject, html, from)
+        if (rRes.ok) {
+          console.log(
+            '[mail_delivery] ENVIADO via resend | kind=' +
+              kind +
+              ' to=' +
+              to +
+              ' subject="' +
+              subject +
+              '"',
+          )
+          return { success: true, path: 'resend', to: to, subject: subject }
+        }
+        console.log(
+          '[mail_delivery] FALHA no resend (' +
+            rRes.reason +
+            ') — FALLBACK para platform | kind=' +
+            kind +
+            ' to=' +
+            to,
+        )
+        try {
+          sendViaPlatform(to, subject, html, from)
+          return {
+            success: true,
+            path: 'platform (fallback: ' + rRes.reason.slice(0, 120) + ')',
+            to: to,
+            subject: subject,
+          }
+        } catch (fbErr) {
+          console.log(
+            '[mail_delivery] FALHOU também no platform | kind=' +
+              kind +
+              ' to=' +
+              to +
+              ' erro=' +
+              fbErr,
+          )
+          return {
+            success: false,
+            error: 'resend: ' + rRes.reason + ' | platform: ' + String(fbErr),
+          }
+        }
+      }
+
+      try {
+        sendViaPlatform(to, subject, html, from)
+        console.log(
+          '[mail_delivery] ENVIADO via platform | kind=' +
+            kind +
+            ' to=' +
+            to +
+            ' subject="' +
+            subject +
+            '"',
+        )
+        return { success: true, path: 'platform', to: to, subject: subject }
+      } catch (pErr) {
+        console.log(
+          '[mail_delivery] FALHOU no platform | kind=' + kind + ' to=' + to + ' erro=' + pErr,
+        )
+        return { success: false, error: String(pErr) }
+      }
+    }
+
+    mail = {
+      getDeliveryMode: getDeliveryMode,
+      hasResendKey: hasResendKey,
+      senderInfo: senderInfo,
+      sendViaPlatform: sendViaPlatform,
+      sendViaResend: sendViaResend,
+      sendDualPath: sendDualPath,
+    }
+    try {
+      if (typeof globalThis !== 'undefined') globalThis.__mailDelivery = mail
+    } catch (pubErr) {
+      console.log('[zz] publicação no globalThis falhou (usando módulo local): ' + String(pubErr))
+    }
   }
+
+  // ---------------------------------------------------------------------
+  // A partir daqui o callback é autossuficiente: `mail` SEMPRE tem
+  // sendDualPath (publicado por outro arquivo OU construído acima).
+  // ---------------------------------------------------------------------
 
   var currentMode = 'platform'
   try {

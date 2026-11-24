@@ -30,6 +30,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { BillingAdminSection } from '@/components/admin/BillingAdminSection'
+import { EmailDeliverySection } from '@/components/admin/EmailDeliverySection'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
 import {
@@ -364,6 +365,13 @@ export const AdminBackoffice: React.FC = () => {
         </CardHeader>
         <CardContent>
           <BillingAdminSection />
+        </CardContent>
+      </Card>
+
+      {/* v0.0.159 — Caminho duplo de e-mail (toggle da dona) */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardContent className="pt-6">
+          <EmailDeliverySection />
         </CardContent>
       </Card>
 

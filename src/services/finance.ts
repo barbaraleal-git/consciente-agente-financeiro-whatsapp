@@ -846,6 +846,37 @@ export const adminService = {
       body: { action, phone },
     })
   },
+
+  // v0.0.159 — Caminho duplo de e-mail (toggle da dona no backoffice)
+  getEmailDeliveryMode: async (): Promise<EmailDeliveryStatus> => {
+    return pb.send('/backend/v1/admin/email-delivery/mode', {
+      method: 'GET',
+    })
+  },
+
+  setEmailDeliveryMode: async (mode: 'platform' | 'resend'): Promise<EmailDeliveryUpdate> => {
+    return pb.send('/backend/v1/admin/email-delivery/mode', {
+      method: 'POST',
+      body: { mode },
+    })
+  },
+}
+
+export interface EmailDeliveryStatus {
+  mode: 'platform' | 'resend'
+  resend_key_configured: boolean
+  sender_address: string
+  smtp_enabled: boolean
+  updated_at?: string
+  updated_by?: string
+}
+
+export interface EmailDeliveryUpdate {
+  success: boolean
+  mode: 'platform' | 'resend'
+  resend_key_configured: boolean
+  warning?: string
+  message: string
 }
 
 export interface CompanyLegalInfo {

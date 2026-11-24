@@ -514,6 +514,20 @@ function sendPrechargeEmail(toEmail, clientName, daysAhead, chargeDateStr, amoun
     planName,
   )
 
+  // v0.0.159 — CAMINHO DUPLO: decide o transporte por app_settings
+  // .email_delivery_mode ('platform' nativo Skip | 'resend' via API HTTPS),
+  // com fallback automático platform em falha do Resend. O HTML branded chega
+  // PRONTO (mesmos templates aprovados) — nenhum template duplicado aqui.
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
+      const res = globalThis.__mailDelivery.sendDualPath(toEmail, subject, htmlBody, 'precharge')
+      return res
+    }
+  } catch (dualErr) {
+    console.log('[proactive] precharge caminho duplo falhou (' + dualErr + ') — tentando nativo')
+  }
+
+  // Fallback inalterado (cliente nativo do PocketBase)
   let senderAddr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
   let senderName = 'Consciente'
   try {
@@ -644,6 +658,22 @@ function sendPixRenewalEmail(toEmail, clientName, daysAhead, expiryDateStr, amou
 
   const htmlBody = buildPixRenewalEmailHtml(clientName, daysAhead, expiryDateStr, amountCents)
 
+  // v0.0.159 — CAMINHO DUPLO (mesma decisão central de sendPrechargeEmail).
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
+      const dualRes = globalThis.__mailDelivery.sendDualPath(
+        toEmail,
+        subject,
+        htmlBody,
+        'pix_renewal',
+      )
+      return dualRes
+    }
+  } catch (dualErr) {
+    console.log('[proactive] pix_renewal caminho duplo falhou (' + dualErr + ') — tentando nativo')
+  }
+
+  // Fallback inalterado (cliente nativo do PocketBase)
   let senderAddr = 'suporte@agente-financeiro-whatsapp-37fd3.goskip.app'
   let senderName = 'Consciente'
   try {

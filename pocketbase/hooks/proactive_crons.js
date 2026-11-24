@@ -695,27 +695,49 @@ cronAdd('proactive_precharge_email', '0 12 * * *', () => {
           }
         } catch (_) {}
 
+        // v0.0.159 — CAMINHO DUPLO (decisão central em mail_delivery.js):
+        // platform nativo | resend, com fallback automático. Mesmo HTML branded.
+        var fbDualDone = false
         try {
-          var fbMsg = new MailerMessage({
-            from: { address: fbSenderAddr, name: fbSenderName },
-            to: [{ address: fbUserEmail }],
-            subject: fbSubject,
-            html: fbHtmlBody,
-          })
-          $app.newMailClient().send(fbMsg)
+          if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
+            fbEmailRes = globalThis.__mailDelivery.sendDualPath(
+              fbUserEmail,
+              fbSubject,
+              fbHtmlBody,
+              'precharge',
+            )
+            fbDualDone = true
+          }
+        } catch (fbDualErr) {
           console.log(
-            '[proactive][fallback] precharge ENVIADO -> to=' +
-              fbUserEmail +
-              ' subject="' +
-              fbSubject +
-              '"',
+            '[proactive][fallback] precharge caminho duplo falhou (' +
+              fbDualErr +
+              ') — tentando nativo',
           )
-          fbEmailRes = { success: true, to: fbUserEmail, subject: fbSubject }
-        } catch (fbMailErr) {
-          console.log(
-            '[proactive][fallback] precharge FALHOU -> to=' + fbUserEmail + ' erro=' + fbMailErr,
-          )
-          fbEmailRes = { success: false, error: String(fbMailErr) }
+        }
+        if (!fbDualDone) {
+          try {
+            var fbMsg = new MailerMessage({
+              from: { address: fbSenderAddr, name: fbSenderName },
+              to: [{ address: fbUserEmail }],
+              subject: fbSubject,
+              html: fbHtmlBody,
+            })
+            $app.newMailClient().send(fbMsg)
+            console.log(
+              '[proactive][fallback] precharge ENVIADO -> to=' +
+                fbUserEmail +
+                ' subject="' +
+                fbSubject +
+                '"',
+            )
+            fbEmailRes = { success: true, to: fbUserEmail, subject: fbSubject }
+          } catch (fbMailErr) {
+            console.log(
+              '[proactive][fallback] precharge FALHOU -> to=' + fbUserEmail + ' erro=' + fbMailErr,
+            )
+            fbEmailRes = { success: false, error: String(fbMailErr) }
+          }
         }
       }
 
@@ -1075,30 +1097,52 @@ cronAdd('proactive_pix_renewal', '30 13 * * *', () => {
             }
           } catch (_) {}
 
+          // v0.0.159 — CAMINHO DUPLO (decisão central em mail_delivery.js):
+          // platform nativo | resend, com fallback automático. Mesmo HTML branded.
+          var fbDualDone = false
           try {
-            var fbMsg = new MailerMessage({
-              from: { address: fbSenderAddr, name: fbSenderName },
-              to: [{ address: fbUserEmail }],
-              subject: fbSubject,
-              html: fbHtmlBody,
-            })
-            $app.newMailClient().send(fbMsg)
+            if (typeof globalThis !== 'undefined' && globalThis.__mailDelivery) {
+              fbEmailRes = globalThis.__mailDelivery.sendDualPath(
+                fbUserEmail,
+                fbSubject,
+                fbHtmlBody,
+                'pix_renewal',
+              )
+              fbDualDone = true
+            }
+          } catch (fbDualErr) {
             console.log(
-              '[proactive][fallback] pix_renewal ENVIADO -> to=' +
-                fbUserEmail +
-                ' subject="' +
-                fbSubject +
-                '"',
+              '[proactive][fallback] pix_renewal caminho duplo falhou (' +
+                fbDualErr +
+                ') — tentando nativo',
             )
-            fbEmailRes = { success: true, to: fbUserEmail, subject: fbSubject }
-          } catch (fbMailErr) {
-            console.log(
-              '[proactive][fallback] pix_renewal FALHOU -> to=' +
-                fbUserEmail +
-                ' erro=' +
-                fbMailErr,
-            )
-            fbEmailRes = { success: false, error: String(fbMailErr) }
+          }
+          if (!fbDualDone) {
+            try {
+              var fbMsg = new MailerMessage({
+                from: { address: fbSenderAddr, name: fbSenderName },
+                to: [{ address: fbUserEmail }],
+                subject: fbSubject,
+                html: fbHtmlBody,
+              })
+              $app.newMailClient().send(fbMsg)
+              console.log(
+                '[proactive][fallback] pix_renewal ENVIADO -> to=' +
+                  fbUserEmail +
+                  ' subject="' +
+                  fbSubject +
+                  '"',
+              )
+              fbEmailRes = { success: true, to: fbUserEmail, subject: fbSubject }
+            } catch (fbMailErr) {
+              console.log(
+                '[proactive][fallback] pix_renewal FALHOU -> to=' +
+                  fbUserEmail +
+                  ' erro=' +
+                  fbMailErr,
+              )
+              fbEmailRes = { success: false, error: String(fbMailErr) }
+            }
           }
         }
 

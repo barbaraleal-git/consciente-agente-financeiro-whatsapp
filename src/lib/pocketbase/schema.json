@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-24T01:52:00.053Z",
+  "generatedAt": "2026-11-24T03:25:50.093Z",
   "collections": [
     {
       "name": "users",
@@ -1343,6 +1343,45 @@
       "indexes": [
         "CREATE INDEX idx_subscription_plans_audit_plan ON subscription_plans_audit (plan, created)"
       ]
+    },
+    {
+      "name": "app_settings",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "value_text",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_delivery_mode",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["platform", "resend"]
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": []
     }
   ]
 }

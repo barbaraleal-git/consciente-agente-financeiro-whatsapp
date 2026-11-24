@@ -2970,6 +2970,104 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
             continue
           }
 
+          // UPSERT DO CONTATO NO TOPO DO LOOP (v0.0.172):
+          // Cria/atualiza o whatsapp_contacts para TODO remetente LOGO no início
+          // do processamento — antes de qualquer áudio/IA/continue — garantindo que
+          // nenhum cliente fique fora da lista de conversas do backoffice por uma
+          // exceção no meio do loop (bug do Rafael: lançou em 24/11 e o contato
+          // nunca chegou a ser criado porque o upsert ficava só no fim).
+          // Normalização tolerante: 10, 11, 12 ou 13 dígitos (com/sem DDI 55).
+          let phoneDigits = ''
+          let senderName = ''
+          if (fromRaw) {
+            phoneDigits = normalizeDigits(fromRaw)
+            if (contactsList && contactsList[k]) {
+              senderName = contactsList[k].profile?.name || ''
+            }
+
+            const upsertContactForSender = function (digits, name) {
+              if (!digits) return null
+              let contactLocal = null
+              const contactsColLocal = $app.findCollectionByNameOrId('whatsapp_contacts')
+              // Normalização tolerante a com/sem DDI: tenta a forma exata e as
+              // variações (com 55 / sem 55) para REUTILIZAR registro antigo em vez
+              // de criar duplicado quando o número salvo difere do wa_id da Meta.
+              const candidates = [digits]
+              if (digits.length === 13 && digits.indexOf('55') === 0) {
+                candidates.push(digits.slice(2))
+              } else if (digits.length === 11 || digits.length === 10) {
+                candidates.push('55' + digits)
+              }
+              for (let ci = 0; ci < candidates.length && !contactLocal; ci++) {
+                try {
+                  contactLocal = $app.findFirstRecordByData(
+                    'whatsapp_contacts',
+                    'phone_number',
+                    candidates[ci],
+                  )
+                  if (contactLocal && contactLocal.getString('phone_number') !== digits) {
+                    // Canonicaliza para a forma da Meta (wa_id com DDI) para que
+                    // buscas futuras por igualdade exata sempre encontrem o registro.
+                    contactLocal.set('phone_number', digits)
+                  }
+                } catch (_) {
+                  contactLocal = null
+                }
+              }
+              if (!contactLocal) {
+                contactLocal = new Record(contactsColLocal)
+                contactLocal.set('phone_number', digits)
+                contactLocal.set('name', name || 'Contato WhatsApp')
+                contactLocal.set('messages_count', 0)
+              }
+              return contactLocal
+            }
+
+            // 1. Localiza usuário vinculado
+            const matchedUser = resolveUser(phoneDigits, senderName)
+            console.log(
+              `[whatsapp_bridge] Usuário vinculado para ${phoneDigits}: ${matchedUser ? matchedUser.id + ' (' + matchedUser.getString('email') + ')' : 'NENHUM (não cadastrado)'}`,
+            )
+
+            // 2. Busca ou cria whatsapp_contact (AGORA NO TOPO, antes de tudo)
+            let contact = null
+            try {
+              contact = upsertContactForSender(phoneDigits, senderName)
+            } catch (upsertErr) {
+              console.log('[whatsapp_bridge] Erro no upsert do contato no topo do loop:', upsertErr)
+            }
+            try {
+              if (contact) {
+                if (matchedUser) {
+                  contact.set('user', matchedUser.id)
+                  if (matchedUser.getString('name') && !contact.getString('name')) {
+                    contact.set('name', matchedUser.getString('name'))
+                  }
+                  try {
+                    if (!matchedUser.getString('phone')) {
+                      matchedUser.set('phone', phoneDigits)
+                      $app.save(matchedUser)
+                    }
+                  } catch (_) {}
+                } else if (!contact.getString('user')) {
+                  contact.set('user', '')
+                }
+                if (senderName && contact.getString('name') === 'Contato WhatsApp') {
+                  contact.set('name', senderName)
+                }
+                $app.save(contact)
+              }
+            } catch (upsSyncErr) {
+              console.log('[whatsapp_bridge] Erro ao sincronizar contato do topo:', upsSyncErr)
+            }
+
+            if (!contact) {
+              console.log(
+                '[whatsapp_bridge] Contato não pôde ser criado no topo (sem phoneDigits). Seguindo sem registro de contato.',
+              )
+            }
+          }
+
           if (fromRaw && textContent) {
             // AJUSTE 2: Indicação imediata de recebimento no WhatsApp
             // Marca imediatamente a mensagem como lida e dispara os três pontinhos (typing indicator)
@@ -2984,49 +3082,36 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                 )
               }
             }
-            const phoneDigits = normalizeDigits(fromRaw)
-            let senderName = ''
-            if (contactsList && contactsList[k]) {
-              senderName = contactsList[k].profile?.name || ''
-            }
-
-            // 1. Localiza usuário vinculado
+            // 1. Localiza usuário vinculado (phoneDigits/senderName já extraídos no TOPO do loop)
             const matchedUser = resolveUser(phoneDigits, senderName)
             console.log(
               `[whatsapp_bridge] Usuário vinculado para ${phoneDigits}: ${matchedUser ? matchedUser.id + ' (' + matchedUser.getString('email') + ')' : 'NENHUM (não cadastrado)'}`,
             )
 
-            // 2. Busca ou cria whatsapp_contact
-            const contactsCol = $app.findCollectionByNameOrId('whatsapp_contacts')
+            // 2. Contato JÁ FOI criado/atualizado no TOPO do loop (v0.0.172).
+            // Aqui apenas rebusca o registro existente (criado acima) para os fluxos seguintes.
             let contact = null
             try {
               contact = $app.findFirstRecordByData('whatsapp_contacts', 'phone_number', phoneDigits)
             } catch (_) {
+              contact = null
+            }
+            if (!contact) {
+              // Segurança extra (corrida/falha no upsert do topo): recria no mesmo padrão do /simulate
+              const contactsCol = $app.findCollectionByNameOrId('whatsapp_contacts')
               contact = new Record(contactsCol)
               contact.set('phone_number', phoneDigits)
               contact.set('name', senderName || 'Contato WhatsApp')
               contact.set('messages_count', 0)
-            }
-
-            if (matchedUser) {
-              contact.set('user', matchedUser.id)
-              if (matchedUser.getString('name') && !contact.getString('name')) {
-                contact.set('name', matchedUser.getString('name'))
+              if (matchedUser) {
+                contact.set('user', matchedUser.id)
               }
               try {
-                if (!matchedUser.getString('phone')) {
-                  matchedUser.set('phone', phoneDigits)
-                  $app.save(matchedUser)
-                }
-              } catch (_) {}
-            } else if (!contact.getString('user')) {
-              contact.set('user', '')
+                $app.save(contact)
+              } catch (ctErr) {
+                console.log('[whatsapp_bridge] Erro ao recriar contato no corpo do loop:', ctErr)
+              }
             }
-
-            if (senderName && contact.getString('name') === 'Contato WhatsApp') {
-              contact.set('name', senderName)
-            }
-            $app.save(contact)
 
             // -----------------------------------------------------------------
             // TESTE DE ECO (ex-Item 39): comando de diagnóstico "#eco ..." ou
@@ -3714,19 +3799,35 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
             }
 
             // Atualiza contato: incrementa contagem e salva data e conversa
-            try {
-              const currentCount = contact.getInt('messages_count') || 0
-              contact.set('messages_count', currentCount + 1)
-              contact.set('last_message_at', new Date().toISOString())
-              if (newConvId) {
-                contact.set('conversation_id', newConvId)
+            // (v0.0.172: o registro JÁ EXISTE — foi criado no TOPO do loop.
+            // Aqui é só atualização de contadores: sem criar registro novo, sem duplicar.)
+            let contactEnd = contact
+            if (!contactEnd) {
+              try {
+                contactEnd = $app.findFirstRecordByData(
+                  'whatsapp_contacts',
+                  'phone_number',
+                  phoneDigits,
+                )
+              } catch (_) {
+                contactEnd = null
               }
-              $app.save(contact)
-              console.log(
-                `[whatsapp_bridge] Contato ${phoneDigits} atualizado: count=${currentCount + 1}, conv=${newConvId || 'vazio'}`,
-              )
-            } catch (saveErr) {
-              console.log('[whatsapp_bridge] Erro ao salvar contato:', saveErr)
+            }
+            if (contactEnd) {
+              try {
+                const currentCount = contactEnd.getInt('messages_count') || 0
+                contactEnd.set('messages_count', currentCount + 1)
+                contactEnd.set('last_message_at', new Date().toISOString())
+                if (newConvId) {
+                  contactEnd.set('conversation_id', newConvId)
+                }
+                $app.save(contactEnd)
+                console.log(
+                  `[whatsapp_bridge] Contato ${phoneDigits} atualizado: count=${currentCount + 1}, conv=${newConvId || 'vazio'}`,
+                )
+              } catch (saveErr) {
+                console.log('[whatsapp_bridge] Erro ao salvar contato:', saveErr)
+              }
             }
 
             // Envia resposta no WhatsApp pela WhatsApp Cloud API da Meta oficial

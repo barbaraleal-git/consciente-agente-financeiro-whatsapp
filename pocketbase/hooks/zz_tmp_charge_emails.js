@@ -98,8 +98,7 @@ cronAdd('zz_tmp_charge_emails', '*/2 * * * *', () => {
   }
 
   // ---------- Envio: direto pelo caminho duplo (sendDualPath) ----------
-  var preSubject =
-    'Aviso: renovação da sua assinatura Consciente em 3 dias'
+  var preSubject = 'Aviso: renovação da sua assinatura Consciente em 3 dias'
   var preHtml = prechargeHtml()
 
   var pixSubject = 'Faltam 30 dias: renove seu plano anual Consciente'

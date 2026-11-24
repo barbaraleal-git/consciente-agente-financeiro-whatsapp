@@ -6,6 +6,42 @@
 // v0.0.150) — creme #F8F3E3, card branco, logo real por URL absoluta, botão
 // petróleo #2A5F6E, títulos #1E4A5A e tagline "Seu parceiro nas finanças".
 // Usado pelos 3 hooks onMailer*Send deste arquivo (evita 3 cópias do HTML).
+// v0.0.161 — Os 3 e-mails de SISTEMA (verificação, reset de senha, troca de
+// e-mail) também respeitam o toggle: modo 'platform' segue o fluxo nativo
+// (e.next() — retransmissor Skip, comprovado); modo 'resend' envia via API
+// HTTPS do Resend e chama e.next() APENAS se falhar (fallback platform), para
+// não duplicar. Reutiliza o ponto único __mailDelivery (mail_delivery.js).
+function sendSystemEmailDualPath(e, subject, html, text, kind) {
+  try {
+    const md = typeof globalThis !== 'undefined' ? globalThis.__mailDelivery : null
+    if (
+      md &&
+      typeof md.getDeliveryMode === 'function' &&
+      md.getDeliveryMode() === 'resend' &&
+      typeof md.sendViaResend === 'function'
+    ) {
+      const to = (e.record && e.record.getString('email')) || ''
+      const from = typeof md.senderInfo === 'function' ? md.senderInfo() : null
+      if (to && from) {
+        const res = md.sendViaResend(to, subject, html, from)
+        if (res && res.ok) {
+          console.log('[mail_branding] ENVIADO via resend | kind=' + kind + ' to=' + to)
+          return // enviado — NÃO chamar e.next() (evita envio duplicado)
+        }
+        console.log(
+          '[mail_branding] resend falhou (' +
+            ((res && res.reason) || '?') +
+            ') — FALLBACK platform | kind=' +
+            kind,
+        )
+      }
+    }
+  } catch (err) {
+    console.log('[mail_branding] nota no caminho duplo de sistema (' + kind + '): ' + err)
+  }
+  e.next() // modo platform (ou falha do resend): caminho nativo comprovado
+}
+
 function brandedEmailShell(
   docTitle,
   heading,
@@ -145,9 +181,14 @@ onMailerRecordVerificationSend((e) => {
     console.log('[mail_branding] Erro ao personalizar email de verificação:', err)
   }
 
-  e.next()
+  sendSystemEmailDualPath(
+    e,
+    'Confirme sua conta no Consciente',
+    e.message.html,
+    e.message.text,
+    'verification',
+  )
 })
-
 // 2. Hook para email de Redefinição de Senha
 onMailerRecordPasswordResetSend((e) => {
   try {
@@ -180,7 +221,13 @@ onMailerRecordPasswordResetSend((e) => {
     console.log('[mail_branding] Erro ao personalizar email de redefinição de senha:', err)
   }
 
-  e.next()
+  sendSystemEmailDualPath(
+    e,
+    'Redefina sua senha do Consciente',
+    e.message.html,
+    e.message.text,
+    'password_reset',
+  )
 })
 
 // 3. Hook para email de Troca de Email
@@ -215,5 +262,11 @@ onMailerRecordEmailChangeSend((e) => {
     console.log('[mail_branding] Erro ao personalizar email de alteração:', err)
   }
 
-  e.next()
+  sendSystemEmailDualPath(
+    e,
+    'Confirme seu novo email no Consciente',
+    e.message.html,
+    e.message.text,
+    'email_change',
+  )
 })

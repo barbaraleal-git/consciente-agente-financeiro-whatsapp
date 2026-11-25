@@ -39,6 +39,26 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+/**
+ * Um erro de authRefresh só é FATAL para a sessão quando a mensagem do
+ * backend fala explicitamente de token/autenticação. 400 genérico (ex.:
+ * filtro malformado numa consulta de dados, validação de campo) NÃO é.
+ */
+function isSessionFatalError(err: unknown, status?: number): boolean {
+  if (status === 401) return true
+  if (status !== 400) return false
+  const body = (err as { response?: unknown })?.response
+  let msg = ''
+  if (typeof body === 'string') {
+    msg = body
+  } else if (body && typeof body === 'object') {
+    const o = body as { message?: unknown; error?: unknown }
+    msg = typeof o.message === 'string' ? o.message : typeof o.error === 'string' ? o.error : ''
+  }
+  if (!msg) msg = err instanceof Error ? err.message : ''
+  return /token|authentication|authorization|expired|invalid session|sessão|credencia/i.test(msg)
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(
     (pb.authStore.record as unknown as AuthUser) || null,
@@ -139,12 +159,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(updated.record)
       } catch (err) {
         // Só derruba a sessão quando o servidor diz que o token é
-        // definitivamente inválido (400/401). Erros transitórios — 429
-        // (rate limit), 5xx e falha de rede — NÃO devem deslogar: no retorno
-        // do portal/checkout da Stripe o app dispara vários pedidos em
-        // sequência e um 429 momentâneo não significa sessão perdida.
+        // definitivamente inválido. Isso é 401 (não autenticado) — ou 400
+        // cuja mensagem trate explicitamente de token/autorização.
+        // QUALQUER outro erro — 429 (rate limit), 5xx, falha de rede e,
+        // em especial, 400 de VALIDAÇÃO DE DADOS em consultas do app —
+        // NÃO deslogam: um filtro malformado numa consulta de transações
+        // (bug v0.0.181) derrubava a sessão inteira e jogava a dona para
+        // /login com "tudo zerado", apesar dos dados intactos na base.
         const status = (err as { status?: number })?.status
-        if (status === 400 || status === 401) {
+        if (isSessionFatalError(err, status)) {
           logout()
           return
         }
@@ -155,8 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const retry = await pb.collection('users').authRefresh<AuthUser>()
           setUser(retry.record)
         } catch (retryErr) {
-          const retryStatus = (retryErr as { status?: number })?.status
-          if (retryStatus === 400 || retryStatus === 401) {
+          if (isSessionFatalError(retryErr, (retryErr as { status?: number })?.status)) {
             logout()
           } else {
             console.warn('authRefresh transitório persistiu, sessão preservada:', retryErr)

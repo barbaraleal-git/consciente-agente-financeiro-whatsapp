@@ -36,6 +36,11 @@ import {
   renderCaixinhaIcon,
   getCaixinhaIconComponent,
 } from '@/lib/caixinhaIcons'
+import { WhatsAppHandoff } from '@/components/onboarding/WhatsAppHandoff'
+
+// Flag local (por sessão do navegador) para não repetir a tela de entrega
+// ao WhatsApp dentro da mesma sessão. Sem migração: só localStorage.
+const ONBOARDING_WHATSAPP_HANDOFF_KEY = 'consciente:onboarding:whatsapp_handoff_shown'
 
 // Suggested default amounts in cents (examples based on practical monthly expenses)
 const DEFAULT_AMOUNT_SUGGESTIONS: Record<string, string> = {
@@ -76,6 +81,8 @@ export const Onboarding: React.FC = () => {
   const [customColor, setCustomColor] = useState('#ec4899')
   const [customInitialCap, setCustomInitialCap] = useState('1.500,00')
   const [creatingLoading, setCreatingLoading] = useState(false)
+  // Tela final "Entrega ao WhatsApp" (mostrada uma vez por sessão)
+  const [showWhatsAppHandoff, setShowWhatsAppHandoff] = useState(false)
 
   useEffect(() => {
     const initCategories = async () => {
@@ -260,8 +267,8 @@ export const Onboarding: React.FC = () => {
     }
   }
 
-  // Finish onboarding and redirect to dashboard
-  const handleFinish = async () => {
+  // Finish onboarding: marca bandeira de sessão e entrega ao WhatsApp
+  const finishOnboarding = async () => {
     setSaving(true)
     try {
       await completeOnboarding()
@@ -270,7 +277,8 @@ export const Onboarding: React.FC = () => {
         description:
           'Tudo pronto. O Consciente está pronto para te ajudar como seu parceiro nas finanças!',
       })
-      navigate('/')
+      localStorage.setItem(ONBOARDING_WHATSAPP_HANDOFF_KEY, '1')
+      setShowWhatsAppHandoff(true)
     } catch (err) {
       console.error(err)
       navigate('/')
@@ -279,15 +287,22 @@ export const Onboarding: React.FC = () => {
     }
   }
 
-  // Skip onboarding entirely
+  const handleFinish = finishOnboarding
+
+  // Skip onboarding entirely — também passa pela entrega ao WhatsApp,
+  // pois o cliente novo precisa descobrir o canal principal mesmo pulando.
   const handleSkip = async () => {
     setSaving(true)
     try {
       await completeOnboarding()
+      localStorage.setItem(ONBOARDING_WHATSAPP_HANDOFF_KEY, '1')
+      setShowWhatsAppHandoff(true)
     } catch {
       /* intentionally ignored */
+      navigate('/')
+    } finally {
+      setSaving(false)
     }
-    navigate('/')
   }
 
   const selectedCategoriesList = availableCategories.filter((c) => selectedCatIds.includes(c.id))
@@ -297,6 +312,11 @@ export const Onboarding: React.FC = () => {
   }, 0)
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'você'
+
+  // Tela de celebração + entrega ao WhatsApp (passo final, uma vez por sessão)
+  if (showWhatsAppHandoff) {
+    return <WhatsAppHandoff onDone={handleHandoffDone} />
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1E4A5A] via-[#173F4D] to-[#1E4A5A] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-100">

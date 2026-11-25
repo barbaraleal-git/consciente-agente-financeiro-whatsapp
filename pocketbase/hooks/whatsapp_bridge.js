@@ -108,7 +108,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       const __linkList = $app.findRecordsByFilter(
         'app_settings',
         "key = 'app_access_link'",
-        '-updated',
+        '-created',
         1,
         0,
       )
@@ -4257,7 +4257,7 @@ routerAdd(
         const __simLinkList = $app.findRecordsByFilter(
           'app_settings',
           "key = 'app_access_link'",
-          '-updated',
+          '-created',
           1,
           0,
         )

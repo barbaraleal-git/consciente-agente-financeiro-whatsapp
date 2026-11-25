@@ -7,27 +7,15 @@
 // PUT   /backend/v1/admin/app-access-link → alias do POST
 // Campo REAL da coleção app_settings: value_text (value NÃO existe —
 // descoberto na v0.0.177 e corrigido aqui na v0.0.178).
-// Leitura determinística: se houver mais de um registro com a mesma key
-// (sucedeu na v0.0.177), prevalece o com updated MAIS RECENTE — o mesmo
-// critério adotado no bridge e na migração 0064.
-// Padronizado na v0.0.173: cheque de admin INLINE dentro de cada callback
-// (helpers fora do callback causam ReferenceError no pool JSVM).
+// REGRA ESTRUTURAL PERMANENTE (JSVM): declarações top-level e globalThis NÃO
+// sobrevivem ao pool de callbacks do PocketBase — TODA a lógica (incluindo a
+// busca do registro mais recente) fica INLINE dentro do corpo de cada callback
+// (mesmo padrão do admin_email_delivery.js v0.0.163/v0.0.174).
+// Desempate: se houver mais de um registro com key='app_access_link',
+// prevalece o de created MAIS RECENTE — ordenar por '-updated' retorna 400
+// nesta coleção (sem autodate updated no schema vivo; '-created' é o padrão
+// seguro já usado por todos os outros hooks do projeto).
 // ----------------------------------------------------
-
-const normalizeAppAccessLinkValue = (rawValue) => {
-  let value = String(rawValue || '')
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/+$/, '')
-  return value
-}
-
-// Pega o registro com updated mais recente (critério único de desempate —
-// mesmo critério do bridge e da migração 0064).
-const findLatestAppAccessLinkRecord = (app) => {
-  const list = app.findRecordsByFilter('app_settings', "key = 'app_access_link'", '-updated', 1, 0)
-  return list && list.length > 0 ? list[0] : null
-}
 
 routerAdd(
   'GET',
@@ -46,10 +34,17 @@ routerAdd(
       let value = ''
       let updated = ''
       try {
-        const rec = findLatestAppAccessLinkRecord($app)
+        const list = $app.findRecordsByFilter(
+          'app_settings',
+          "key = 'app_access_link'",
+          '-created',
+          1,
+          0,
+        )
+        const rec = list && list.length > 0 ? list[0] : null
         if (rec) {
           value = String(rec.getString('value_text') || '').trim()
-          updated = rec.getString('updated') || ''
+          updated = rec.getString('created') || ''
         }
       } catch (_) {}
 
@@ -66,7 +61,7 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-const saveAppAccessLink = (e) => {
+const saveAppAccessLinkHandler = function (e) {
   try {
     const authUser = e.auth
     const isAdmin =
@@ -78,7 +73,10 @@ const saveAppAccessLink = (e) => {
     }
 
     const body = (e.requestInfo() && e.requestInfo().body) || {}
-    const value = normalizeAppAccessLinkValue(body.value)
+    let value = String(body.value || '')
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/+$/, '')
 
     if (!value || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(value)) {
       return e.json(400, {
@@ -88,7 +86,14 @@ const saveAppAccessLink = (e) => {
 
     let rec = null
     try {
-      rec = findLatestAppAccessLinkRecord($app)
+      const list = $app.findRecordsByFilter(
+        'app_settings',
+        "key = 'app_access_link'",
+        '-created',
+        1,
+        0,
+      )
+      rec = list && list.length > 0 ? list[0] : null
     } catch (_) {}
 
     if (rec) {
@@ -121,5 +126,10 @@ const saveAppAccessLink = (e) => {
   }
 }
 
-routerAdd('POST', '/backend/v1/admin/app-access-link', saveAppAccessLink, $apis.requireAuth())
-routerAdd('PUT', '/backend/v1/admin/app-access-link', saveAppAccessLink, $apis.requireAuth())
+routerAdd(
+  'POST',
+  '/backend/v1/admin/app-access-link',
+  saveAppAccessLinkHandler,
+  $apis.requireAuth(),
+)
+routerAdd('PUT', '/backend/v1/admin/app-access-link', saveAppAccessLinkHandler, $apis.requireAuth())

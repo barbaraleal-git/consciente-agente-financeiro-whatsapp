@@ -105,8 +105,15 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
     // v0.0.177: lido em RUNTIME de app_settings (key='app_access_link'), com fallback.
     let LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
     try {
-      const __linkRec = $app.findFirstRecordByFilter('app_settings', "key = 'app_access_link'", '')
-      const __linkVal = __linkRec ? String(__linkRec.getString('value') || '').trim() : ''
+      const __linkList = $app.findRecordsByFilter(
+        'app_settings',
+        "key = 'app_access_link'",
+        '-updated',
+        1,
+        0,
+      )
+      const __linkRec = __linkList && __linkList.length > 0 ? __linkList[0] : null
+      const __linkVal = __linkRec ? String(__linkRec.getString('value_text') || '').trim() : ''
       if (__linkVal) {
         LOCAL_APP_ACCESS_LINK = __linkVal.indexOf('http') === 0 ? __linkVal : 'https://' + __linkVal
       }
@@ -4247,13 +4254,16 @@ routerAdd(
       // v0.0.177: lido em RUNTIME de app_settings (key='app_access_link'), com fallback.
       let LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
       try {
-        const __simLinkRec = $app.findFirstRecordByFilter(
+        const __simLinkList = $app.findRecordsByFilter(
           'app_settings',
           "key = 'app_access_link'",
-          '',
+          '-updated',
+          1,
+          0,
         )
+        const __simLinkRec = __simLinkList && __simLinkList.length > 0 ? __simLinkList[0] : null
         const __simLinkVal = __simLinkRec
-          ? String(__simLinkRec.getString('value') || '').trim()
+          ? String(__simLinkRec.getString('value_text') || '').trim()
           : ''
         if (__simLinkVal) {
           LOCAL_APP_ACCESS_LINK =

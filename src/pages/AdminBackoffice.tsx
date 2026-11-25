@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { BillingAdminSection } from '@/components/admin/BillingAdminSection'
 import { EmailDeliverySection } from '@/components/admin/EmailDeliverySection'
+import { ConversationsHistorySection } from '@/components/admin/ConversationsHistorySection'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
 import {
@@ -374,6 +375,10 @@ export const AdminBackoffice: React.FC = () => {
           <EmailDeliverySection />
         </CardContent>
       </Card>
+
+      {/* v0.0.176 — Histórico de conversas em DOIS espaços exclusivos (decisão da dona):
+          "Conversas WhatsApp" (bot) e "Conversas do Assistente" (dentro do app) */}
+      <ConversationsHistorySection />
 
       {/* Card Principal: Custo Operacional Mensal Acumulado por Cliente (Item 9) */}
       <Card className="border-brand-petrol/20 bg-white shadow-sm overflow-hidden">

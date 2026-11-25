@@ -2,66 +2,6 @@ import { ClientResponseError } from 'pocketbase'
 
 export type FieldErrors = Record<string, string>
 
-/**
- * NOTA ESTRUTURAL PERMANENTE (não remover):
- * getBackendErrorMessage(error, fallback?) DEVE existir e ser exportada deste arquivo.
- * Consumidores: BillingAdminSection.tsx, ClientSubscriptionDetailsDialog.tsx,
- * Settings.tsx. Esta função já foi removida acidentalmente 19 vezes ao tocar o
- * arquivo e o build do preview quebra com MISSING_EXPORT toda vez. NUNCA renomear,
- * fundir com getErrorMessage nem remover a exportação.
- * Assinatura: (error: unknown, fallback?: string) => string
- */
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const genericMessages = new Set([
-    'Something went wrong.',
-    'Something went wrong',
-    'Failed to fetch.',
-    'Failed to fetch',
-  ])
-
-  const extract = (value: unknown, depth = 0): string => {
-    if (value == null || depth > 3) return ''
-    if (typeof value === 'string') return value.trim()
-    if (value instanceof Error) return value.message.trim()
-    if (typeof value === 'object') {
-      const obj = value as Record<string, unknown>
-      for (const key of ['message', 'error', 'data', 'response', 'detail']) {
-        const found = extract(obj[key], depth + 1)
-        if (found) return found
-      }
-    }
-    return ''
-  }
-
-  let msg = ''
-  if (error instanceof ClientResponseError) {
-    msg =
-      extract(error.response?.message) ||
-      extract(error.response?.error) ||
-      extract(extractFieldErrors(error)) ||
-      extract(error.response?.data) ||
-      extract(error.message)
-  } else {
-    msg = extract(error)
-  }
-
-  if (!msg && error instanceof ClientResponseError) {
-    msg = extract(error.message)
-  }
-
-  // Remove prefixos da JSVM (GoError: ...)
-  msg = msg.replace(/^GoError:\s*/i, '').trim()
-
-  // Bloqueia mensagens genéricas do SDK
-  if (genericMessages.has(msg)) {
-    msg = ''
-  }
-
-  if (!msg && fallback) return fallback
-  if (!msg) return 'Ocorreu um erro inesperado. Tente novamente.'
-  return msg
-}
-
 export function extractFieldErrors(error: unknown): FieldErrors {
   if (!(error instanceof ClientResponseError)) return {}
   const data = error.response?.data
@@ -78,6 +18,44 @@ export function extractFieldErrors(error: unknown): FieldErrors {
     }
   }
   return errors
+}
+
+// NOTA ESTRUTURAL PERMANENTE: getBackendErrorMessage é consumida por
+// BillingAdminSection.tsx, ClientSubscriptionDetailsDialog.tsx, Settings.tsx e
+// AdminBackoffice.tsx — NUNCA remover, renomear ou fundir com getErrorMessage.
+// Contagem de ressurgências restauradas: 20 (v0.0.176).
+
+/**
+ * Extrai a mensagem real do corpo de um erro do backend (message/error/data),
+ * remove prefixos da JSVM ("GoError: ...", "Error: ...") e bloqueia o genérico
+ * "Something went wrong" do SDK. `fallback` (opcional, em PT) é usado quando
+ * nada útil está presente.
+ */
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  const GENERIC_PATTERNS = ['Something went wrong', 'Failed to fetch', 'Network Error']
+
+  let raw = ''
+  if (error instanceof ClientResponseError) {
+    const res: any = (error as any).response || {}
+    raw =
+      (typeof res.message === 'string' && res.message) ||
+      (typeof res.error === 'string' && res.error) ||
+      (res.data && typeof res.data.message === 'string' && res.data.message) ||
+      error.message ||
+      ''
+  } else if (error instanceof Error) {
+    raw = error.message || ''
+  } else if (typeof error === 'string') {
+    raw = error
+  }
+
+  let msg = String(raw || '').trim()
+  msg = msg.replace(/^(GoError|Error)\s*:\s*/i, '').trim()
+
+  if (!msg || GENERIC_PATTERNS.some((g) => msg.toLowerCase().includes(g.toLowerCase()))) {
+    return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
+  }
+  return msg
 }
 
 export function getErrorMessage(error: unknown): string {

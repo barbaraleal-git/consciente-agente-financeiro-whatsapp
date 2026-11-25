@@ -849,7 +849,6 @@ export const adminService = {
     })
   },
 
-  // v0.0.159 — Caminho duplo de e-mail (toggle da dona no backoffice)
   getEmailDeliveryMode: async (): Promise<EmailDeliveryStatus> => {
     return pb.send('/backend/v1/admin/email-delivery/mode', {
       method: 'GET',
@@ -862,6 +861,59 @@ export const adminService = {
       body: { mode },
     })
   },
+
+  // v0.0.176 — Histórico de conversas SEPARADO por origem (decisão da dona):
+  // (tipos declarados após o service, para manter o padrão do arquivo)
+  // "Conversas WhatsApp" lista apenas contatos de whatsapp_contacts (fluxo real
+  // do bot); "Conversas do Assistente" lista apenas threads usadas DENTRO do app
+  // (POST /backend/v1/agent/chat), excluindo as conversation_id já citadas em
+  // whatsapp_contacts — exclusão cruzada real, aplicada no backend.
+  getWhatsappConversations: async (): Promise<AdminWhatsappConversationsResponse> => {
+    return pb.send('/backend/v1/admin/whatsapp-conversations', {
+      method: 'GET',
+    })
+  },
+
+  getAppAssistantConversations: async (): Promise<AdminAppAssistantConversationsResponse> => {
+    return pb.send('/backend/v1/admin/app-assistant-conversations', {
+      method: 'GET',
+    })
+  },
+}
+
+export interface AdminConversationMessage {
+  id: string
+  direction: 'incoming' | 'outgoing'
+  message_text: string
+  created: string
+}
+
+export interface AdminWhatsappConversation {
+  contact_id: string
+  conversation_id: string | null
+  contact_name: string
+  phone_number: string
+  messages_count: number
+  last_message_at: string
+  user: { id: string; name: string; email: string } | null
+  messages: AdminConversationMessage[]
+}
+
+export interface AdminAppAssistantConversation {
+  conversation_id: string
+  created: string
+  user: { id: string; name: string; email: string }
+  messages: AdminConversationMessage[]
+}
+
+export interface AdminWhatsappConversationsResponse {
+  conversations: AdminWhatsappConversation[]
+  total: number
+}
+
+export interface AdminAppAssistantConversationsResponse {
+  conversations: AdminAppAssistantConversation[]
+  total: number
 }
 
 export interface EmailDeliveryStatus {

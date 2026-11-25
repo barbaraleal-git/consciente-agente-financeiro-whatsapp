@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { BillingAdminSection } from '@/components/admin/BillingAdminSection'
 import { EmailDeliverySection } from '@/components/admin/EmailDeliverySection'
+import { AppAccessLinkSection } from '@/components/admin/AppAccessLinkSection'
 import { ConversationsHistorySection } from '@/components/admin/ConversationsHistorySection'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
@@ -379,6 +380,14 @@ export const AdminBackoffice: React.FC = () => {
       {/* v0.0.176 — Histórico de conversas em DOIS espaços exclusivos (decisão da dona):
           "Conversas WhatsApp" (bot) e "Conversas do Assistente" (dentro do app) */}
       <ConversationsHistorySection />
+
+      {/* v0.0.177 — Link de Acesso ao App: configuração editável (app_settings),
+          lida em runtime pelo webhook — trocar aqui muda o link do bot sem deploy */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardContent className="pt-6">
+          <AppAccessLinkSection />
+        </CardContent>
+      </Card>
 
       {/* Card Principal: Custo Operacional Mensal Acumulado por Cliente (Item 9) */}
       <Card className="border-brand-petrol/20 bg-white shadow-sm overflow-hidden">

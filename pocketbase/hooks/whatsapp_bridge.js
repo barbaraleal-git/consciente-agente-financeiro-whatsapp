@@ -102,7 +102,15 @@ if (typeof globalThis.__reliabilityHelper === 'undefined') {
 routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
   try {
     // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
-    const LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+    // v0.0.177: lido em RUNTIME de app_settings (key='app_access_link'), com fallback.
+    let LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+    try {
+      const __linkRec = $app.findFirstRecordByFilter('app_settings', "key = 'app_access_link'", '')
+      const __linkVal = __linkRec ? String(__linkRec.getString('value') || '').trim() : ''
+      if (__linkVal) {
+        LOCAL_APP_ACCESS_LINK = __linkVal.indexOf('http') === 0 ? __linkVal : 'https://' + __linkVal
+      }
+    } catch (_) {}
     // -----------------------------------------------------------------------------
     // MOTOR DETERMINÍSTICO DE RESUMO DAS CAIXINHAS (100% EMBUTIDO NO CORPO DO CALLBACK)
     // REGRA INVIOLÁVEL: O resumo de caixinhas no WhatsApp é 100% DETERMINÍSTICO da
@@ -3247,14 +3255,16 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
                   'Olá! Notamos uma pendência no pagamento da sua assinatura do Consciente. ' +
                   'Seu acesso ao WhatsApp está temporariamente suspenso durante o período de carência de 7 dias, mas você ainda pode consultar seus dados no aplicativo.\n\n' +
                   'Para continuar registrando seus gastos com facilidade por aqui, por favor regularize sua assinatura em:\n' +
-                  'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?tab=planos\n\n' +
+                  LOCAL_APP_ACCESS_LINK +
+                  '/settings?tab=planos\n\n' +
                   'Qualquer dúvida, estamos à disposição!'
               } else if (subStatus === 'bloqueado' || subStatus === 'cancelado') {
                 isSubSuspended = true
                 subSuspendedMsg =
                   'Olá! Sua assinatura do Consciente está inativa no momento. ' +
                   'Para voltar a ter seu parceiro financeiro no WhatsApp e no aplicativo, basta reativar seu plano em:\n' +
-                  'https://agente-financeiro-whatsapp-37fd3.goskip.app/settings?tab=planos\n\n' +
+                  LOCAL_APP_ACCESS_LINK +
+                  '/settings?tab=planos\n\n' +
                   'Esperamos ter você de volta em breve!'
               }
             } else {
@@ -4234,7 +4244,22 @@ routerAdd(
   (e) => {
     try {
       // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
-      const LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+      // v0.0.177: lido em RUNTIME de app_settings (key='app_access_link'), com fallback.
+      let LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+      try {
+        const __simLinkRec = $app.findFirstRecordByFilter(
+          'app_settings',
+          "key = 'app_access_link'",
+          '',
+        )
+        const __simLinkVal = __simLinkRec
+          ? String(__simLinkRec.getString('value') || '').trim()
+          : ''
+        if (__simLinkVal) {
+          LOCAL_APP_ACCESS_LINK =
+            __simLinkVal.indexOf('http') === 0 ? __simLinkVal : 'https://' + __simLinkVal
+        }
+      } catch (_) {}
 
       const normalizeDigits = function (raw) {
         if (!raw) return ''

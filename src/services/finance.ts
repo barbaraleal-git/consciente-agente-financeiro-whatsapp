@@ -879,6 +879,20 @@ export const adminService = {
       method: 'GET',
     })
   },
+
+  // v0.0.177 — Link de Acesso ao App como configuração editável (app_settings)
+  getAppAccessLink: async (): Promise<AppAccessLinkStatus> => {
+    return pb.send('/backend/v1/admin/app-access-link', {
+      method: 'GET',
+    })
+  },
+
+  setAppAccessLink: async (value: string): Promise<AppAccessLinkUpdate> => {
+    return pb.send('/backend/v1/admin/app-access-link', {
+      method: 'POST',
+      body: { value },
+    })
+  },
 }
 
 export interface AdminConversationMessage {
@@ -930,6 +944,19 @@ export interface EmailDeliveryUpdate {
   mode: 'platform' | 'resend'
   resend_key_configured: boolean
   warning?: string
+  message: string
+}
+
+export interface AppAccessLinkStatus {
+  key: 'app_access_link'
+  value: string
+  source: 'app_settings' | 'fallback'
+  updated?: string
+}
+
+export interface AppAccessLinkUpdate {
+  success: boolean
+  value: string
   message: string
 }
 

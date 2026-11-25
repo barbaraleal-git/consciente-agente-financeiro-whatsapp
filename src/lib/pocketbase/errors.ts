@@ -20,48 +20,44 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
-// NOTA ESTRUTURAL PERMANENTE: getBackendErrorMessage é consumida por
-// BillingAdminSection.tsx, ClientSubscriptionDetailsDialog.tsx, Settings.tsx e
-// AdminBackoffice.tsx — NUNCA remover, renomear ou fundir com getErrorMessage.
-// Contagem de ressurgências restauradas: 20 (v0.0.176).
-
-/**
- * Extrai a mensagem real do corpo de um erro do backend (message/error/data),
- * remove prefixos da JSVM ("GoError: ...", "Error: ...") e bloqueia o genérico
- * "Something went wrong" do SDK. `fallback` (opcional, em PT) é usado quando
- * nada útil está presente.
- */
-export function getBackendErrorMessage(error: unknown, fallback?: string): string {
-  const GENERIC_PATTERNS = ['Something went wrong', 'Failed to fetch', 'Network Error']
-
-  let raw = ''
-  if (error instanceof ClientResponseError) {
-    const res: any = (error as any).response || {}
-    raw =
-      (typeof res.message === 'string' && res.message) ||
-      (typeof res.error === 'string' && res.error) ||
-      (res.data && typeof res.data.message === 'string' && res.data.message) ||
-      error.message ||
-      ''
-  } else if (error instanceof Error) {
-    raw = error.message || ''
-  } else if (typeof error === 'string') {
-    raw = error
-  }
-
-  let msg = String(raw || '').trim()
-  msg = msg.replace(/^(GoError|Error)\s*:\s*/i, '').trim()
-
-  if (!msg || GENERIC_PATTERNS.some((g) => msg.toLowerCase().includes(g.toLowerCase()))) {
-    return fallback || 'Ocorreu um erro inesperado. Tente novamente.'
-  }
-  return msg
-}
-
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
     return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
   const msgs = Object.values(extractFieldErrors(error))
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
+}
+
+// v0.0.177 — restauração permanente (20ª ressurgência): extrai a mensagem real
+// do corpo da resposta do backend (inclui pb_hooks), remove prefixos GoError e
+// bloqueia o genérico 'Something went wrong' quando existir mensagem melhor.
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
+  if (error instanceof ClientResponseError) {
+    const response = (error as { response?: { message?: string; data?: unknown } }).response
+    const body = response as
+      | { message?: string; data?: { message?: string } }
+      | { data?: { message?: string } }
+      | undefined
+    const candidates: string[] = []
+    if (body && typeof body === 'object') {
+      const withData = body as { message?: string; data?: { message?: string } }
+      if (typeof withData.message === 'string') candidates.push(withData.message)
+      if (withData.data && typeof withData.data.message === 'string') {
+        candidates.push(withData.data.message)
+      }
+    }
+    if (typeof error.message === 'string' && error.message) candidates.push(error.message)
+
+    for (const raw of candidates) {
+      let msg = raw.trim()
+      if (!msg) continue
+      // Remove prefixos GoError / wrappers do runtime JSVM
+      msg = msg.replace(/^(?:GoError|JSVM Error|Error)\s*:\s*/i, '')
+      msg = msg.replace(/^raw:\s*/i, '')
+      if (!msg) continue
+      if (/^something went wrong\.?$/i.test(msg)) continue
+      return msg
+    }
+  }
+  return fallback || 'Não foi possível concluir a operação. Tente novamente em instantes.'
 }

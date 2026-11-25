@@ -23,6 +23,7 @@ import {
 } from '@/lib/formatters'
 import { renderCaixinhaIcon } from '@/lib/caixinhaIcons'
 import { getBudgetSpent, getEffectiveCategory } from '@/lib/caixinhaMatcher'
+import { WhatsAppPromoCard } from '@/components/dashboard/WhatsAppPromoCard'
 import { MessageSquare, Mic, PenLine, FileSpreadsheet, Bot, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -111,6 +112,12 @@ export const Dashboard: React.FC = () => {
   // Calculate monthly metrics (apenas transações com status 'active'; retrocompatível se status for vazio)
   const activeTransactions = useMemo(() => {
     return transactions.filter((t) => (t.status || 'active') === 'active')
+  }, [transactions])
+
+  // Cartão "A melhor parte fica no WhatsApp": some após a 1ª transação
+  // com source whatsapp* (whatsapp, whatsapp_text, whatsapp_audio).
+  const hasWhatsappTransactions = useMemo(() => {
+    return transactions.some((t) => (t.source || '').startsWith('whatsapp'))
   }, [transactions])
 
   const monthlyMetrics = useMemo(() => {
@@ -339,6 +346,10 @@ export const Dashboard: React.FC = () => {
         {/* Decorative background glow */}
         <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-brand-gold/20 rounded-full blur-3xl pointer-events-none" />
       </div>
+
+      {/* Card WhatsApp: só enquanto o usuário NUNCA lançou nada por WhatsApp
+          (source whatsapp*). Realtime recarrega e ele some após a 1ª. */}
+      {!loading && !loadError && hasWhatsappTransactions === false && <WhatsAppPromoCard />}
 
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

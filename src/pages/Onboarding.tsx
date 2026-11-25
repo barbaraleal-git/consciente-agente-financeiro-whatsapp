@@ -289,6 +289,12 @@ export const Onboarding: React.FC = () => {
 
   const handleFinish = finishOnboarding
 
+  // Fim da entrega ao WhatsApp: navega para o Dashboard.
+  const handleHandoffDone = () => {
+    setShowWhatsAppHandoff(false)
+    navigate('/')
+  }
+
   // Skip onboarding entirely — também passa pela entrega ao WhatsApp,
   // pois o cliente novo precisa descobrir o canal principal mesmo pulando.
   const handleSkip = async () => {

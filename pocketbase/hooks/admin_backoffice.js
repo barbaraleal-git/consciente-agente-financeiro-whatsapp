@@ -410,12 +410,11 @@ routerAdd(
         thread_id: linkedContact ? linkedContact.getString('conversation_id') || null : null,
       }
 
-      // Histórico de conversa WhatsApp:
-      // O agente financeiro armazena o histórico em $ai.agents threads vinculadas ao conversation_id do contato WhatsApp ou user_id
+      // Histórico de conversa WhatsApp — EXCLUSIVO do fluxo WhatsApp:
+      // mensagens do agente nativo APENAS via conversation_id do contato.
+      // NUNCA chamar listConversations por user_id aqui: isso traria conversas
+      // do Assistente do App (mistura proibida — decisão da dona, v0.0.174).
       const conversationHistory = []
-
-      // 1. Prioridade: busca mensagens da conversa ativa no agente nativo via conversation_id do contato
-      let loadedConvMessages = false
       const convIdToUse = whatsappDetails.thread_id || ''
 
       if (convIdToUse) {
@@ -442,83 +441,83 @@ routerAdd(
                 created: msg.created || new Date().toISOString(),
               })
             }
-            if (conversationHistory.length > 0) {
-              loadedConvMessages = true
-            }
           }
         } catch (agentListErr) {
           console.log('[admin] listMessages via conversation_id falhou:', agentListErr)
         }
       }
 
-      // 2. Se não encontrou mensagens via conversation_id do contato, busca por listConversations do clientId
-      if (!loadedConvMessages) {
+      // v0.0.174 — Conversas do ASSISTENTE DO APP deste cliente, em campo
+      // SEPARADO (nunca misturadas ao histórico WhatsApp acima). Exclui
+      // qualquer conversation_id que pertença a um contato WhatsApp.
+      const assistantConversations = []
+      try {
+        const waConvIdSet = {}
         try {
-          const clientConvs = $ai.agent('financeiro-whatsapp').listConversations({
-            user_id: clientId,
-            limit: 5,
-          })
-          const convList =
-            clientConvs && clientConvs.conversations
-              ? clientConvs.conversations
-              : Array.isArray(clientConvs)
-                ? clientConvs
-                : []
+          const allWaContacts = $app.findRecordsByFilter('whatsapp_contacts', '', '', 500, 0)
+          for (let wIdx = 0; wIdx < allWaContacts.length; wIdx++) {
+            const wConvId = allWaContacts[wIdx].getString('conversation_id')
+            if (wConvId) {
+              waConvIdSet[wConvId] = true
+            }
+          }
+        } catch (_) {}
 
-          for (let cIdx = 0; cIdx < convList.length; cIdx++) {
-            const conv = convList[cIdx]
-            try {
-              const mList = $ai.agent('financeiro-whatsapp').listMessages({
-                conversation_id: conv.id,
-                user_id: clientId,
-                limit: 50,
-              })
-              const msgs =
-                mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+        let appConvsRaw = null
+        try {
+          appConvsRaw = $ai.agent('financeiro-whatsapp').listConversations({
+            user_id: clientId,
+            limit: 50,
+          })
+        } catch (_) {
+          appConvsRaw = null
+        }
+        const appConvList =
+          appConvsRaw && appConvsRaw.conversations
+            ? appConvsRaw.conversations
+            : Array.isArray(appConvsRaw)
+              ? appConvsRaw
+              : []
+
+        for (let cIdx = 0; cIdx < appConvList.length; cIdx++) {
+          const conv = appConvList[cIdx]
+          if (!conv || !conv.id || waConvIdSet[conv.id]) continue
+
+          const convMsgs = []
+          try {
+            const mList = $ai.agent('financeiro-whatsapp').listMessages({
+              conversation_id: conv.id,
+              user_id: clientId,
+              limit: 50,
+            })
+            const msgs =
+              mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+            if (Array.isArray(msgs)) {
               for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
                 const msg = msgs[mIdx]
                 const content = typeof msg.content === 'string' ? msg.content.trim() : ''
                 if (!content && (!msg.text || !String(msg.text).trim())) continue
 
                 const role = msg.role || 'assistant'
-                conversationHistory.push({
+                convMsgs.push({
                   id: msg.id || 'msg_' + cIdx + '_' + mIdx,
                   direction: role === 'user' ? 'incoming' : 'outgoing',
                   message_text: content || String(msg.text || ''),
-                  status: 'delivered',
-                  created: msg.created || new Date().toISOString(),
+                  created: msg.created || '',
                 })
               }
-              if (conversationHistory.length > 0) break
-            } catch (_) {}
-          }
-        } catch (convListErr) {
-          console.log('[admin] listConversations para clientId falhou:', convListErr)
-        }
-      }
+            }
+          } catch (_) {}
 
-      // 3. Fallback defensivo: se houver tabela whatsapp_messages (se criada futuramente)
-      if (conversationHistory.length === 0) {
-        try {
-          const messages = $app.findRecordsByFilter(
-            'whatsapp_messages',
-            `owner = '${clientId}' || from_number ~ '${whatsappDetails.phone.slice(-8)}'`,
-            '-created',
-            30,
-            0,
-          )
-          for (let i = 0; i < messages.length; i++) {
-            const m = messages[i]
-            conversationHistory.push({
-              id: m.id,
-              direction: m.getString('direction'),
-              message_text: m.getString('message_text'),
-              status: m.getString('status'),
-              created: m.getString('created'),
-            })
-          }
-          conversationHistory.reverse()
-        } catch (_) {}
+          convMsgs.reverse()
+          assistantConversations.push({
+            id: conv.id,
+            created: conv.created || conv.updated || '',
+            messages: convMsgs,
+          })
+        }
+      } catch (appConvErr) {
+        console.log('[admin] listConversations (assistente do app) falhou:', appConvErr)
       }
 
       // ----------------------------------------------------
@@ -657,6 +656,7 @@ routerAdd(
         recent_transactions: recentTransactions,
         whatsapp: whatsappDetails,
         conversation_history: conversationHistory,
+        assistant_conversations: assistantConversations,
         estimated_cost: estimatedCostData,
       })
     } catch (err) {
@@ -1100,6 +1100,232 @@ routerAdd(
       })
     } catch (err) {
       console.log('[admin] Erro em /backend/v1/admin/costs: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// v0.0.174 — 6. Conversas WHATSAPP (seção exclusiva do fluxo WhatsApp).
+// Lista whatsapp_contacts ordenada por -last_message_at e, para cada contato
+// com conversation_id, as mensagens do agente nativo. NUNCA consulta
+// listConversations por user_id aqui: isso traria conversas do Assistente do
+// App (mistura proibida — decisão da dona).
+routerAdd(
+  'GET',
+  '/backend/v1/admin/whatsapp-conversations',
+  (e) => {
+    let isAdmin = false
+    try {
+      const authUser = e.auth
+      isAdmin = !!(
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      )
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin) {
+      return e.json(403, { error: 'Acesso restrito à administração' })
+    }
+
+    try {
+      let contacts = []
+      try {
+        contacts = $app.findRecordsByFilter('whatsapp_contacts', '', '-last_message_at', 200, 0)
+      } catch (_) {
+        contacts = $app.findRecordsByFilter('whatsapp_contacts', '', '-created', 200, 0)
+      }
+
+      const userById = {}
+      for (let i = 0; i < contacts.length; i++) {
+        const uId = contacts[i].getString('user')
+        if (uId && !userById[uId]) {
+          try {
+            userById[uId] = $app.findRecordById('_pb_users_auth_', uId)
+          } catch (_) {}
+        }
+      }
+
+      const conversations = []
+      for (let i = 0; i < contacts.length; i++) {
+        const c = contacts[i]
+        const convId = c.getString('conversation_id')
+        const linkedUser = userById[c.getString('user')] || null
+
+        let messages = []
+        if (convId) {
+          try {
+            const mList = $ai
+              .agent('financeiro-whatsapp')
+              .listMessages({ conversation_id: convId, limit: 50 })
+            const msgs =
+              mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+            for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
+              const msg = msgs[mIdx]
+              const content = typeof msg.content === 'string' ? msg.content.trim() : ''
+              if (!content && (!msg.text || !String(msg.text).trim())) continue
+              const role = msg.role || 'assistant'
+              messages.push({
+                id: msg.id || 'msg_' + i + '_' + mIdx,
+                direction: role === 'user' ? 'incoming' : 'outgoing',
+                message_text: content || String(msg.text || ''),
+                created: msg.created || '',
+              })
+            }
+            messages.reverse()
+          } catch (msgErr) {
+            console.log(
+              '[admin] listMessages (whatsapp-conversations, conv ' +
+                convId +
+                ') falhou: ' +
+                msgErr,
+            )
+          }
+        }
+
+        conversations.push({
+          contact_id: c.id,
+          conversation_id: convId || null,
+          contact_name: c.getString('name'),
+          phone_number: c.getString('phone_number'),
+          messages_count: c.getInt('messages_count') || 0,
+          last_message_at: c.getString('last_message_at') || c.getString('updated') || '',
+          user: linkedUser
+            ? {
+                id: linkedUser.id,
+                name: linkedUser.getString('name'),
+                email: linkedUser.getString('email'),
+              }
+            : null,
+          messages: messages,
+        })
+      }
+
+      return e.json(200, {
+        conversations: conversations,
+        total: conversations.length,
+      })
+    } catch (err) {
+      console.log('[admin] Erro em /backend/v1/admin/whatsapp-conversations: ' + err)
+      return e.json(500, { error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// v0.0.174 — 7. Conversas do ASSISTENTE DO APP (seção exclusiva).
+// Para cada usuário real, listConversations({ user_id }) do agente nativo —
+// EXCLUINDO qualquer conversation_id que conste em whatsapp_contacts
+// (garante zero mistura com o fluxo WhatsApp).
+routerAdd(
+  'GET',
+  '/backend/v1/admin/app-assistant-conversations',
+  (e) => {
+    let isAdmin = false
+    try {
+      const authUser = e.auth
+      isAdmin = !!(
+        authUser &&
+        (authUser.getString('email') === 'barbara.ferreira.leal@gmail.com' ||
+          authUser.getString('role') === 'admin')
+      )
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin) {
+      return e.json(403, { error: 'Acesso restrito à administração' })
+    }
+
+    try {
+      const allUsers = $app.findRecordsByFilter(
+        '_pb_users_auth_',
+        "email != 'whatsapp-visitante@agente.internal'",
+        '-created',
+        500,
+        0,
+      )
+
+      const waConvIdSet = {}
+      try {
+        const waContacts = $app.findRecordsByFilter('whatsapp_contacts', '', '', 500, 0)
+        for (let wIdx = 0; wIdx < waContacts.length; wIdx++) {
+          const wConvId = waContacts[wIdx].getString('conversation_id')
+          if (wConvId) {
+            waConvIdSet[wConvId] = true
+          }
+        }
+      } catch (_) {}
+
+      const conversations = []
+      for (let uIdx = 0; uIdx < allUsers.length; uIdx++) {
+        const u = allUsers[uIdx]
+        const uId = u.id
+
+        let convsRaw = null
+        try {
+          convsRaw = $ai.agent('financeiro-whatsapp').listConversations({ user_id: uId, limit: 50 })
+        } catch (_) {
+          convsRaw = null
+        }
+        const convList =
+          convsRaw && convsRaw.conversations
+            ? convsRaw.conversations
+            : Array.isArray(convsRaw)
+              ? convsRaw
+              : []
+
+        for (let cIdx = 0; cIdx < convList.length; cIdx++) {
+          const conv = convList[cIdx]
+          if (!conv || !conv.id || waConvIdSet[conv.id]) continue
+
+          let messages = []
+          try {
+            const mList = $ai
+              .agent('financeiro-whatsapp')
+              .listMessages({ conversation_id: conv.id, user_id: uId, limit: 50 })
+            const msgs =
+              mList && mList.messages ? mList.messages : Array.isArray(mList) ? mList : []
+            for (let mIdx = 0; mIdx < msgs.length; mIdx++) {
+              const msg = msgs[mIdx]
+              const content = typeof msg.content === 'string' ? msg.content.trim() : ''
+              if (!content && (!msg.text || !String(msg.text).trim())) continue
+              const role = msg.role || 'assistant'
+              messages.push({
+                id: msg.id || 'msg_' + uIdx + '_' + cIdx + '_' + mIdx,
+                direction: role === 'user' ? 'incoming' : 'outgoing',
+                message_text: content || String(msg.text || ''),
+                created: msg.created || '',
+              })
+            }
+            messages.reverse()
+          } catch (_) {}
+
+          conversations.push({
+            conversation_id: conv.id,
+            created: conv.created || conv.updated || '',
+            user: {
+              id: uId,
+              name: u.getString('name'),
+              email: u.getString('email'),
+            },
+            messages: messages,
+          })
+        }
+      }
+
+      // Mais recentes primeiro
+      conversations.sort((a, b) => {
+        return String(b.created || '').localeCompare(String(a.created || ''))
+      })
+
+      return e.json(200, {
+        conversations: conversations,
+        total: conversations.length,
+      })
+    } catch (err) {
+      console.log('[admin] Erro em /backend/v1/admin/app-assistant-conversations: ' + err)
       return e.json(500, { error: String(err) })
     }
   },

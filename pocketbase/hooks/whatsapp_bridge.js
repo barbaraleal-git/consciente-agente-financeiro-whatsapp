@@ -102,8 +102,8 @@ if (typeof globalThis.__reliabilityHelper === 'undefined') {
 routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
   try {
     // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
-    // v0.0.177: lido em RUNTIME de app_settings (key='app_access_link'), com fallback.
-    let LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+    // v0.0.189: fallback atualizado para o domínio oficial consciente.net.br.
+    let LOCAL_APP_ACCESS_LINK = 'https://consciente.net.br'
     try {
       const __linkList = $app.findRecordsByFilter(
         'app_settings',
@@ -4252,7 +4252,8 @@ routerAdd(
     try {
       // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
       // v0.0.177: lido em RUNTIME de app_settings (key='app_access_link'), com fallback.
-      let LOCAL_APP_ACCESS_LINK = 'https://consciente.goskip.app'
+      // v0.0.189: fallback atualizado para o domínio oficial consciente.net.br.
+      let LOCAL_APP_ACCESS_LINK = 'https://consciente.net.br'
       try {
         const __simLinkList = $app.findRecordsByFilter(
           'app_settings',

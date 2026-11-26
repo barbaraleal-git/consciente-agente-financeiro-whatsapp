@@ -1,17 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // ----------------------------------------------------
-// Diagnóstico v0.0.189 — Item 37 / domínio oficial ativo: rota TEMPORÁRIA
-// que prova o estado do agente nativo 'financeiro-whatsapp' depois da
-// migração 0068. Somente leitura, restrita a admin. A dona (ou um curl com
-// token admin) chama /backend/v1/admin/agent-link-audit e recebe:
-//   - prompt: se ainda contém domínio antigo, o trecho ao redor da
-//     ocorrência; e se contém consciente.net.br.
+// Diagnóstico v0.0.189/190 — Item 37 / domínio oficial ativo: rota
+// (temporária, somente leitura, restrita a admin) que prova o estado do
+// agente nativo 'financeiro-whatsapp'. A dona (ou um curl com token admin)
+// chama /backend/v1/admin/agent-link-audit e recebe:
+//   - prompt: se ainda contém domínio antigo, o trecho ao redor; e se contém
+//     consciente.net.br.
 //   - memories: TOTAL, quantas contêm link antigo, quantas contêm
-//     consciente.net.br, e prévia do conteúdo de cada uma.
-// Após validação, remover junto com a 0068? NÃO: a 0068 fica (migração
-// idempotente); esta rota é removida numa rodada futura quando a dona
-// confirmar o comportamento no vivo.
+//     consciente.net.br, e prévia de cada uma.
+//   - app_settings_value: valor do registro app_settings (key='app_access_link',
+//     lido por '-updated') — a fonte canônica do link.
+//   - runtime_injection (v0.0.190): se a injeção runtime do link canônico está
+//     ATIVA no whatsapp_bridge (webhook + simulate) e o valor EXATO que o
+//     runtime leria AGORA (normalizado como URL, igual ao bridge).
+// v0.0.190: corrige uso de $app (antes 'app' — indefinido em hooks) e adiciona
+// o bloco runtime_injection.
 // ----------------------------------------------------
 
 routerAdd(
@@ -40,27 +44,23 @@ routerAdd(
       // ---------- systemPrompt ----------
       let promptReport = null
       try {
-        const agent = $ai.agents.get(app, SLUG)
+        const agent = $ai.agents.get($app, SLUG)
         const prompt = String((agent && (agent.systemPrompt || agent.get('systemPrompt'))) || '')
         let oldSnippet = ''
-        const idx = prompt.toLowerCase().indexOf(OLD_LINK_1)
-        const idx2 = prompt.toLowerCase().indexOf(OLD_LINK_2)
+        const lowPrompt = prompt.toLowerCase()
+        const idx = lowPrompt.indexOf(OLD_LINK_1)
+        const idx2 = lowPrompt.indexOf(OLD_LINK_2)
         const first = idx >= 0 ? idx : idx2
         if (first >= 0) {
           oldSnippet = prompt.slice(Math.max(0, first - 80), first + 120)
         }
+        const newIdx = lowPrompt.indexOf('consciente.net.br')
         promptReport = {
           length: prompt.length,
           has_old_domain: first >= 0,
           old_snippet: oldSnippet,
-          has_new_domain: prompt.toLowerCase().indexOf('consciente.net.br') !== -1,
-          new_snippet:
-            prompt.toLowerCase().indexOf('consciente.net.br') >= 0
-              ? prompt.slice(
-                  Math.max(0, prompt.toLowerCase().indexOf('consciente.net.br') - 80),
-                  prompt.toLowerCase().indexOf('consciente.net.br') + 120,
-                )
-              : '',
+          has_new_domain: newIdx >= 0,
+          new_snippet: newIdx >= 0 ? prompt.slice(Math.max(0, newIdx - 80), newIdx + 120) : '',
         }
       } catch (pErr) {
         promptReport = { error: String(pErr) }
@@ -73,7 +73,7 @@ routerAdd(
         if (typeof $ai.agents.listMemories === 'function') {
           memories = $ai.agents.listMemories(SLUG)
         } else {
-          const agentRec = $ai.agents.get(SLUG)
+          const agentRec = $ai.agents.get($app, SLUG)
           if (agentRec && typeof agentRec.listMemories === 'function') {
             memories = agentRec.listMemories()
           }
@@ -120,8 +120,9 @@ routerAdd(
         memReport = { error: String(mErr) }
       }
 
-      // ---------- app_settings (fonte em runtime do bridge) ----------
-      let appLink = null
+      // ---------- app_settings (fonte canônica do link) ----------
+      let appLinkRaw = ''
+      let appSettingsError = ''
       try {
         const recs = $app.findRecordsByFilter(
           'app_settings',
@@ -130,16 +131,40 @@ routerAdd(
           1,
           0,
         )
-        appLink = recs && recs.length > 0 ? recs[0].getString('value_text') : ''
+        appLinkRaw = recs && recs.length > 0 ? recs[0].getString('value_text') : ''
       } catch (sErr) {
-        appLink = '(erro: ' + String(sErr) + ')'
+        appSettingsError = String(sErr)
       }
+
+      // ---------- runtime_injection (v0.0.190) ----------
+      // Valor EXATO que o runtime (webhook + simulate do whatsapp_bridge)
+      // usaria AGORA — mesma leitura e mesma normalização do bridge:
+      // sem 'http' no valor => prefixa https://.
+      let runtimeValue = ''
+      try {
+        const val = String(appLinkRaw || '').trim()
+        if (val) {
+          runtimeValue = val.indexOf('http') === 0 ? val : 'https://' + val
+        }
+      } catch (_) {
+        runtimeValue = ''
+      }
+      const injectionActive = typeof runtimeValue === 'string' && runtimeValue.indexOf('http') === 0
 
       return e.json(200, {
         agent: SLUG,
         prompt: promptReport,
         memories: memReport,
-        app_settings_value: appLink,
+        app_settings_value: appLinkRaw,
+        app_settings_error: appSettingsError,
+        runtime_injection: {
+          active: injectionActive,
+          mechanism:
+            "whatsapp_bridge v0.0.190: pergunta sobre link/acesso ao app => valor canônico de app_settings (key='app_access_link', ORDER BY updated DESC LIMIT 1) injetado no prompt com precedência sobre memórias e histórico",
+          value_runtime_would_use_now:
+            runtimeValue || '(fallback hardcoded: https://consciente.net.br)',
+          detector: 'localIsAppLinkQuestion (webhook) / simIsAppLinkQuestion (simulate)',
+        },
       })
     } catch (err) {
       console.log('[agent-link-audit] Erro: ' + err)

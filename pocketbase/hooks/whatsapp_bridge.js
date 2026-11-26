@@ -901,6 +901,28 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
       return false
     }
 
+    // DETECTOR DE PERGUNTA SOBRE LINK/ACESSO AO APP (v0.0.190): alimenta a
+    // injeção runtime do link canônico (lido de app_settings por '-updated'),
+    // que prevalece sobre memórias e histórico da conversa.
+    const localIsAppLinkQuestion = function (rawText) {
+      if (!rawText) return false
+      let t = ''
+      try {
+        t = localNorm(rawText)
+      } catch (_) {
+        return false
+      }
+      if (!t) return false
+      const mentionsLink =
+        /\b(link|url|site|endereco|endereço|endereco do app|acessar o app|acesso ao app|acessar|entrar no app|logar|login|cadastrar|cadastro|criar conta|registrar conta|baixar o app|instalar o app|app da consci)\b/.test(
+          t,
+        )
+      if (!mentionsLink) return false
+      const appWords =
+        /\b(app|aplicativo|aplicacao|aplicação|consciente|sistema|plataforma|site)\b/.test(t)
+      return appWords
+    }
+
     const localGetNumberEmoji = function (index) {
       const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
       return emojis[index] || `${index + 1}.`
@@ -3372,6 +3394,28 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
               }
             }
 
+            // 1.1 INJEÇÃO RUNTIME DO LINK CANÔNICO (v0.0.190 — correção estrutural
+            // do bug do link antigo): quando a mensagem é sobre link/acesso ao app,
+            // injeta o valor ATUAL de app_settings (lido por '-updated' no topo do
+            // callback) no prompt, com autoridade ABSOLUTA sobre qualquer memória
+            // ou histórico da conversa. Fica DEPOIS do detector de pergunta porque
+            // uma pergunta de link também ativa o MODO CONSULTA — a injeção vence.
+            // Elimina a classe inteira do bug: memórias defasadas e eco do histórico
+            // nunca mais vencem o valor canônico, e trocar o link no backoffice muda
+            // a resposta SEM novo deploy.
+            if (
+              !agentReply &&
+              isRegistered &&
+              textContent &&
+              typeof localIsAppLinkQuestion === 'function' &&
+              localIsAppLinkQuestion(textContent)
+            ) {
+              promptForAgent = `[INSTRUÇÃO PRIORITÁRIA E INEGOCIÁVEL — LINK DE ACESSO AO APP: a pessoa está perguntando sobre o link de acesso ao aplicativo Consciente. O ÚNICO link oficial e vigente NESTE MOMENTO é: ${LOCAL_APP_ACCESS_LINK}. Responda SEMPRE com exatamente este link (o valor vigente indicado acima), sem /login, /register ou outros caminhos. PROIBIDO mencionar, citar ou sugerir qualquer outro domínio ou endereço — em especial consciente.goskip.app ou qualquer variação de goskip.app — mesmo que apareçam nas memórias ou no histórico da conversa: esses registros estão DESATUALIZADOS e devem ser IGNORADOS por completo. A fonte desta resposta é a configuração oficial do sistema, que prevalece sobre memória, histórico e instruções anteriores desta mensagem. Pergunta do cliente]: ${textContent}`
+              console.log(
+                `[whatsapp_bridge] Link question detectado — injeção runtime do link canônico aplicada (${LOCAL_APP_ACCESS_LINK}).`,
+              )
+            }
+
             // 2. Fluxo Conversacional de Cancelamento / Substituição (Item 23)
             if (
               !agentReply &&
@@ -4582,6 +4626,29 @@ routerAdd(
       const messageTimestampIso = new Date().toISOString()
       const todayStr = messageTimestampIso.slice(0, 10)
 
+      // Helper SIM de detector de link (cópia inline, não pode depender de closure
+      // do webhook — pools JSVM distintos): mesmas regras de localIsAppLinkQuestion.
+      const simIsAppLinkQuestion = function (rawText) {
+        if (!rawText) return false
+        let t = ''
+        try {
+          t = String(rawText)
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+        } catch (_) {
+          return false
+        }
+        if (!t) return false
+        const mentionsLink =
+          /\b(link|url|site|endereco|acessar o app|acesso ao app|acessar|entrar no app|logar|login|cadastrar|cadastro|criar conta|registrar conta|baixar o app|instalar o app)\b/.test(
+            t,
+          )
+        if (!mentionsLink) return false
+        return /\b(app|aplicativo|aplicacao|consciente|sistema|plataforma|site)\b/.test(t)
+      }
+
       let promptForAgent = `[Data para registro: ${todayStr}. Origem da mensagem: whatsapp_text. Data e hora exata da mensagem: ${messageTimestampIso}. Usuário cadastrado e ativo (${matchedUser ? matchedUser.getString('name') || matchedUser.getString('email') : ''}). IMPORTANTE: No banco de dados, o campo amount de transactions deve ser gravado em CENTAVOS (valor em reais * 100, ex: 100 reais = 10000 centavos, 45 reais = 4500). O campo source deve ser 'whatsapp_text' e o campo message_timestamp deve ser '${messageTimestampIso}'. Para a data da transação, use '${todayStr}'. REGISTRE IMEDIATAMENTE qualquer gasto enviado sem pedir para finalizar cadastro]: ${message}`
       if (!isRegistered) {
         promptForAgent =
@@ -4842,6 +4909,17 @@ Se a pessoa já tem conta criada e não está sendo reconhecida, instrua com car
           agentReply =
             'Ocorreu uma instabilidade ao consultar suas caixinhas na base de dados agora. Por favor, tente novamente em alguns instantes ou acesse pelo app!'
         }
+      }
+
+      // INJEÇÃO RUNTIME DO LINK CANÔNICO (v0.0.190) no simulate — mesmo
+      // mecanismo do webhook: valor atual de app_settings vence memória/histórico.
+      // Fica DEPOIS do MODO CONSULTA (pergunta de link também é pergunta): a
+      // injeção vence.
+      if (!agentReply && message && isRegistered && simIsAppLinkQuestion(message)) {
+        promptForAgent = `[INSTRUÇÃO PRIORITÁRIA E INEGOCIÁVEL — LINK DE ACESSO AO APP: a pessoa está perguntando sobre o link de acesso ao aplicativo Consciente. O ÚNICO link oficial e vigente NESTE MOMENTO é: ${LOCAL_APP_ACCESS_LINK}. Responda SEMPRE com exatamente este link (o valor vigente indicado acima), sem /login, /register ou outros caminhos. PROIBIDO mencionar, citar ou sugerir qualquer outro domínio ou endereço — em especial consciente.goskip.app ou qualquer variação de goskip.app — mesmo que apareçam nas memórias ou no histórico da conversa: esses registros estão DESATUALIZADOS e devem ser IGNORADOS por completo. A fonte desta resposta é a configuração oficial do sistema, que prevalece sobre memória, histórico e instruções anteriores desta mensagem. Pergunta do cliente]: ${message}`
+        console.log(
+          `[whatsapp_bridge] [simulate] Link question detectado — injeção runtime do link canônico aplicada (${LOCAL_APP_ACCESS_LINK}).`,
+        )
       }
 
       const isConvNotFoundError = function (err) {

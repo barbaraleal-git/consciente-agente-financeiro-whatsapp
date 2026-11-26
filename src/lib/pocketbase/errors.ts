@@ -1,50 +1,34 @@
-// NOTA ESTRUTURAL PERMANENTE (não remover ao editar este arquivo):
-// getBackendErrorMessage já foi perdida acidentalmente 22 vezes quando este
-// arquivo era tocado (padrão MISSING_EXPORT). Consumidores dela:
-// src/pages/Settings.tsx, src/components/admin/AppAccessLinkSection.tsx,
-// src/components/admin/BillingAdminSection.tsx e
-// src/components/admin/ConversationsHistorySection.tsx. Se ela sumir, o build
-// quebra e nenhuma correção chega ao vivo.
+// NOTA ESTRUTURAL PERMANENTE: getBackendErrorMessage(error, fallback?) é export
+// obrigatório deste arquivo. Vários consumidores importam esse nome
+// (BillingAdminSection, ClientSubscriptionDetailsDialog,
+// ConversationsHistorySection, Settings) e o build inteiro quebra com
+// MISSING_EXPORT se ele sumir (padrão recorrente — 23ª ressurgência).
+// NUNCA remover/renomear este export em refatorações.
 import { ClientResponseError } from 'pocketbase'
 
 export type FieldErrors = Record<string, string>
 
 /**
- * Extrai a mensagem real do corpo de erro do backend (PocketBase/JSVM),
- * removendo prefixos GoError/Error e bloqueando o genérico "Something went
- * wrong" do SDK. Usa `fallback` (em PT) quando nada útil é extraído.
+ * Mensagem amigável de um erro do backend, em PT-BR, extraindo a mensagem
+ * real do corpo da resposta (e não a genérica do ClientResponseError).
+ * 2º argumento opcional = fallback em PT exibido quando o corpo não traz
+ * mensagem utilizável. Comportamento da v0.0.140 (ReleaseLog), preservado.
  */
-export function getBackendErrorMessage(
-  error: unknown,
-  fallback = 'Ocorreu um erro inesperado. Tente novamente.',
-): string {
-  let raw = ''
+export function getBackendErrorMessage(error: unknown, fallback?: string): string {
   if (error instanceof ClientResponseError) {
-    const body = error.response as unknown
-    if (typeof body === 'string') {
-      raw = body
-    } else if (body && typeof body === 'object') {
-      const o = body as { message?: unknown; error?: unknown }
-      raw = typeof o.message === 'string' ? o.message : typeof o.error === 'string' ? o.error : ''
-      if (!raw) {
-        const fieldMsgs = Object.values(extractFieldErrors(error))
-        raw = fieldMsgs.join(' ')
-      }
+    const response = (error.response ?? {}) as Record<string, unknown>
+    const candidates = [response.message, response.error, response.data]
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') continue
+      const cleaned = candidate
+        .replace(/^(GoError|Error):\s*/i, '')
+        .replace(/^Something went wrong\.?$/i, '')
+        .trim()
+      if (cleaned) return cleaned
     }
-    if (!raw) raw = error.message || ''
-  } else if (error instanceof Error) {
-    raw = error.message
-  } else if (typeof error === 'string') {
-    raw = error
   }
-
-  const cleaned = raw
-    .replace(/^GoError:\s*/i, '')
-    .replace(/^Error:\s*/i, '')
-    .trim()
-
-  if (!cleaned || /^something went wrong$/i.test(cleaned)) return fallback
-  return cleaned
+  if (fallback) return fallback
+  return getErrorMessage(error)
 }
 
 export function extractFieldErrors(error: unknown): FieldErrors {

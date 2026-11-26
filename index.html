@@ -1,6 +1,27 @@
 <!-- HTML template for the frontend react app: https://developer.mozilla.org/en-US/docs/Web/HTML --><!doctype html>
 <html lang="pt-BR">
   <head>
+    <script>
+      // Redirecionamento único do domínio antigo para o domínio oficial.
+      // Dispara SOMENTE quando o hostname é exatamente consciente.goskip.app:
+      // não afeta preview (*--preview.goskip.app), localhost/127.0.0.1 nem
+      // consciente.net.br (sem loop). Preserva pathname + query + hash e usa
+      // location.replace para não poluir o histórico. Roda uma vez, na entrada.
+      (function () {
+        try {
+          if (window.location.hostname === "consciente.goskip.app") {
+            window.location.replace(
+              "https://consciente.net.br" +
+                window.location.pathname +
+                window.location.search +
+                window.location.hash,
+            );
+          }
+        } catch (e) {
+          /* nunca bloquear o carregamento do app */
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Favicon = arquivo REAL do logo oficial (sem nome). Enquanto o arquivo não

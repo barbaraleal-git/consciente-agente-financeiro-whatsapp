@@ -104,20 +104,66 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
     // Link ÚNICO de acesso ao app informado pela IA (v0.0.169) — ver nota central acima.
     // v0.0.189: fallback atualizado para o domínio oficial consciente.net.br.
     let LOCAL_APP_ACCESS_LINK = 'https://consciente.net.br'
+    // v0.0.191: leitura com FALLBACK EM CASCATA de sort. O collection GET da
+    // API com sort=-updated dava 400 ("Something went wrong") enquanto a
+    // coleção não tinha índice de updated — e o catch(_) engolia o erro,
+    // deixando a injeção com o fallback. Agora: '-updated' → sem sort →
+    // '-created', com log do que cada caminho leu (prova nos hooks).
     try {
-      const __linkList = $app.findRecordsByFilter(
-        'app_settings',
-        "key = 'app_access_link'",
-        '-updated',
-        1,
-        0,
-      )
-      const __linkRec = __linkList && __linkList.length > 0 ? __linkList[0] : null
+      const __readAppLink = function (__sort) {
+        return $app.findRecordsByFilter('app_settings', "key = 'app_access_link'", __sort, 1, 0)
+      }
+      let __linkRec = null
+      try {
+        const __linkList = __readAppLink('-updated')
+        __linkRec = __linkList && __linkList.length > 0 ? __linkList[0] : null
+      } catch (uErr) {
+        console.log(
+          '[whatsapp_bridge] [app-link] sort=-updated falhou (' +
+            uErr +
+            ') — caindo para sem sort.',
+        )
+      }
+      if (!__linkRec) {
+        try {
+          const __linkListNoSort = __readAppLink('')
+          __linkRec = __linkListNoSort && __linkListNoSort.length > 0 ? __linkListNoSort[0] : null
+        } catch (nErr) {
+          console.log(
+            '[whatsapp_bridge] [app-link] leitura sem sort falhou (' +
+              nErr +
+              ') — caindo para -created.',
+          )
+        }
+      }
+      if (!__linkRec) {
+        try {
+          const __linkListCreated = __readAppLink('-created')
+          __linkRec =
+            __linkListCreated && __linkListCreated.length > 0 ? __linkListCreated[0] : null
+        } catch (cErr) {
+          console.log(
+            '[whatsapp_bridge] [app-link] leitura por -created falhou (' +
+              cErr +
+              ') — usando fallback.',
+          )
+        }
+      }
       const __linkVal = __linkRec ? String(__linkRec.getString('value_text') || '').trim() : ''
       if (__linkVal) {
         LOCAL_APP_ACCESS_LINK = __linkVal.indexOf('http') === 0 ? __linkVal : 'https://' + __linkVal
       }
-    } catch (_) {}
+      console.log(
+        '[whatsapp_bridge] [app-link] valor lido de app_settings: ' + LOCAL_APP_ACCESS_LINK,
+      )
+    } catch (linkErr) {
+      console.log(
+        '[whatsapp_bridge] [app-link] leitura do link canônico falhou: ' +
+          linkErr +
+          ' — mantendo fallback ' +
+          LOCAL_APP_ACCESS_LINK,
+      )
+    }
     // -----------------------------------------------------------------------------
     // MOTOR DETERMINÍSTICO DE RESUMO DAS CAIXINHAS (100% EMBUTIDO NO CORPO DO CALLBACK)
     // REGRA INVIOLÁVEL: O resumo de caixinhas no WhatsApp é 100% DETERMINÍSTICO da

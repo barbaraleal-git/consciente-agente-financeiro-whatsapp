@@ -126,7 +126,7 @@ routerAdd(
         const recs = $app.findRecordsByFilter(
           'app_settings',
           "key = 'app_access_link'",
-          '-created',
+          '-updated',
           1,
           0,
         )

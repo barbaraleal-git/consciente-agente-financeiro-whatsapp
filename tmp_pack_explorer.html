@@ -1,0 +1,210 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Pack Explorer</title>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako_inflate.min.js"></script>
+    <input type="file" id="f" accept=".pack" /><span id="packLabel"></span><br />
+    <input type="file" id="i" accept=".idx" /><span id="idxLabel"></span><br />
+    <pre id="out" style="white-space: pre-wrap; font-size: 11px"></pre>
+    <script>
+      const out = document.getElementById('out')
+      let packBuf = null,
+        idx = null,
+        objects = []
+
+      document.getElementById('f').onchange = async (ev) => {
+        packBuf = new Uint8Array(await ev.target.files[0].arrayBuffer())
+        document.getElementById('packLabel').textContent =
+          ' pack carregado: ' + packBuf.length + ' bytes'
+      }
+
+      document.getElementById('i').onchange = async (ev) => {
+        idx = new Uint8Array(await ev.target.files[0].arrayBuffer())
+        document.getElementById('idxLabel').textContent = ' idx carregado: ' + idx.length + ' bytes'
+        if (packBuf) process()
+      }
+
+      const target = 'e904f5866a33c87e51faa9b9b8f42bd3095ef20c'
+      const bridgePath = ['pocketbase', 'hooks', 'whatsapp_bridge.js']
+
+      function process() {
+        try {
+          run()
+        } catch (e) {
+          out.textContent += 'ERRO: ' + e.message + '\n' + e.stack + '\n'
+        }
+      }
+
+      function run() {
+        const dv = new DataView(idx.buffer)
+        const magic = dv.getUint32(0)
+        if (magic === 0xff744f63) {
+          // ^{-1} 'tOc'
+          out.textContent += 'idx v2 detectado\n'
+        } else {
+          out.textContent += 'AVISO: idx pode não ser v2 (magic=' + magic + ')\n'
+        }
+        const fanoutView = new DataView(idx.buffer, 8 + 255 * 4, 4)
+        const nObjs = fanoutView.getUint32(0)
+        out.textContent += 'objetos no pack: ' + nObjs + '\n'
+        const namesStart = 8 + 255 * 4 + 256 * 4
+        const crcStart = namesStart + nObjs * 20
+        const offStart = crcStart + nObjs * 4
+        const bigStart = offStart + nObjs * 4
+        objects = []
+        for (let i = 0; i < nObjs; i++) {
+          const name = []
+          for (let j = 0; j < 20; j++)
+            name.push(idx[namesStart + i * 20 + j].toString(16).padStart(2, '0'))
+          let off = dv.getUint32(offStart + i * 4)
+          if (off & 0x80000000) {
+            const bigIdx = off & 0x7fffffff
+            off = Number(dv.getBigUint64(bigStart + bigIdx * 8))
+          }
+          objects.push({ sha: name.join(''), off })
+        }
+        out.textContent += 'objetos parseados\n'
+
+        const parseObjAt = (off) => {
+          let p = off
+          let byte = packBuf[p++]
+          const type = (byte >> 4) & 7
+          let size = byte & 15
+          let shift = 4
+          while (byte & 0x80) {
+            byte = packBuf[p++]
+            size |= (byte & 0x7f) << shift
+            shift += 7
+          }
+          return { type, dataStart: p }
+        }
+        const resolve = (off, depth = 0) => {
+          if (depth > 50) throw new Error('delta muito profundo')
+          const { type, dataStart } = parseObjAt(off)
+          if (type >= 1 && type <= 4) {
+            const raw = pako.inflate(packBuf.subarray(dataStart))
+            const nul = raw.indexOf(0)
+            return {
+              type: ['', 'commit', 'tree', 'blob', 'tag'][type],
+              data: raw.subarray(nul + 1),
+            }
+          }
+          const raw = pako.inflate(packBuf.subarray(dataStart))
+          if (type === 6) {
+            let p2 = 0
+            let byte2 = raw[p2++]
+            let offDelta = byte2 & 0x7f
+            while (byte2 & 0x80) {
+              byte2 = raw[p2++]
+              offDelta = ((offDelta + 1) << 7) | (byte2 & 0x7f)
+            }
+            const base = resolve(off - offDelta, depth + 1)
+            return { type: base.type, data: applyDelta(base.data, raw.subarray(p2)) }
+          }
+          if (type === 7) {
+            const sha = Array.from(raw.subarray(0, 20))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('')
+            const found = objects.find((o) => o.sha === sha)
+            if (!found) throw new Error('base ref delta nao encontrada: ' + sha)
+            const base = resolve(found.off, depth + 1)
+            return { type: base.type, data: applyDelta(base.data, raw.subarray(20)) }
+          }
+          throw new Error('tipo desconhecido ' + type)
+        }
+        const applyDelta = (base, delta) => {
+          let p = 0
+          const rdVarint = () => {
+            let r = 0,
+              s = 0,
+              b
+            do {
+              b = delta[p++]
+              r |= (b & 0x7f) << s
+              s += 7
+            } while (b & 0x80)
+            return r
+          }
+          rdVarint()
+          const tgtSize = rdVarint()
+          const out2 = new Uint8Array(tgtSize)
+          let op = 0
+          while (p < delta.length) {
+            const cmd = delta[p++]
+            if (cmd & 0x80) {
+              let cpOff = 0,
+                cpSize = 0
+              if (cmd & 0x01) cpOff |= delta[p++]
+              if (cmd & 0x02) cpOff |= delta[p++] << 8
+              if (cmd & 0x04) cpOff |= delta[p++] << 16
+              if (cmd & 0x08) cpOff |= delta[p++] << 24
+              if (cmd & 0x10) cpSize |= delta[p++]
+              if (cmd & 0x20) cpSize |= delta[p++] << 8
+              if (cpSize === 0) cpSize = 0x10000
+              out2.set(base.subarray(cpOff, cpOff + cpSize), op)
+              op += cpSize
+            } else {
+              out2.set(delta.subarray(p, p + cmd), op)
+              op += cmd
+              p += cmd
+            }
+          }
+          return out2
+        }
+
+        const targetObj = objects.find((o) => o.sha === target)
+        if (!targetObj) {
+          out.textContent += 'commit v0.0.192 NAO encontrado neste pack\n'
+          return
+        }
+        const commitObj = new TextDecoder().decode(resolve(targetObj.off).data)
+        out.textContent += 'commit v0.0.192 encontrado\n'
+        const treeSha = /tree ([0-9a-f]{40})/.exec(commitObj)[1]
+
+        const dec = new TextDecoder()
+        const readTree = (sha) => {
+          const o = objects.find((x) => x.sha === sha)
+          if (!o) throw new Error('tree nao encontrada: ' + sha)
+          const data = resolve(o.off).data
+          let p = 0
+          const entries = []
+          while (p < data.length) {
+            const sp = data.indexOf(32, p)
+            const mode = dec.decode(data.subarray(p, sp))
+            const nul = data.indexOf(0, sp)
+            const name = dec.decode(data.subarray(sp + 1, nul))
+            const h = Array.from(data.subarray(nul + 1, nul + 21))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('')
+            entries.push({ mode, name, sha: h })
+            p = nul + 21
+          }
+          return entries
+        }
+        let entries = readTree(treeSha)
+        for (const part of bridgePath) {
+          const e = entries.find((x) => x.name === part)
+          if (!e) {
+            out.textContent += 'caminho nao encontrado: ' + part + '\n'
+            return
+          }
+          if (part === bridgePath[bridgePath.length - 1]) {
+            const o = objects.find((x) => x.sha === e.sha)
+            const text = dec.decode(resolve(o.off).data)
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }))
+            a.download = 'whatsapp_bridge_v0.0.192.js'
+            a.click()
+            out.textContent +=
+              'blob: ' + e.sha + ' | linhas: ' + text.split('\n').length + ' | download iniciado\n'
+            return
+          }
+          entries = readTree(e.sha)
+        }
+      }
+    </script>
+  </body>
+</html>
